@@ -16,7 +16,7 @@
 typedef struct _CYW_SDIO_CONTEXT
 {
     SDBUS_INTERFACE_STANDARD BusInterface;
-    ULONG FunctionNumber;
+    UCHAR FunctionNumber;
     USHORT FunctionBlockSize;
     BOOLEAN BusOpen;
     BOOLEAN InterfaceInitialized;
