@@ -21,15 +21,31 @@ Record from the test Pi 5:
 
 ## Milestone 1B - SDIO transport
 
-Implement and validate, in this order:
+Current implementation status:
 
-1. Open/query the SDBUS interface for the PDO.
-2. Query SDIO function number.
-3. Read CCCR registers with direct-byte requests.
-4. Configure function block length.
-5. Enable the required function(s) and wait for ready.
-6. Perform bounded CMD53 reads/writes.
-7. Register/acknowledge card interrupts.
+- [x] Open `SDBUS_INTERFACE_STANDARD` for the function PDO.
+- [x] Initialize the SD bus interface.
+- [x] Query `SDP_FUNCTION_NUMBER`.
+- [x] Implement synchronous CMD52 read/write helpers.
+- [x] Read CCCR/FBR registers during a read-only startup smoke test.
+- [x] Configure function block length for FN1/FN2.
+- [x] Implement a bounded synchronous CMD53 helper using an MDL-backed nonpaged bounce buffer.
+- [ ] Validate the above on Raspberry Pi 5 hardware.
+- [ ] Enable the required function(s) and wait for ready where Windows/SDBUS does not already manage it.
+- [ ] Validate repeated CMD53 reads/writes against known-safe CYW43455 registers/RAM.
+- [ ] Register and acknowledge card interrupts.
+
+### First hardware test
+
+Build/install the ARM64 package and capture the kernel debugger output for each enumerated function.
+
+Expected success line:
+
+```text
+RPI5CYW: SDIO ready fn=<n> block=<size> CCCR=0x.. IOEx=0x.. IORx=0x.. FBR=0x..
+```
+
+If startup fails, capture the exact `RPI5CYW:` error line and the Device Manager status/code.
 
 Do not proceed to firmware loading until repeated SDIO reads/writes are stable.
 
@@ -50,7 +66,7 @@ Do not proceed to firmware loading until repeated SDIO reads/writes are stable.
 6. Download CLM blob if required.
 7. Issue a harmless BCDC query and verify the response.
 
-Firmware binaries are not committed in this scaffold. Their licensing and provenance must be preserved when they are added.
+Firmware binaries are not committed yet. Their licensing and provenance must be preserved when they are added.
 
 ## Milestone 2 - WiFiCx
 
