@@ -1,0 +1,55 @@
+; Raspberry Pi 5 CYW43455 SDIO bring-up driver
+; Experimental Windows 11 ARM64 package
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ProviderName%
+DriverVer   = 08/20/2026,0.1.0.0
+CatalogFile = rpi5cyw.cat
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13
+
+[Manufacturer]
+%ProviderName% = Models,NTARM64
+
+[Models.NTARM64]
+%DeviceDesc.F1% = Device_Install, SD\VID_02D0&PID_A9BF&FN_1
+%DeviceDesc.F2% = Device_Install, SD\VID_02D0&PID_A9BF&FN_2
+%DeviceDesc.F3% = Device_Install, SD\VID_02D0&PID_A9BF&FN_3
+%DeviceDesc.F1% = Device_Install, SD\VID_02D0&PID_4345&FN_1
+%DeviceDesc.F2% = Device_Install, SD\VID_02D0&PID_4345&FN_2
+%DeviceDesc.F3% = Device_Install, SD\VID_02D0&PID_4345&FN_3
+
+[Device_Install]
+CopyFiles = Driver_CopyFiles
+
+[Device_Install.Services]
+AddService = rpi5cyw, 0x00000002, Service_Install
+
+[Driver_CopyFiles]
+rpi5cyw.sys
+
+[Service_Install]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %13%\rpi5cyw.sys
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+rpi5cyw.sys = 1
+
+[Strings]
+ProviderName  = "farjanatech"
+ServiceDesc   = "Raspberry Pi 5 CYW43455 SDIO Bring-up Driver"
+DeviceDesc.F1 = "CYW43455 SDIO Function 1 (experimental)"
+DeviceDesc.F2 = "CYW43455 SDIO Function 2 (experimental)"
+DeviceDesc.F3 = "CYW43455 SDIO Function 3 (experimental)"
+DiskName      = "Raspberry Pi 5 CYW43455 Driver"
