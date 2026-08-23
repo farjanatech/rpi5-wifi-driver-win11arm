@@ -25,7 +25,7 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
     <ConfigurationType>Driver</ConfigurationType>
-    <DriverType>KMDF</DriverType>
+    <DriverType>WDM</DriverType>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'" Label="Configuration">
@@ -33,7 +33,7 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
     <ConfigurationType>Driver</ConfigurationType>
-    <DriverType>KMDF</DriverType>
+    <DriverType>WDM</DriverType>
   </PropertyGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -46,31 +46,23 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <AdditionalIncludeDirectories>$(ProjectDir)src\driver;$(ProjectDir)src\sdio;$(ProjectDir)src\cyw43455;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDIS630_MINIPORT=1;NDIS_MINIPORT_DRIVER=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir)src\driver;$(ProjectDir)src\sdio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>sdbus.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ndis.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
   <ItemGroup>
     <ClCompile Include="src\driver\driver.c" />
     <ClCompile Include="src\sdio\sdio.c" />
-    <ClCompile Include="src\cyw43455\chip.c" />
   </ItemGroup>
 
   <ItemGroup>
     <ClInclude Include="src\driver\driver.h" />
     <ClInclude Include="src\sdio\sdio.h" />
-    <ClInclude Include="src\cyw43455\chip.h" />
   </ItemGroup>
-
-  <!--
-    The INF is deliberately packaged outside MSBuild by scripts/package-ci.ps1.
-    WDK NuGet target packages provide the ARM64 headers/libs, while the GitHub
-    runner does not expose stampinf.exe on PATH during the compile target.
-    Keeping packaging separate also lets CI surface C/link errors first.
-  -->
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
