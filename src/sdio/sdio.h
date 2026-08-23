@@ -1,73 +1,90 @@
 #pragma once
 
-#include <ntddk.h>
-#include <wdf.h>
-/*
- * ntddsd.h declares GUID_SDBUS_INTERFACE_STANDARD. initguid.h must be
- * included first in one translation unit so the GUID is instantiated;
- * otherwise sdbus.lib links with an unresolved GUID symbol.
- */
-#include <initguid.h>
-#include <ntddsd.h>
-#include <sddef.h>
+#include "../driver/driver.h"
 
-#define CYW_SDIO_MAX_FUNCTION       7U
-#define CYW_SDIO_MAX_ADDRESS        0x1FFFFUL
-#define CYW_SDIO_MAX_BYTE_TRANSFER  512UL
-#define CYW_SDIO_MAX_BLOCK_COUNT    511UL
-#define CYW_SDIO_F1_BLOCK_SIZE      64U
-#define CYW_SDIO_F2_BLOCK_SIZE      512U
-#define CYW_SDIO_POOL_TAG           'oiSC'
+#define SDHCI_BLOCK_SIZE              0x04
+#define SDHCI_BLOCK_COUNT             0x06
+#define SDHCI_ARGUMENT                0x08
+#define SDHCI_TRANSFER_MODE           0x0C
+#define SDHCI_COMMAND                 0x0E
+#define SDHCI_RESPONSE0               0x10
+#define SDHCI_PRESENT_STATE           0x24
+#define SDHCI_HOST_CONTROL            0x28
+#define SDHCI_POWER_CONTROL           0x29
+#define SDHCI_CLOCK_CONTROL           0x2C
+#define SDHCI_TIMEOUT_CONTROL         0x2E
+#define SDHCI_SOFTWARE_RESET          0x2F
+#define SDHCI_INT_STATUS              0x30
+#define SDHCI_INT_STATUS_ENABLE       0x34
+#define SDHCI_INT_SIGNAL_ENABLE       0x38
+#define SDHCI_HOST_CONTROL2           0x3E
+#define SDHCI_CAPABILITIES            0x40
+#define SDHCI_CAPABILITIES2           0x44
+#define SDHCI_HOST_VERSION            0xFE
 
-typedef struct _CYW_SDIO_CONTEXT
-{
-    SDBUS_INTERFACE_STANDARD BusInterface;
-    UCHAR FunctionNumber;
-    USHORT FunctionBlockSize;
-    BOOLEAN BusOpen;
-    BOOLEAN InterfaceInitialized;
-    WDFWAITLOCK TransferLock;
-} CYW_SDIO_CONTEXT, *PCYW_SDIO_CONTEXT;
+#define SDHCI_PS_CMD_INHIBIT          0x00000001UL
+#define SDHCI_PS_DATA_INHIBIT         0x00000002UL
+#define SDHCI_PS_CARD_INSERTED        0x00010000UL
 
-WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(CYW_SDIO_CONTEXT, CywGetSdioContext);
+#define SDHCI_HC_DATA_WIDTH_4BIT      0x02
 
-EVT_WDF_DEVICE_PREPARE_HARDWARE CywSdioEvtPrepareHardware;
-EVT_WDF_DEVICE_RELEASE_HARDWARE CywSdioEvtReleaseHardware;
+#define SDHCI_PC_BUS_POWER_ON         0x01
+#define SDHCI_PC_BUS_VOLTAGE_180      0x0A
+#define SDHCI_PC_BUS_VOLTAGE_300      0x0C
+#define SDHCI_PC_BUS_VOLTAGE_330      0x0E
 
-NTSTATUS
-CywSdioInitialize(
-    _In_ WDFDEVICE Device
-    );
+#define SDHCI_CLK_INT_CLK_ENABLE      0x0001
+#define SDHCI_CLK_INT_CLK_STABLE      0x0002
+#define SDHCI_CLK_SD_CLK_ENABLE       0x0004
+#define SDHCI_CLK_FREQ_SEL_SHIFT      8
 
-VOID
-CywSdioShutdown(
-    _In_ WDFDEVICE Device
-    );
+#define SDHCI_RESET_ALL               0x01
+#define SDHCI_RESET_CMD               0x02
+#define SDHCI_RESET_DATA              0x04
 
-NTSTATUS
-CywSdioReadByte(
-    _In_ WDFDEVICE Device,
-    _In_ UCHAR Function,
-    _In_ ULONG Address,
-    _Out_ PUCHAR Value
-    );
+#define SDHCI_INT_CMD_COMPLETE        0x00000001UL
+#define SDHCI_INT_XFER_COMPLETE       0x00000002UL
+#define SDHCI_INT_ERROR               0x00008000UL
+#define SDHCI_INT_CMD_TIMEOUT         0x00010000UL
+#define SDHCI_INT_CMD_CRC             0x00020000UL
+#define SDHCI_INT_CMD_END_BIT         0x00040000UL
+#define SDHCI_INT_CMD_INDEX           0x00080000UL
+#define SDHCI_INT_DATA_TIMEOUT        0x00100000UL
+#define SDHCI_INT_DATA_CRC            0x00200000UL
+#define SDHCI_INT_DATA_END_BIT        0x00400000UL
+#define SDHCI_INT_RESPONSE_ERROR      0x08000000UL
+#define SDHCI_INT_ALL_MASK            0xFFFFFFFFUL
+#define SDHCI_INT_CMD_ERROR_MASK      (SDHCI_INT_CMD_TIMEOUT | SDHCI_INT_CMD_CRC | SDHCI_INT_CMD_END_BIT | SDHCI_INT_CMD_INDEX | SDHCI_INT_RESPONSE_ERROR)
 
-NTSTATUS
-CywSdioWriteByte(
-    _In_ WDFDEVICE Device,
-    _In_ UCHAR Function,
-    _In_ ULONG Address,
-    _In_ UCHAR Value
-    );
+#define SDHCI_CAP_BASE_CLK_MASK       0x0000FF00UL
+#define SDHCI_CAP_BASE_CLK_SHIFT      8
+#define SDHCI_CAP_VOLTAGE_330         0x01000000UL
+#define SDHCI_CAP_VOLTAGE_300         0x02000000UL
+#define SDHCI_CAP_VOLTAGE_180         0x04000000UL
 
-NTSTATUS
-CywSdioReadWriteExtended(
-    _In_ WDFDEVICE Device,
-    _In_ UCHAR Function,
-    _In_ BOOLEAN WriteToDevice,
-    _In_ BOOLEAN IncrementAddress,
-    _In_ BOOLEAN BlockMode,
-    _In_ ULONG Address,
-    _Inout_updates_bytes_(Length) PUCHAR Buffer,
-    _In_ ULONG Length
-    );
+#define SDHCI_CMD_RESP_NONE           0x0000
+#define SDHCI_CMD_RESP_136            0x0001
+#define SDHCI_CMD_RESP_48             0x0002
+#define SDHCI_CMD_RESP_48_BUSY        0x0003
+#define SDHCI_CMD_RESP_MASK           0x0003
+#define SDHCI_CMD_CRC_CHECK           0x0008
+#define SDHCI_CMD_INDEX_CHECK         0x0010
+#define SDHCI_CMD_INDEX_SHIFT         8
+#define SDHCI_MAKE_CMD(_idx,_flags)   ((USHORT)(((_idx) << SDHCI_CMD_INDEX_SHIFT) | (_flags)))
+
+#define SDCMD_GO_IDLE_STATE           0
+#define SDCMD_IO_SEND_OP_COND         5
+#define SDCMD_SEND_RELATIVE_ADDR      3
+#define SDCMD_SELECT_CARD             7
+#define SDCMD_IO_RW_DIRECT            52
+
+#define SDIO_OCR_READY                0x80000000UL
+#define SDIO_OCR_NUM_FUNCTIONS_MASK   0x70000000UL
+#define SDIO_OCR_NUM_FUNCTIONS_SHIFT  28
+#define SDIO_OCR_VDD_RANGE            0x00FF8000UL
+
+#define CYW_SDIO_CCCR_REVISION        0x00000UL
+#define CYW_SDIO_CCCR_IO_ENABLE       0x00002UL
+#define CYW_SDIO_CCCR_IO_READY        0x00003UL
+#define CYW_SDIO_F1_INTERFACE         0x00100UL
+#define CYW_SDIO_F2_INTERFACE         0x00200UL
