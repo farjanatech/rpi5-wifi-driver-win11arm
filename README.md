@@ -4,34 +4,29 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-**Milestone 1: SDIO + firmware bring-up**
+**Milestone 1: direct-SDIO hardware bring-up behind an NDIS Ethernet adapter**
 
-The initial target is intentionally below the Windows Wi-Fi stack:
+The current branch binds an NDIS 6.30 Ethernet miniport to the dedicated
+`ACPI\RPI0011` SDIO2 host exposed by the matching UEFI. The driver maps SDIO2
+directly and currently implements only a bounded CMD0/CMD5/CMD3/CMD7/CMD52
+probe. It does not yet implement CMD53 data transfer, CYW43455 firmware loading,
+association, transmit or receive traffic.
 
-1. Enumerate the CYW43455 SDIO functions on Raspberry Pi 5.
-2. Open the Windows SD bus interface.
-3. Prove CMD52/CMD53 transfers.
-4. Read the CYW43455 chip/core identity.
-5. Download firmware/NVRAM/CLM data.
-6. Receive a valid firmware control response.
-
-WiFiCx/NetAdapterCx integration comes after the SDIO transport and firmware path are proven on real hardware.
+Windows therefore sees a disconnected Ethernet adapter even when the probe
+succeeds. This is intentional diagnostic behavior, not working Wi-Fi.
 
 ## Architecture
 
 ```text
 Windows 11 ARM64
     |
-    +-- WiFiCx / NetAdapterCx          (later milestone)
+    +-- NDIS 6.30 Ethernet miniport
     |
-    +-- CYW43455 firmware/control layer
-    |       +-- BCDC
-    |       +-- SDPCM
-    |       +-- chip/backplane
+    +-- CYW43455 firmware/control layer (not implemented yet)
+    |       +-- BCDC / SDPCM / chip backplane
     |
-    +-- SDIO transport
-            +-- Windows SDBUS
-            +-- Raspberry Pi 5 SD host
+    +-- direct SDIO2 host transport
+            +-- SDHCI CMD5/CMD52/CMD53
             +-- CYW43455
 ```
 
@@ -49,7 +44,9 @@ The first development branch is `bringup/cyw43455-sdio-arm64`.
 
 ## Status
 
-This repository is experimental. The driver is not yet suitable for normal use and should only be installed on a test Windows ARM64 system with kernel debugging/recovery access available.
+This repository is experimental. The current artifact is a hardware probe, not
+a functional network driver. Install it only on the matching Raspberry Pi 5
+test system with kernel debugging and recovery access available.
 
 ## License
 

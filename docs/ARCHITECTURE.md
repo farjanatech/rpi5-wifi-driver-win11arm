@@ -2,24 +2,19 @@
 
 ## Goal
 
-Provide Windows 11 ARM64 support for the Raspberry Pi 5 onboard CYW43455 Wi-Fi controller while keeping hardware/firmware logic separate from the Windows WLAN-facing layer.
+Provide Windows 11 ARM64 support for the Raspberry Pi 5 onboard CYW43455 while
+presenting the completed data path to Windows as an Ethernet adapter. Keep the
+direct SDIO host, CYW43455 protocol and NDIS layers separate.
 
 ## Layers
 
 ### 1. Windows integration
 
-The final WLAN-facing implementation should target WiFiCx/NetAdapterCx rather than extending the legacy Native 802.11 miniport design.
-
-This layer will eventually own:
-
-- adapter creation and capabilities;
-- scan/connect/disconnect requests;
-- authentication/cipher configuration;
-- TX/RX queues;
-- link-state and statistics reporting;
-- power-management integration.
-
-It is intentionally not part of the first hardware bring-up commit.
+The branch uses an NDIS 6.30 Ethernet miniport based on the proven RP1 GEM
+Windows-facing structure. It will eventually own Ethernet TX/RX queues, link
+state, statistics and power transitions. Wi-Fi scanning, credentials and
+association require a separate, explicit control design; an Ethernet miniport
+does not receive Windows WLAN requests.
 
 ### 2. CYW43455 core
 
@@ -35,18 +30,20 @@ Hardware-specific code belongs under `src/cyw43455/` and should remain mostly in
 
 ### 3. SDIO transport
 
-`src/sdio/` owns Windows SD-bus interaction. It must provide a small transport API to the CYW layer rather than leaking SDBUS details throughout the driver.
+`src/sdio/` owns direct access to the Raspberry Pi 5 SDIO2 SDHCI controller.
+The matching UEFI exposes that controller as `ACPI\RPI0011` and deliberately
+prevents Microsoft `sdbus` from binding to it.
 
 Initial transport goals:
 
-- discover the SDIO function number;
-- open the SD bus interface;
+- validate and map the SDIO2 MMIO resource;
+- reset and initialize the dedicated host controller;
 - CMD52/direct-byte access;
 - CMD53 extended transfers;
 - function block-size configuration;
 - function enable/readiness;
 - interrupt registration;
-- safe PnP/power teardown.
+- safe PnP/power teardown without affecting the microSD controller.
 
 ## Source-port policy
 

@@ -72,7 +72,7 @@ Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
 Architecture:
-  ACPI\\RPI5WIFI -> NDIS 6.30 Ethernet miniport -> direct Pi 5 SDHCI -> CYW43455
+  ACPI\\RPI0011 -> NDIS 6.30 Ethernet miniport -> direct Pi 5 SDHCI -> CYW43455
 
 This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
@@ -82,7 +82,7 @@ The driver remains disconnected until the CYW43455 firmware/SDPCM/BCDC and
 association datapath are completed. A successful CMD52 diagnostic is a hardware
 protocol milestone, NOT a claim that Wi-Fi is working.
 
-Use only with the matching UEFI build that exposes ACPI\\RPI5WIFI and leaves
+Use only with the matching UEFI build that exposes ACPI\\RPI0011 and leaves
 MAX_50MHZ_MODE untouched. Confirm the physical fan operates normally after boot.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
@@ -145,15 +145,15 @@ Capture 'windows.txt' { Get-ComputerInfo | Format-List WindowsProductName,Window
 Capture 'bcdedit.txt' { bcdedit /enum '{current}' }
 Capture 'pnp-rpi5wifi.txt' {
     Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
-      Where-Object { $_.InstanceId -match 'RPI5WIFI' -or $_.FriendlyName -match 'CYW43455|Direct SDIO' } |
+      Where-Object { $_.InstanceId -match 'RPI0011' -or $_.FriendlyName -match 'CYW43455|Direct SDIO' } |
       Format-List *
 }
 Capture 'pnp-properties.txt' {
-    $dev = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'RPI5WIFI' } | Select-Object -First 1
+    $dev = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'RPI0011' } | Select-Object -First 1
     if ($dev) {
         $dev | Format-List *
         Get-PnpDeviceProperty -InstanceId $dev.InstanceId -ErrorAction SilentlyContinue | Format-Table KeyName,Type,Data -AutoSize
-    } else { 'ACPI RPI5WIFI device not found' }
+    } else { 'ACPI RPI0011 device not found' }
 }
 Capture 'service.txt' { sc.exe query rpi5cyw; sc.exe qc rpi5cyw; reg.exe query 'HKLM\SYSTEM\CurrentControlSet\Services\rpi5cyw' /s }
 Capture 'pnputil.txt' { pnputil /enum-devices /connected; pnputil /enum-devices /problem; pnputil /enum-drivers }
@@ -161,7 +161,7 @@ Capture 'netadapters.txt' { Get-NetAdapter -IncludeHidden | Format-List Name,Int
 Capture 'system-events.txt' {
     $start=(Get-Date).AddHours(-6)
     Get-WinEvent -FilterHashtable @{LogName='System';StartTime=$start} -ErrorAction SilentlyContinue |
-      Where-Object { $_.ProviderName -match 'Kernel-PnP|NDIS|Service Control Manager' -or $_.Message -match 'RPI5WIFI|rpi5cyw|CYW43455' } |
+      Where-Object { $_.ProviderName -match 'Kernel-PnP|NDIS|Service Control Manager' -or $_.Message -match 'RPI0011|rpi5cyw|CYW43455' } |
       Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message | Format-List
 }
 $setup = Join-Path $env:windir 'INF\setupapi.dev.log'

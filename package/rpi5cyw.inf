@@ -18,7 +18,7 @@ Driver_CopyFiles = 12
 %ProviderName% = Models,NTARM64
 
 [Models.NTARM64]
-%DeviceDesc% = Device_Install.ndi, ACPI\RPI5WIFI
+%DeviceDesc% = Device_Install.ndi, ACPI\RPI0011
 
 [Device_Install.ndi.NT]
 Characteristics    = 0x4

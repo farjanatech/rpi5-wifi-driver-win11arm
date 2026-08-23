@@ -1,20 +1,15 @@
 # Bring-up plan
 
-## Milestone 1A - Device enumeration
+## Milestone 1A - Platform-device enumeration
 
-Expected Raspberry Pi/CYW43455 SDIO IDs seen in the reference implementation:
-
-- `SD\VID_02D0&PID_A9BF&FN_1`
-- `SD\VID_02D0&PID_A9BF&FN_2`
-- `SD\VID_02D0&PID_A9BF&FN_3`
-- alternate `PID_4345` variants
-
-First prove that Windows enumerates the functions before debugging the Wi-Fi protocol.
+The matching direct-SDIO UEFI exposes the dedicated Wi-Fi SDIO2 host as
+`ACPI\RPI0011`. Microsoft `sdbus` must not enumerate or own child functions for
+this design. First prove that the NDIS miniport binds only to this ACPI device.
 
 Record from the test Pi 5:
 
 - Device Manager hardware IDs;
-- parent SD host controller;
+- allocated SDIO2 MMIO and interrupt resources;
 - resources;
 - driver load status;
 - kernel debugger output.
@@ -23,15 +18,14 @@ Record from the test Pi 5:
 
 Current implementation status:
 
-- [x] Open `SDBUS_INTERFACE_STANDARD` for the function PDO.
-- [x] Initialize the SD bus interface.
-- [x] Query `SDP_FUNCTION_NUMBER`.
-- [x] Implement synchronous CMD52 read/write helpers.
-- [x] Read CCCR/FBR registers during a read-only startup smoke test.
-- [x] Configure function block length for FN1/FN2.
-- [x] Implement a bounded synchronous CMD53 helper using an MDL-backed nonpaged bounce buffer.
+- [x] Map the SDIO2 MMIO resource assigned to `ACPI\RPI0011`.
+- [x] Reset the host and configure an identification clock.
+- [x] Implement bounded CMD0/CMD5/CMD3/CMD7 command polling.
+- [x] Implement CMD52 reads and read CCCR/FBR identity registers.
+- [ ] Implement CMD52 writes with read-after-write verification.
+- [ ] Configure and enable function 1/function 2.
+- [ ] Implement a bounded PIO CMD53 helper.
 - [ ] Validate the above on Raspberry Pi 5 hardware.
-- [ ] Enable the required function(s) and wait for ready where Windows/SDBUS does not already manage it.
 - [ ] Validate repeated CMD53 reads/writes against known-safe CYW43455 registers/RAM.
 - [ ] Register and acknowledge card interrupts.
 
