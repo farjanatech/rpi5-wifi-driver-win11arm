@@ -33,6 +33,8 @@ if (-not (Test-Path $inf)) { throw 'package\rpi5cyw.inf is missing.' }
 
 Copy-Item $sys.FullName (Join-Path $stage 'rpi5cyw.sys') -Force
 Copy-Item $inf (Join-Path $stage 'rpi5cyw.inf') -Force
+Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE') -Force
+Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.md') (Join-Path $stage 'THIRD_PARTY_NOTICES.md') -Force
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -84,19 +86,72 @@ protocol milestone, NOT a claim that Wi-Fi is working.
 
 Use only with the matching UEFI build that exposes ACPI\\RPI0011 and leaves
 MAX_50MHZ_MODE untouched. Confirm the physical fan operates normally after boot.
+
+Security:
+  This is a test-signed kernel driver. The installer refuses to enable Test
+  Signing or change Secure Boot. When those prerequisites are already satisfied,
+  it verifies the package signer and adds the included test certificate to the
+  machine Root and TrustedPublisher stores. Remove the driver and certificate
+  after testing if this experimental package is no longer required.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
+
+@"
+driver_repository=$env:GITHUB_REPOSITORY
+driver_commit=$env:GITHUB_SHA
+workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
+reactos_reference=9130f67a8e8c759da5acbbfe613f776b07b21698
+matching_acpi_id=ACPI\\RPI0011
+"@ | Set-Content (Join-Path $stage 'SOURCE_REVISION.txt') -Encoding UTF8
 
 @'
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $me = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $me.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run as Administrator.' }
+if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.InteropServices.Architecture]::Arm64) {
+    throw 'This experimental package is only for Windows ARM64 on Raspberry Pi 5.'
+}
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $cer = Join-Path $dir 'rpi5cyw-test.cer'
 $inf = Join-Path $dir 'rpi5cyw.inf'
+$sys = Join-Path $dir 'rpi5cyw.sys'
+$cat = Join-Path $dir 'rpi5cyw.cat'
+
+$device = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
+    Where-Object { $_.InstanceId -match '^ACPI\\RPI0011(?:\\|$)' } |
+    Select-Object -First 1
+if (-not $device) {
+    throw 'ACPI\\RPI0011 was not found. Install only with the matching direct-SDIO UEFI.'
+}
+
+try {
+    if (Confirm-SecureBootUEFI) {
+        throw 'Secure Boot is enabled. This test-signed driver cannot be used safely in that state.'
+    }
+} catch [System.PlatformNotSupportedException] {
+    Write-Warning 'Secure Boot status is unavailable on this firmware.'
+}
+
+$boot = (& bcdedit.exe /enum '{current}' 2>&1 | Out-String)
+if ($LASTEXITCODE -ne 0 -or $boot -notmatch '(?im)^testsigning\s+Yes\s*$') {
+    throw 'Windows Test Signing is not enabled. This installer will not change boot security settings.'
+}
+
+$certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($cer)
+foreach ($signedFile in @($sys, $cat)) {
+    $signature = Get-AuthenticodeSignature -LiteralPath $signedFile
+    if (-not $signature.SignerCertificate -or
+        $signature.SignerCertificate.Thumbprint -ne $certificate.Thumbprint) {
+        throw "Signer mismatch for $signedFile. Refusing to trust or install this package."
+    }
+}
+
 certutil.exe -addstore -f Root $cer
+if ($LASTEXITCODE -ne 0) { throw 'Failed to trust the test certificate in LocalMachine Root.' }
 certutil.exe -addstore -f TrustedPublisher $cer
+if ($LASTEXITCODE -ne 0) { throw 'Failed to trust the test certificate in LocalMachine TrustedPublisher.' }
 pnputil.exe /add-driver $inf /install
+if ($LASTEXITCODE -ne 0) { throw "PnPUtil rejected the driver package: $LASTEXITCODE" }
 pnputil.exe /scan-devices
 Write-Host 'Direct-SDIO driver installation attempted.'
 Write-Host 'Run collect-direct-sdio-diagnostics.ps1 next.'
@@ -171,7 +226,9 @@ Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zip -Force
 Write-Host "Diagnostics: $zip"
 '@ | Set-Content (Join-Path $stage 'collect-direct-sdio-diagnostics.ps1') -Encoding UTF8
 
-$hashes = Get-ChildItem $stage -File | ForEach-Object { Get-FileHash $_.FullName -Algorithm SHA256 }
-$hashes | Format-Table -AutoSize | Out-String | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding UTF8
+Get-ChildItem $stage -File | Sort-Object Name | ForEach-Object {
+    $hash = Get-FileHash $_.FullName -Algorithm SHA256
+    "$($hash.Hash)  $($_.Name)"
+} | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ASCII
 
 Write-Host "Packaged direct-SDIO NDIS driver at $stage"
