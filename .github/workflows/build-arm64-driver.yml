@@ -1,0 +1,114 @@
+name: Build Windows 11 ARM64 driver
+
+on:
+  push:
+    branches:
+      - bringup/cyw43455-sdio-arm64
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      Configuration: Debug
+      Platform: ARM64
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Install NuGet CLI
+        uses: NuGet/setup-nuget@v2
+
+      - name: Create log directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+
+      - name: Record runner toolchain
+        shell: pwsh
+        run: |
+          "Commit=$env:GITHUB_SHA" | Set-Content ci-logs/toolchain.txt
+          "Runner=$env:RUNNER_OS $env:RUNNER_ARCH" | Add-Content ci-logs/toolchain.txt
+          "ImageOS=$env:ImageOS" | Add-Content ci-logs/toolchain.txt
+          "ImageVersion=$env:ImageVersion" | Add-Content ci-logs/toolchain.txt
+          msbuild -version | Out-String | Add-Content ci-logs/toolchain.txt
+          nuget help | Select-Object -First 5 | Out-String | Add-Content ci-logs/toolchain.txt
+
+      - name: Restore WDK and SDK NuGet packages
+        shell: pwsh
+        run: |
+          nuget restore packages.config -PackagesDirectory packages -NonInteractive -Verbosity detailed 2>&1 |
+            Tee-Object -FilePath ci-logs/nuget-restore.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem packages -Directory | Select-Object Name,FullName |
+            Format-Table -AutoSize | Out-String | Set-Content ci-logs/restored-packages.txt
+
+      - name: Build Debug ARM64
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          msbuild .\rpi5-cyw43455.sln /m /t:Rebuild `
+            /p:Configuration=$env:Configuration `
+            /p:Platform=$env:Platform `
+            /bl:ci-logs\build.binlog `
+            /fl "/flp:logfile=ci-logs\build.log;verbosity=diagnostic"
+          exit $LASTEXITCODE
+
+      - name: Inventory build outputs
+        if: always()
+        shell: pwsh
+        run: |
+          Get-ChildItem . -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in '.sys','.pdb','.inf','.cat','.log' -and $_.FullName -notmatch '\\packages\\' } |
+            Select-Object FullName,Length,LastWriteTime |
+            Format-Table -AutoSize | Out-String -Width 500 | Set-Content ci-logs/build-outputs.txt
+
+      - name: Package and test-sign driver
+        id: package
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          .\scripts\package-ci.ps1 -Configuration $env:Configuration -Platform $env:Platform 2>&1 |
+            Tee-Object -FilePath ci-logs/package.log
+          exit $LASTEXITCODE
+
+      - name: Upload ready driver package
+        if: steps.package.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi5-cyw43455-win11-arm64-debug
+          path: artifacts/rpi5cyw-test-driver/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload CI logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi5-cyw43455-ci-logs
+          path: ci-logs/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail workflow if build or packaging failed
+        if: always()
+        shell: pwsh
+        run: |
+          if ('${{ steps.build.outcome }}' -ne 'success') {
+            Write-Error 'ARM64 driver build failed. See the CI logs artifact.'
+            exit 1
+          }
+          if ('${{ steps.package.outcome }}' -ne 'success') {
+            Write-Error 'Driver packaging/test-signing failed. See the CI logs artifact.'
+            exit 1
+          }
+          Write-Host 'ARM64 driver package built and uploaded successfully.'
