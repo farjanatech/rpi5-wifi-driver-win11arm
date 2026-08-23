@@ -1,666 +1,519 @@
 #include "sdio.h"
 
-#define CYW_SDIO_CCCR_REVISION       0x00UL
-#define CYW_SDIO_CCCR_IO_ENABLE      0x02UL
-#define CYW_SDIO_CCCR_IO_READY       0x03UL
-#define CYW_SDIO_FBR_STRIDE          0x100UL
-#define CYW_SDIO_FBR_INTERFACE_CODE  0x00UL
-
-static
-PSDBUS_REQUEST_PACKET
-CywSdioAllocateRequest(
-    VOID
+static __forceinline UCHAR
+SdioRead8(
+    _In_ PRPI5CYW_ADAPTER Adapter,
+    _In_ ULONG Offset
     )
 {
-    PSDBUS_REQUEST_PACKET packet;
-
-    packet = (PSDBUS_REQUEST_PACKET)ExAllocatePool2(
-        POOL_FLAG_NON_PAGED,
-        sizeof(SDBUS_REQUEST_PACKET),
-        CYW_SDIO_POOL_TAG);
-
-    if (packet != NULL)
-    {
-        RtlZeroMemory(packet, sizeof(*packet));
-    }
-
-    return packet;
+    return READ_REGISTER_UCHAR((PUCHAR)Adapter->RegisterBase + Offset);
 }
 
-static
-VOID
-CywSdioFreeRequest(
-    _In_opt_ PSDBUS_REQUEST_PACKET Packet
+static __forceinline USHORT
+SdioRead16(
+    _In_ PRPI5CYW_ADAPTER Adapter,
+    _In_ ULONG Offset
     )
 {
-    if (Packet != NULL)
-    {
-        ExFreePoolWithTag(Packet, CYW_SDIO_POOL_TAG);
-    }
+    return READ_REGISTER_USHORT((PUSHORT)((PUCHAR)Adapter->RegisterBase + Offset));
 }
 
-static
-NTSTATUS
-CywSdioGetProperty(
-    _In_ PCYW_SDIO_CONTEXT Context,
-    _In_ SDBUS_PROPERTY Property,
-    _Out_writes_bytes_(Length) PVOID Buffer,
-    _In_ ULONG Length
+static __forceinline ULONG
+SdioRead32(
+    _In_ PRPI5CYW_ADAPTER Adapter,
+    _In_ ULONG Offset
     )
 {
-    PSDBUS_REQUEST_PACKET packet;
-    NTSTATUS status;
-
-    if (!Context->BusOpen || Context->BusInterface.Context == NULL)
-    {
-        return STATUS_DEVICE_NOT_READY;
-    }
-
-    packet = CywSdioAllocateRequest();
-    if (packet == NULL)
-    {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    packet->RequestFunction = SDRF_GET_PROPERTY;
-    packet->Parameters.GetSetProperty.Property = Property;
-    packet->Parameters.GetSetProperty.Buffer = Buffer;
-    packet->Parameters.GetSetProperty.Length = Length;
-
-    status = SdBusSubmitRequest(Context->BusInterface.Context, packet);
-    CywSdioFreeRequest(packet);
-    return status;
+    return READ_REGISTER_ULONG((PULONG)((PUCHAR)Adapter->RegisterBase + Offset));
 }
 
-static
-NTSTATUS
-CywSdioSetProperty(
-    _In_ PCYW_SDIO_CONTEXT Context,
-    _In_ SDBUS_PROPERTY Property,
-    _In_reads_bytes_(Length) PVOID Buffer,
-    _In_ ULONG Length
+static __forceinline VOID
+SdioWrite8(
+    _In_ PRPI5CYW_ADAPTER Adapter,
+    _In_ ULONG Offset,
+    _In_ UCHAR Value
     )
 {
-    PSDBUS_REQUEST_PACKET packet;
-    NTSTATUS status;
-
-    if (!Context->BusOpen || Context->BusInterface.Context == NULL)
-    {
-        return STATUS_DEVICE_NOT_READY;
-    }
-
-    packet = CywSdioAllocateRequest();
-    if (packet == NULL)
-    {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    packet->RequestFunction = SDRF_SET_PROPERTY;
-    packet->Parameters.GetSetProperty.Property = Property;
-    packet->Parameters.GetSetProperty.Buffer = Buffer;
-    packet->Parameters.GetSetProperty.Length = Length;
-
-    status = SdBusSubmitRequest(Context->BusInterface.Context, packet);
-    CywSdioFreeRequest(packet);
-    return status;
+    WRITE_REGISTER_UCHAR((PUCHAR)Adapter->RegisterBase + Offset, Value);
 }
 
-static
-NTSTATUS
-CywSdioDirectTransfer(
-    _In_ WDFDEVICE Device,
-    _In_ UCHAR Function,
-    _In_ BOOLEAN WriteToDevice,
-    _In_ ULONG Address,
-    _Inout_ PUCHAR Value
+static __forceinline VOID
+SdioWrite16(
+    _In_ PRPI5CYW_ADAPTER Adapter,
+    _In_ ULONG Offset,
+    _In_ USHORT Value
     )
 {
-    PCYW_SDIO_CONTEXT context;
-    PSDBUS_REQUEST_PACKET packet;
-    SD_RW_DIRECT_ARGUMENT argument;
-    SDCMD_DESCRIPTOR descriptor;
-    NTSTATUS status;
-
-    if (Function > CYW_SDIO_MAX_FUNCTION ||
-        Address > CYW_SDIO_MAX_ADDRESS ||
-        Value == NULL)
-    {
-        return STATUS_INVALID_PARAMETER;
-    }
-
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL)
-    {
-        return STATUS_INVALID_DEVICE_STATE;
-    }
-
-    context = CywGetSdioContext(Device);
-    if (context == NULL || context->TransferLock == NULL)
-    {
-        return STATUS_INVALID_DEVICE_STATE;
-    }
-
-    status = WdfWaitLockAcquire(context->TransferLock, NULL);
-    if (!NT_SUCCESS(status))
-    {
-        return status;
-    }
-
-    if (!context->BusOpen || context->BusInterface.Context == NULL)
-    {
-        status = STATUS_DEVICE_NOT_READY;
-        goto Exit;
-    }
-
-    packet = CywSdioAllocateRequest();
-    if (packet == NULL)
-    {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto Exit;
-    }
-
-    descriptor.Cmd = SDCMD_IO_RW_DIRECT;
-    descriptor.CmdClass = SDCC_STANDARD;
-    descriptor.TransferDirection = WriteToDevice ? SDTD_WRITE : SDTD_READ;
-    descriptor.TransferType = SDTT_CMD_ONLY;
-    descriptor.ResponseType = SDRT_5;
-
-    argument.u.AsULONG = 0;
-    argument.u.bits.Address = Address;
-    argument.u.bits.Function = Function;
-    argument.u.bits.WriteToDevice = WriteToDevice ? 1U : 0U;
-    argument.u.bits.ReadAfterWrite = 0;
-    if (WriteToDevice)
-    {
-        argument.u.bits.Data = *Value;
-    }
-
-    packet->RequestFunction = SDRF_DEVICE_COMMAND;
-    packet->Parameters.DeviceCommand.CmdDesc = descriptor;
-    packet->Parameters.DeviceCommand.Argument = argument.u.AsULONG;
-    packet->Parameters.DeviceCommand.Mdl = NULL;
-    packet->Parameters.DeviceCommand.Length = 0;
-
-    status = SdBusSubmitRequest(context->BusInterface.Context, packet);
-    if (NT_SUCCESS(status) && !WriteToDevice)
-    {
-        *Value = packet->ResponseData.AsUCHAR[0];
-    }
-
-    CywSdioFreeRequest(packet);
-
-Exit:
-    WdfWaitLockRelease(context->TransferLock);
-    return status;
+    WRITE_REGISTER_USHORT((PUSHORT)((PUCHAR)Adapter->RegisterBase + Offset), Value);
 }
 
-NTSTATUS
-CywSdioReadByte(
-    _In_ WDFDEVICE Device,
+static __forceinline VOID
+SdioWrite32(
+    _In_ PRPI5CYW_ADAPTER Adapter,
+    _In_ ULONG Offset,
+    _In_ ULONG Value
+    )
+{
+    WRITE_REGISTER_ULONG((PULONG)((PUCHAR)Adapter->RegisterBase + Offset), Value);
+}
+
+static VOID
+SdioDelayMilliseconds(
+    _In_ ULONG Milliseconds
+    )
+{
+    if (KeGetCurrentIrql() <= APC_LEVEL)
+    {
+        LARGE_INTEGER Delay;
+        Delay.QuadPart = -((LONGLONG)Milliseconds * 10000LL);
+        (VOID)KeDelayExecutionThread(KernelMode, FALSE, &Delay);
+    }
+    else
+    {
+        while (Milliseconds-- != 0)
+        {
+            KeStallExecutionProcessor(1000);
+        }
+    }
+}
+
+static NTSTATUS
+SdioResetHost(
+    _Inout_ PRPI5CYW_ADAPTER Adapter,
+    _In_ UCHAR ResetMask
+    )
+{
+    ULONG Timeout;
+
+    SdioWrite8(Adapter, SDHCI_SOFTWARE_RESET, ResetMask);
+    for (Timeout = 0; Timeout < 1000; Timeout++)
+    {
+        if ((SdioRead8(Adapter, SDHCI_SOFTWARE_RESET) & ResetMask) == 0)
+        {
+            return STATUS_SUCCESS;
+        }
+        KeStallExecutionProcessor(100);
+    }
+
+    return STATUS_IO_TIMEOUT;
+}
+
+static USHORT
+SdioCalculateClockDivider(
+    _In_ ULONG BaseClockKhz,
+    _In_ ULONG TargetClockKhz
+    )
+{
+    ULONG RealDivisor;
+
+    if (BaseClockKhz == 0 || TargetClockKhz == 0 || BaseClockKhz <= TargetClockKhz)
+    {
+        return 0;
+    }
+
+    for (RealDivisor = 2; RealDivisor < 2046; RealDivisor += 2)
+    {
+        if ((BaseClockKhz / RealDivisor) <= TargetClockKhz)
+        {
+            break;
+        }
+    }
+
+    if (RealDivisor >= 2046)
+    {
+        RealDivisor = 2046;
+    }
+
+    return (USHORT)(RealDivisor >> 1);
+}
+
+static NTSTATUS
+SdioInitializeHost(
+    _Inout_ PRPI5CYW_ADAPTER Adapter
+    )
+{
+    ULONG BaseClockMhz;
+    ULONG BaseClockKhz;
+    ULONG Timeout;
+    USHORT Divider;
+    USHORT DividerHigh;
+    USHORT ClockControl;
+    UCHAR PowerControl;
+    NTSTATUS Status;
+
+    if (Adapter->RegisterBase == NULL || Adapter->RegisterLength < 0x100)
+    {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+
+    SdioWrite32(Adapter, SDHCI_INT_SIGNAL_ENABLE, 0);
+
+    Status = SdioResetHost(Adapter, SDHCI_RESET_ALL);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    Adapter->HostVersion = SdioRead16(Adapter, SDHCI_HOST_VERSION);
+    Adapter->Capabilities = SdioRead32(Adapter, SDHCI_CAPABILITIES);
+    Adapter->Capabilities2 = SdioRead32(Adapter, SDHCI_CAPABILITIES2);
+
+    BaseClockMhz = (Adapter->Capabilities & SDHCI_CAP_BASE_CLK_MASK) >> SDHCI_CAP_BASE_CLK_SHIFT;
+    if (BaseClockMhz == 0)
+    {
+        BaseClockMhz = 200;
+    }
+    BaseClockKhz = BaseClockMhz * 1000UL;
+
+    Divider = SdioCalculateClockDivider(BaseClockKhz, 400);
+    if (Divider > 0x3FF)
+    {
+        Divider = 0x3FF;
+    }
+
+    DividerHigh = (USHORT)((Divider & 0x300) >> 2);
+    ClockControl = (USHORT)(((Divider & 0xFF) << SDHCI_CLK_FREQ_SEL_SHIFT) |
+                            DividerHigh |
+                            SDHCI_CLK_INT_CLK_ENABLE);
+    SdioWrite16(Adapter, SDHCI_CLOCK_CONTROL, ClockControl);
+
+    for (Timeout = 0; Timeout < 2000; Timeout++)
+    {
+        ClockControl = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
+        if ((ClockControl & SDHCI_CLK_INT_CLK_STABLE) != 0)
+        {
+            break;
+        }
+        KeStallExecutionProcessor(100);
+    }
+    if (Timeout == 2000)
+    {
+        return STATUS_IO_TIMEOUT;
+    }
+
+    ClockControl |= SDHCI_CLK_SD_CLK_ENABLE;
+    SdioWrite16(Adapter, SDHCI_CLOCK_CONTROL, ClockControl);
+
+    if ((Adapter->Capabilities & SDHCI_CAP_VOLTAGE_330) != 0)
+    {
+        PowerControl = SDHCI_PC_BUS_VOLTAGE_330 | SDHCI_PC_BUS_POWER_ON;
+    }
+    else if ((Adapter->Capabilities & SDHCI_CAP_VOLTAGE_300) != 0)
+    {
+        PowerControl = SDHCI_PC_BUS_VOLTAGE_300 | SDHCI_PC_BUS_POWER_ON;
+    }
+    else if ((Adapter->Capabilities & SDHCI_CAP_VOLTAGE_180) != 0)
+    {
+        PowerControl = SDHCI_PC_BUS_VOLTAGE_180 | SDHCI_PC_BUS_POWER_ON;
+    }
+    else
+    {
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    }
+
+    SdioWrite8(Adapter, SDHCI_POWER_CONTROL, PowerControl);
+    SdioWrite8(Adapter, SDHCI_TIMEOUT_CONTROL, 0x0E);
+    SdioWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
+    SdioWrite32(Adapter, SDHCI_INT_STATUS_ENABLE,
+                SDHCI_INT_CMD_COMPLETE |
+                SDHCI_INT_XFER_COMPLETE |
+                SDHCI_INT_ERROR |
+                SDHCI_INT_CMD_ERROR_MASK);
+    SdioWrite32(Adapter, SDHCI_INT_SIGNAL_ENABLE, 0);
+
+    SdioDelayMilliseconds(10);
+
+    Adapter->PresentState = SdioRead32(Adapter, SDHCI_PRESENT_STATE);
+    Adapter->ClockControl = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
+    Adapter->PowerControl = SdioRead8(Adapter, SDHCI_POWER_CONTROL);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+SdioWaitInhibitClear(
+    _Inout_ PRPI5CYW_ADAPTER Adapter,
+    _In_ ULONG Mask
+    )
+{
+    ULONG Timeout;
+
+    for (Timeout = 0; Timeout < 10000; Timeout++)
+    {
+        if ((SdioRead32(Adapter, SDHCI_PRESENT_STATE) & Mask) == 0)
+        {
+            return STATUS_SUCCESS;
+        }
+        KeStallExecutionProcessor(100);
+    }
+
+    return STATUS_IO_TIMEOUT;
+}
+
+static NTSTATUS
+SdioSendCommand(
+    _Inout_ PRPI5CYW_ADAPTER Adapter,
+    _In_ UCHAR CommandIndex,
+    _In_ ULONG Argument,
+    _In_ USHORT CommandFlags,
+    _Out_opt_ PULONG Response
+    )
+{
+    ULONG InterruptStatus = 0;
+    ULONG Timeout;
+    NTSTATUS Status;
+
+    Status = SdioWaitInhibitClear(Adapter, SDHCI_PS_CMD_INHIBIT);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    Adapter->LastCommand = CommandIndex;
+    Adapter->LastArgument = Argument;
+    Adapter->LastInterruptStatus = 0;
+    Adapter->LastResponse = 0;
+
+    SdioWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
+    SdioWrite32(Adapter, SDHCI_ARGUMENT, Argument);
+    KeMemoryBarrier();
+    SdioWrite16(Adapter, SDHCI_COMMAND, SDHCI_MAKE_CMD(CommandIndex, CommandFlags));
+
+    for (Timeout = 0; Timeout < 10000; Timeout++)
+    {
+        InterruptStatus = SdioRead32(Adapter, SDHCI_INT_STATUS);
+        if ((InterruptStatus & (SDHCI_INT_CMD_COMPLETE | SDHCI_INT_ERROR | SDHCI_INT_CMD_ERROR_MASK)) != 0)
+        {
+            break;
+        }
+        KeStallExecutionProcessor(100);
+    }
+
+    Adapter->LastInterruptStatus = InterruptStatus;
+    if (Timeout == 10000)
+    {
+        (VOID)SdioResetHost(Adapter, SDHCI_RESET_CMD);
+        return STATUS_IO_TIMEOUT;
+    }
+
+    if ((InterruptStatus & (SDHCI_INT_ERROR | SDHCI_INT_CMD_ERROR_MASK)) != 0)
+    {
+        SdioWrite32(Adapter, SDHCI_INT_STATUS, InterruptStatus);
+        (VOID)SdioResetHost(Adapter, SDHCI_RESET_CMD);
+        return STATUS_IO_DEVICE_ERROR;
+    }
+
+    if (Response != NULL)
+    {
+        *Response = SdioRead32(Adapter, SDHCI_RESPONSE0);
+        Adapter->LastResponse = *Response;
+    }
+
+    SdioWrite32(Adapter, SDHCI_INT_STATUS, InterruptStatus);
+
+    if ((CommandFlags & SDHCI_CMD_RESP_MASK) == SDHCI_CMD_RESP_48_BUSY)
+    {
+        Status = SdioWaitInhibitClear(Adapter, SDHCI_PS_DATA_INHIBIT);
+        if (!NT_SUCCESS(Status))
+        {
+            (VOID)SdioResetHost(Adapter, SDHCI_RESET_DATA);
+            return Status;
+        }
+    }
+
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS
+SdioCmd52Read(
+    _Inout_ PRPI5CYW_ADAPTER Adapter,
     _In_ UCHAR Function,
     _In_ ULONG Address,
     _Out_ PUCHAR Value
     )
 {
-    if (Value == NULL)
+    ULONG Argument;
+    ULONG Response;
+    NTSTATUS Status;
+
+    if (Value == NULL || Function > 7 || Address > 0x1FFFF)
     {
         return STATUS_INVALID_PARAMETER;
     }
 
-    *Value = 0;
-    return CywSdioDirectTransfer(Device, Function, FALSE, Address, Value);
-}
+    Argument = ((ULONG)(Function & 7) << 28) |
+               ((Address & 0x1FFFFUL) << 9);
 
-NTSTATUS
-CywSdioWriteByte(
-    _In_ WDFDEVICE Device,
-    _In_ UCHAR Function,
-    _In_ ULONG Address,
-    _In_ UCHAR Value
-    )
-{
-    UCHAR data = Value;
-
-    return CywSdioDirectTransfer(Device, Function, TRUE, Address, &data);
-}
-
-NTSTATUS
-CywSdioReadWriteExtended(
-    _In_ WDFDEVICE Device,
-    _In_ UCHAR Function,
-    _In_ BOOLEAN WriteToDevice,
-    _In_ BOOLEAN IncrementAddress,
-    _In_ BOOLEAN BlockMode,
-    _In_ ULONG Address,
-    _Inout_updates_bytes_(Length) PUCHAR Buffer,
-    _In_ ULONG Length
-    )
-{
-    PCYW_SDIO_CONTEXT context;
-    PSDBUS_REQUEST_PACKET packet = NULL;
-    SD_RW_EXTENDED_ARGUMENT argument;
-    SDCMD_DESCRIPTOR descriptor;
-    PUCHAR bounceBuffer = NULL;
-    PMDL mdl = NULL;
-    ULONG blockCount = 0;
-    ULONG encodedCount;
-    NTSTATUS status;
-
-    if (Function > CYW_SDIO_MAX_FUNCTION ||
-        Address > CYW_SDIO_MAX_ADDRESS ||
-        Buffer == NULL ||
-        Length == 0)
+    Status = SdioSendCommand(Adapter,
+                             SDCMD_IO_RW_DIRECT,
+                             Argument,
+                             SDHCI_CMD_RESP_48 | SDHCI_CMD_CRC_CHECK | SDHCI_CMD_INDEX_CHECK,
+                             &Response);
+    if (!NT_SUCCESS(Status))
     {
-        return STATUS_INVALID_PARAMETER;
+        return Status;
     }
 
-    if (IncrementAddress &&
-        (Length - 1 > CYW_SDIO_MAX_ADDRESS - Address))
+    if ((Response & 0x0000CB00UL) != 0)
     {
-        return STATUS_INVALID_PARAMETER;
+        return STATUS_IO_DEVICE_ERROR;
     }
 
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL)
-    {
-        return STATUS_INVALID_DEVICE_STATE;
-    }
-
-    context = CywGetSdioContext(Device);
-    if (context == NULL || context->TransferLock == NULL)
-    {
-        return STATUS_INVALID_DEVICE_STATE;
-    }
-
-    status = WdfWaitLockAcquire(context->TransferLock, NULL);
-    if (!NT_SUCCESS(status))
-    {
-        return status;
-    }
-
-    if (!context->BusOpen || context->BusInterface.Context == NULL)
-    {
-        status = STATUS_DEVICE_NOT_READY;
-        goto Exit;
-    }
-
-    if (BlockMode)
-    {
-        if (Function != context->FunctionNumber ||
-            context->FunctionBlockSize == 0 ||
-            (Length % context->FunctionBlockSize) != 0)
-        {
-            status = STATUS_INVALID_PARAMETER;
-            goto Exit;
-        }
-
-        blockCount = Length / context->FunctionBlockSize;
-        if (blockCount == 0 || blockCount > CYW_SDIO_MAX_BLOCK_COUNT)
-        {
-            status = STATUS_INVALID_PARAMETER;
-            goto Exit;
-        }
-
-        encodedCount = blockCount;
-    }
-    else
-    {
-        if (Length > CYW_SDIO_MAX_BYTE_TRANSFER)
-        {
-            status = STATUS_INVALID_PARAMETER;
-            goto Exit;
-        }
-
-        encodedCount = (Length == CYW_SDIO_MAX_BYTE_TRANSFER) ? 0 : Length;
-    }
-
-    bounceBuffer = (PUCHAR)ExAllocatePool2(
-        POOL_FLAG_NON_PAGED,
-        Length,
-        CYW_SDIO_POOL_TAG);
-    if (bounceBuffer == NULL)
-    {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto Exit;
-    }
-
-    if (WriteToDevice)
-    {
-        RtlCopyMemory(bounceBuffer, Buffer, Length);
-    }
-    else
-    {
-        RtlZeroMemory(bounceBuffer, Length);
-    }
-
-    mdl = IoAllocateMdl(
-        bounceBuffer,
-        Length,
-        FALSE,
-        FALSE,
-        NULL);
-    if (mdl == NULL)
-    {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto Exit;
-    }
-
-    MmBuildMdlForNonPagedPool(mdl);
-
-    packet = CywSdioAllocateRequest();
-    if (packet == NULL)
-    {
-        status = STATUS_INSUFFICIENT_RESOURCES;
-        goto Exit;
-    }
-
-    descriptor.Cmd = SDCMD_IO_RW_EXTENDED;
-    descriptor.CmdClass = SDCC_STANDARD;
-    descriptor.TransferDirection = WriteToDevice ? SDTD_WRITE : SDTD_READ;
-    descriptor.TransferType =
-        (BlockMode && blockCount > 1) ?
-            SDTT_MULTI_BLOCK_NO_CMD12 :
-            SDTT_SINGLE_BLOCK;
-    descriptor.ResponseType = SDRT_5;
-
-    argument.u.AsULONG = 0;
-    argument.u.bits.Count = encodedCount;
-    argument.u.bits.Address = Address;
-    argument.u.bits.OpCode = IncrementAddress ? 1U : 0U;
-    argument.u.bits.BlockMode = BlockMode ? 1U : 0U;
-    argument.u.bits.Function = Function;
-    argument.u.bits.WriteToDevice = WriteToDevice ? 1U : 0U;
-
-    packet->RequestFunction = SDRF_DEVICE_COMMAND;
-    packet->Parameters.DeviceCommand.CmdDesc = descriptor;
-    packet->Parameters.DeviceCommand.Argument = argument.u.AsULONG;
-    packet->Parameters.DeviceCommand.Mdl = mdl;
-    packet->Parameters.DeviceCommand.Length = Length;
-
-    status = SdBusSubmitRequest(context->BusInterface.Context, packet);
-    if (NT_SUCCESS(status) && !WriteToDevice)
-    {
-        RtlCopyMemory(Buffer, bounceBuffer, Length);
-    }
-
-Exit:
-    CywSdioFreeRequest(packet);
-
-    if (mdl != NULL)
-    {
-        IoFreeMdl(mdl);
-    }
-
-    if (bounceBuffer != NULL)
-    {
-        ExFreePoolWithTag(bounceBuffer, CYW_SDIO_POOL_TAG);
-    }
-
-    WdfWaitLockRelease(context->TransferLock);
-    return status;
-}
-
-VOID
-CywSdioShutdown(
-    _In_ WDFDEVICE Device
-    )
-{
-    PCYW_SDIO_CONTEXT context;
-
-    context = CywGetSdioContext(Device);
-    if (context == NULL)
-    {
-        return;
-    }
-
-    if (context->BusOpen &&
-        context->BusInterface.InterfaceDereference != NULL)
-    {
-        context->BusInterface.InterfaceDereference(
-            context->BusInterface.Context);
-    }
-
-    RtlZeroMemory(
-        &context->BusInterface,
-        sizeof(context->BusInterface));
-
-    context->FunctionNumber = 0;
-    context->FunctionBlockSize = 0;
-    context->InterfaceInitialized = FALSE;
-    context->BusOpen = FALSE;
-}
-
-NTSTATUS
-CywSdioInitialize(
-    _In_ WDFDEVICE Device
-    )
-{
-    PCYW_SDIO_CONTEXT context;
-    PDEVICE_OBJECT pdo;
-    PDEVICE_OBJECT lowerDevice;
-    SDBUS_INTERFACE_PARAMETERS parameters;
-    USHORT blockSize;
-    UCHAR cccrRevision = 0;
-    UCHAR ioEnable = 0;
-    UCHAR ioReady = 0;
-    UCHAR interfaceCode = 0;
-    ULONG fbrAddress;
-    NTSTATUS status;
-
-    if (KeGetCurrentIrql() != PASSIVE_LEVEL)
-    {
-        return STATUS_INVALID_DEVICE_STATE;
-    }
-
-    context = CywGetSdioContext(Device);
-    if (context == NULL || context->TransferLock == NULL)
-    {
-        return STATUS_INVALID_DEVICE_STATE;
-    }
-
-    CywSdioShutdown(Device);
-
-    pdo = WdfDeviceWdmGetPhysicalDevice(Device);
-    lowerDevice = WdfDeviceWdmGetAttachedDevice(Device);
-    if (pdo == NULL || lowerDevice == NULL)
-    {
-        return STATUS_DEVICE_CONFIGURATION_ERROR;
-    }
-
-    status = SdBusOpenInterface(
-        pdo,
-        &context->BusInterface,
-        sizeof(context->BusInterface),
-        SDBUS_INTERFACE_VERSION);
-    if (!NT_SUCCESS(status))
-    {
-        DbgPrintEx(
-            DPFLTR_IHVDRIVER_ID,
-            DPFLTR_ERROR_LEVEL,
-            "RPI5CYW: SdBusOpenInterface failed 0x%08X\n",
-            (ULONG)status);
-        goto Failure;
-    }
-
-    context->BusOpen = TRUE;
-
-    if (context->BusInterface.InitializeInterface == NULL)
-    {
-        status = STATUS_DEVICE_CONFIGURATION_ERROR;
-        goto Failure;
-    }
-
-    RtlZeroMemory(&parameters, sizeof(parameters));
-    parameters.Size = sizeof(parameters);
-    parameters.SdioFlags = 0;
-    parameters.TargetObject = lowerDevice;
-    parameters.DeviceGeneratesInterrupts = FALSE;
-    parameters.CallbackAtDpcLevel = FALSE;
-    parameters.CallbackRoutine = NULL;
-    parameters.CallbackRoutineContext = NULL;
-
-    status = context->BusInterface.InitializeInterface(
-        context->BusInterface.Context,
-        &parameters);
-    if (!NT_SUCCESS(status))
-    {
-        DbgPrintEx(
-            DPFLTR_IHVDRIVER_ID,
-            DPFLTR_ERROR_LEVEL,
-            "RPI5CYW: InitializeInterface failed 0x%08X\n",
-            (ULONG)status);
-        goto Failure;
-    }
-
-    context->InterfaceInitialized = TRUE;
-
-    status = CywSdioGetProperty(
-        context,
-        SDP_FUNCTION_NUMBER,
-        &context->FunctionNumber,
-        sizeof(context->FunctionNumber));
-    if (!NT_SUCCESS(status))
-    {
-        DbgPrintEx(
-            DPFLTR_IHVDRIVER_ID,
-            DPFLTR_ERROR_LEVEL,
-            "RPI5CYW: SDP_FUNCTION_NUMBER failed 0x%08X\n",
-            (ULONG)status);
-        goto Failure;
-    }
-
-    if (context->FunctionNumber == 0 ||
-        context->FunctionNumber > CYW_SDIO_MAX_FUNCTION)
-    {
-        status = STATUS_DEVICE_CONFIGURATION_ERROR;
-        DbgPrintEx(
-            DPFLTR_IHVDRIVER_ID,
-            DPFLTR_ERROR_LEVEL,
-            "RPI5CYW: invalid SDIO function %lu\n",
-            context->FunctionNumber);
-        goto Failure;
-    }
-
-    blockSize = 0;
-    if (context->FunctionNumber == 1)
-    {
-        blockSize = CYW_SDIO_F1_BLOCK_SIZE;
-    }
-    else if (context->FunctionNumber == 2)
-    {
-        blockSize = CYW_SDIO_F2_BLOCK_SIZE;
-    }
-
-    if (blockSize != 0)
-    {
-        status = CywSdioSetProperty(
-            context,
-            SDP_FUNCTION_BLOCK_LENGTH,
-            &blockSize,
-            sizeof(blockSize));
-        if (!NT_SUCCESS(status))
-        {
-            DbgPrintEx(
-                DPFLTR_IHVDRIVER_ID,
-                DPFLTR_ERROR_LEVEL,
-                "RPI5CYW: set block size %u failed 0x%08X\n",
-                blockSize,
-                (ULONG)status);
-            goto Failure;
-        }
-
-        context->FunctionBlockSize = blockSize;
-    }
-
-    status = CywSdioReadByte(
-        Device,
-        0,
-        CYW_SDIO_CCCR_REVISION,
-        &cccrRevision);
-    if (!NT_SUCCESS(status))
-    {
-        goto SmokeTestFailure;
-    }
-
-    status = CywSdioReadByte(
-        Device,
-        0,
-        CYW_SDIO_CCCR_IO_ENABLE,
-        &ioEnable);
-    if (!NT_SUCCESS(status))
-    {
-        goto SmokeTestFailure;
-    }
-
-    status = CywSdioReadByte(
-        Device,
-        0,
-        CYW_SDIO_CCCR_IO_READY,
-        &ioReady);
-    if (!NT_SUCCESS(status))
-    {
-        goto SmokeTestFailure;
-    }
-
-    fbrAddress =
-        (context->FunctionNumber * CYW_SDIO_FBR_STRIDE) +
-        CYW_SDIO_FBR_INTERFACE_CODE;
-
-    status = CywSdioReadByte(
-        Device,
-        0,
-        fbrAddress,
-        &interfaceCode);
-    if (!NT_SUCCESS(status))
-    {
-        goto SmokeTestFailure;
-    }
-
-    DbgPrintEx(
-        DPFLTR_IHVDRIVER_ID,
-        DPFLTR_INFO_LEVEL,
-        "RPI5CYW: SDIO ready fn=%lu block=%u CCCR=0x%02X IOEx=0x%02X IORx=0x%02X FBR=0x%02X\n",
-        context->FunctionNumber,
-        context->FunctionBlockSize,
-        cccrRevision,
-        ioEnable,
-        ioReady,
-        interfaceCode);
-
+    *Value = (UCHAR)(Response & 0xFF);
     return STATUS_SUCCESS;
-
-SmokeTestFailure:
-    DbgPrintEx(
-        DPFLTR_IHVDRIVER_ID,
-        DPFLTR_ERROR_LEVEL,
-        "RPI5CYW: CMD52 smoke test failed fn=%lu status=0x%08X\n",
-        context->FunctionNumber,
-        (ULONG)status);
-
-Failure:
-    CywSdioShutdown(Device);
-    return status;
 }
 
 NTSTATUS
-CywSdioEvtPrepareHardware(
-    _In_ WDFDEVICE Device,
-    _In_ WDFCMRESLIST ResourcesRaw,
-    _In_ WDFCMRESLIST ResourcesTranslated
+Rpi5CywDirectSdioProbe(
+    _Inout_ PRPI5CYW_ADAPTER Adapter
     )
 {
-    UNREFERENCED_PARAMETER(ResourcesRaw);
-    UNREFERENCED_PARAMETER(ResourcesTranslated);
+    NTSTATUS Status;
+    ULONG Response;
+    ULONG Timeout;
+    UCHAR Value;
 
-    return CywSdioInitialize(Device);
-}
+    if (Adapter == NULL || Adapter->RegisterBase == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
 
-NTSTATUS
-CywSdioEvtReleaseHardware(
-    _In_ WDFDEVICE Device,
-    _In_ WDFCMRESLIST ResourcesTranslated
-    )
-{
-    UNREFERENCED_PARAMETER(ResourcesTranslated);
+    Status = SdioInitializeHost(Adapter);
+    Rpi5CywWriteDiagnostics(Adapter, 20, Status);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
 
-    CywSdioShutdown(Device);
+    Status = SdioSendCommand(Adapter, SDCMD_GO_IDLE_STATE, 0, SDHCI_CMD_RESP_NONE, NULL);
+    Rpi5CywWriteDiagnostics(Adapter, 30, Status);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+    SdioDelayMilliseconds(1);
+
+    Response = 0;
+    Status = SdioSendCommand(Adapter, SDCMD_IO_SEND_OP_COND, 0, SDHCI_CMD_RESP_48, &Response);
+    Adapter->Cmd5ProbeResponse = Response;
+    Rpi5CywWriteDiagnostics(Adapter, 40, Status);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    for (Timeout = 0; Timeout < 2000; Timeout++)
+    {
+        Response = 0;
+        Status = SdioSendCommand(Adapter,
+                                 SDCMD_IO_SEND_OP_COND,
+                                 SDIO_OCR_VDD_RANGE,
+                                 SDHCI_CMD_RESP_48,
+                                 &Response);
+        if (!NT_SUCCESS(Status))
+        {
+            Rpi5CywWriteDiagnostics(Adapter, 41, Status);
+            return Status;
+        }
+
+        Adapter->SdioOcr = Response;
+        if ((Response & SDIO_OCR_READY) != 0)
+        {
+            break;
+        }
+        SdioDelayMilliseconds(1);
+    }
+
+    if (Timeout == 2000)
+    {
+        Status = STATUS_IO_TIMEOUT;
+        Rpi5CywWriteDiagnostics(Adapter, 42, Status);
+        return Status;
+    }
+
+    Adapter->SdioFunctions =
+        (Adapter->SdioOcr & SDIO_OCR_NUM_FUNCTIONS_MASK) >> SDIO_OCR_NUM_FUNCTIONS_SHIFT;
+    if (Adapter->SdioFunctions == 0)
+    {
+        Status = STATUS_DEVICE_DATA_ERROR;
+        Rpi5CywWriteDiagnostics(Adapter, 43, Status);
+        return Status;
+    }
+    Rpi5CywWriteDiagnostics(Adapter, 50, STATUS_SUCCESS);
+
+    Response = 0;
+    Status = SdioSendCommand(Adapter,
+                             SDCMD_SEND_RELATIVE_ADDR,
+                             0,
+                             SDHCI_CMD_RESP_48 | SDHCI_CMD_CRC_CHECK | SDHCI_CMD_INDEX_CHECK,
+                             &Response);
+    if (!NT_SUCCESS(Status))
+    {
+        Rpi5CywWriteDiagnostics(Adapter, 60, Status);
+        return Status;
+    }
+    Adapter->RelativeAddress = (Response >> 16) & 0xFFFFUL;
+    if (Adapter->RelativeAddress == 0)
+    {
+        Status = STATUS_DEVICE_DATA_ERROR;
+        Rpi5CywWriteDiagnostics(Adapter, 61, Status);
+        return Status;
+    }
+
+    Status = SdioSendCommand(Adapter,
+                             SDCMD_SELECT_CARD,
+                             Adapter->RelativeAddress << 16,
+                             SDHCI_CMD_RESP_48_BUSY | SDHCI_CMD_CRC_CHECK | SDHCI_CMD_INDEX_CHECK,
+                             &Response);
+    Rpi5CywWriteDiagnostics(Adapter, 70, Status);
+    if (!NT_SUCCESS(Status))
+    {
+        return Status;
+    }
+
+    Value = 0;
+    Status = SdioCmd52Read(Adapter, 0, CYW_SDIO_CCCR_REVISION, &Value);
+    if (!NT_SUCCESS(Status))
+    {
+        Rpi5CywWriteDiagnostics(Adapter, 80, Status);
+        return Status;
+    }
+    Adapter->CccrRevision = Value;
+
+    Status = SdioCmd52Read(Adapter, 0, CYW_SDIO_CCCR_IO_ENABLE, &Value);
+    if (!NT_SUCCESS(Status))
+    {
+        Rpi5CywWriteDiagnostics(Adapter, 81, Status);
+        return Status;
+    }
+    Adapter->IoEnable = Value;
+
+    Status = SdioCmd52Read(Adapter, 0, CYW_SDIO_CCCR_IO_READY, &Value);
+    if (!NT_SUCCESS(Status))
+    {
+        Rpi5CywWriteDiagnostics(Adapter, 82, Status);
+        return Status;
+    }
+    Adapter->IoReady = Value;
+
+    Status = SdioCmd52Read(Adapter, 0, CYW_SDIO_F1_INTERFACE, &Value);
+    if (!NT_SUCCESS(Status))
+    {
+        Rpi5CywWriteDiagnostics(Adapter, 83, Status);
+        return Status;
+    }
+    Adapter->F1InterfaceCode = Value;
+
+    Status = SdioCmd52Read(Adapter, 0, CYW_SDIO_F2_INTERFACE, &Value);
+    if (!NT_SUCCESS(Status))
+    {
+        Rpi5CywWriteDiagnostics(Adapter, 84, Status);
+        return Status;
+    }
+    Adapter->F2InterfaceCode = Value;
+
+    Adapter->PresentState = SdioRead32(Adapter, SDHCI_PRESENT_STATE);
+    Adapter->ClockControl = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
+    Adapter->PowerControl = SdioRead8(Adapter, SDHCI_POWER_CONTROL);
+    Rpi5CywWriteDiagnostics(Adapter, 90, STATUS_SUCCESS);
     return STATUS_SUCCESS;
 }
