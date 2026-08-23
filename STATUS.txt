@@ -1,0 +1,6 @@
+SOURCE_COMMIT=3569bdb9bd82c0b03e1afdfc64a4e67202365268
+WORKFLOW_RUN=https://github.com/farjanatech/rpi5-wifi-driver-win11arm/actions/runs/32653892619
+BUILD_OUTCOME=success
+PACKAGE_OUTCOME=success
+CONFIGURATION=Debug
+PLATFORM=ARM64

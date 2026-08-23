@@ -1,0 +1,77 @@
+The following certificate was selected:
+    Issued to: RPI5 CYW43455 GitHub Test Driver
+
+    Issued by: RPI5 CYW43455 GitHub Test Driver
+
+    Expires:   Wed Aug 23 17:11:09 2028
+
+    SHA1 hash: 0A820B7DD2A7C81E1F100571D6124D5D1D55858B
+
+
+Done Adding Additional Store
+Successfully signed: D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\rpi5cyw.sys
+
+
+Number of files successfully Signed: 1
+
+Number of warnings: 0
+
+Number of errors: 0
+
+Processing directory (D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\) file (rpi5cyw-test.cer)
+Processing directory (D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\) file (rpi5cyw.inf)
+Processing directory (D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\) file (rpi5cyw.pdb)
+Processing directory (D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\) file (rpi5cyw.sys)
+Parsing INF: D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\rpi5cyw.inf
+Finished parsing INFs
+Processing INF: D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\rpi5cyw.inf
+Finished processing INFs
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+Testing driver package...
+
+Signability test complete.
+
+Errors:
+None
+
+Warnings:
+None
+
+Catalog generation complete.
+D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\rpi5cyw.cat
+The following certificate was selected:
+    Issued to: RPI5 CYW43455 GitHub Test Driver
+
+    Issued by: RPI5 CYW43455 GitHub Test Driver
+
+    Expires:   Wed Aug 23 17:11:09 2028
+
+    SHA1 hash: 0A820B7DD2A7C81E1F100571D6124D5D1D55858B
+
+
+Done Adding Additional Store
+Successfully signed: D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\artifacts\rpi5cyw-test-driver\rpi5cyw.cat
+
+
+Number of files successfully Signed: 1
+
+Number of warnings: 0
+
+Number of errors: 0
+

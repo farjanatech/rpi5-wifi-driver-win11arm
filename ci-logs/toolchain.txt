@@ -1,0 +1,13 @@
+Commit=3569bdb9bd82c0b03e1afdfc64a4e67202365268
+Runner=Windows X64
+ImageOS=win25-vs2026
+ImageVersion=20260818.207.1
+MSBuild version 18.9.1+a81b43525 for .NET Framework
+18.9.1.35102
+
+NuGet Version: 7.9.0.83
+usage: NuGet <command> [args] [options]
+Type 'NuGet help <command>' for help on a specific command.
+
+Available commands:
+

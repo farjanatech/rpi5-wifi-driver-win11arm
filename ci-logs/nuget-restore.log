@@ -1,0 +1,74 @@
+NuGet Version: 7.9.0.83
+Restoring NuGet package Microsoft.Windows.SDK.CPP.10.0.28000.2526.
+Restoring NuGet package Microsoft.Windows.SDK.CPP.arm64.10.0.28000.2526.
+Restoring NuGet package Microsoft.Windows.WDK.x64.10.0.28000.2526.
+Restoring NuGet package Microsoft.Windows.SDK.CPP.x64.10.0.28000.2526.
+Missing C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\microsoft.windows.sdk.cpp.arm64\10.0.28000.2526\microsoft.windows.sdk.cpp.arm64.10.0.28000.2526.nupkg
+Missing C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\microsoft.windows.sdk.cpp\10.0.28000.2526\microsoft.windows.sdk.cpp.10.0.28000.2526.nupkg
+Missing C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\microsoft.windows.sdk.cpp.x64\10.0.28000.2526\microsoft.windows.sdk.cpp.x64.10.0.28000.2526.nupkg
+Missing C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\microsoft.windows.wdk.x64\10.0.28000.2526\microsoft.windows.wdk.x64.10.0.28000.2526.nupkg
+  GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp.arm64/10.0.28000.2526/microsoft.windows.sdk.cpp.arm64.10.0.28000.2526.nupkg
+  GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp.x64/10.0.28000.2526/microsoft.windows.sdk.cpp.x64.10.0.28000.2526.nupkg
+  GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2526/microsoft.windows.sdk.cpp.10.0.28000.2526.nupkg
+  GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.wdk.x64/10.0.28000.2526/microsoft.windows.wdk.x64.10.0.28000.2526.nupkg
+  OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.wdk.x64/10.0.28000.2526/microsoft.windows.wdk.x64.10.0.28000.2526.nupkg 7ms
+  OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2526/microsoft.windows.sdk.cpp.10.0.28000.2526.nupkg 15ms
+  OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp.x64/10.0.28000.2526/microsoft.windows.sdk.cpp.x64.10.0.28000.2526.nupkg 15ms
+  OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp.arm64/10.0.28000.2526/microsoft.windows.sdk.cpp.arm64.10.0.28000.2526.nupkg 16ms
+Acquiring lock for the installation of Microsoft.Windows.SDK.CPP 10.0.28000.2526
+Acquiring lock for the installation of Microsoft.Windows.SDK.CPP.x64 10.0.28000.2526
+Acquiring lock for the installation of Microsoft.Windows.SDK.CPP.arm64 10.0.28000.2526
+Acquiring lock for the installation of Microsoft.Windows.WDK.x64 10.0.28000.2526
+Acquired lock for the installation of Microsoft.Windows.SDK.CPP.x64 10.0.28000.2526
+Acquired lock for the installation of Microsoft.Windows.SDK.CPP.arm64 10.0.28000.2526
+Acquired lock for the installation of Microsoft.Windows.WDK.x64 10.0.28000.2526
+Acquired lock for the installation of Microsoft.Windows.SDK.CPP 10.0.28000.2526
+PackageSignatureVerificationLog: PackageIdentity: Microsoft.Windows.SDK.CPP.x64.10.0.28000.2526 Source: https://api.nuget.org/v3/index.json PackageSignatureValidity: True
+PackageSignatureVerificationLog: PackageIdentity: Microsoft.Windows.WDK.x64.10.0.28000.2526 Source: https://api.nuget.org/v3/index.json PackageSignatureValidity: True
+PackageSignatureVerificationLog: PackageIdentity: Microsoft.Windows.SDK.CPP.arm64.10.0.28000.2526 Source: https://api.nuget.org/v3/index.json PackageSignatureValidity: True
+PackageSignatureVerificationLog: PackageIdentity: Microsoft.Windows.SDK.CPP.10.0.28000.2526 Source: https://api.nuget.org/v3/index.json PackageSignatureValidity: True
+Installed Microsoft.Windows.SDK.CPP.x64 10.0.28000.2526 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.windows.sdk.cpp.x64\10.0.28000.2526 with content hash RzracWZEvKCZAFzkvfeVKmrI84PAt145iDyt2kB4rrLr4v/uqHJqTnm8wHIgB9iF/4s1bM6eAXsmiRsOO2/yrQ==.
+Adding package 'Microsoft.Windows.SDK.CPP.x64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.SDK.CPP.x64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.SDK.CPP.x64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages' from source 'https://api.nuget.org/v3/index.json'
+Restoring NuGet package Microsoft.Windows.WDK.arm64.10.0.28000.2526.
+Missing C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\microsoft.windows.wdk.arm64\10.0.28000.2526\microsoft.windows.wdk.arm64.10.0.28000.2526.nupkg
+  GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.wdk.arm64/10.0.28000.2526/microsoft.windows.wdk.arm64.10.0.28000.2526.nupkg
+  OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.wdk.arm64/10.0.28000.2526/microsoft.windows.wdk.arm64.10.0.28000.2526.nupkg 4ms
+Acquiring lock for the installation of Microsoft.Windows.WDK.arm64 10.0.28000.2526
+Acquired lock for the installation of Microsoft.Windows.WDK.arm64 10.0.28000.2526
+PackageSignatureVerificationLog: PackageIdentity: Microsoft.Windows.WDK.arm64.10.0.28000.2526 Source: https://api.nuget.org/v3/index.json PackageSignatureValidity: True
+Installed Microsoft.Windows.SDK.CPP.arm64 10.0.28000.2526 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.windows.sdk.cpp.arm64\10.0.28000.2526 with content hash N5LlXWws073ij9kX0AKeQrz71McdsowG2YyuvKvfZDdutpwtaj2BLrbaHWgVy0ByCiuItVyYK37LDjNbsPQ2bQ==.
+Adding package 'Microsoft.Windows.SDK.CPP.arm64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.SDK.CPP.arm64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.SDK.CPP.arm64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages' from source 'https://api.nuget.org/v3/index.json'
+Installed Microsoft.Windows.WDK.x64 10.0.28000.2526 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.windows.wdk.x64\10.0.28000.2526 with content hash q44V9dYa01f4iqSp6snB9uFhZ7WOoVhh6JSeRFN9887J2onboA8PCu314XMnKaUoEjbs+VXtif8XlS1Eklj1CQ==.
+Adding package 'Microsoft.Windows.WDK.x64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.WDK.x64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.WDK.x64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages' from source 'https://api.nuget.org/v3/index.json'
+Installed Microsoft.Windows.WDK.arm64 10.0.28000.2526 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.windows.wdk.arm64\10.0.28000.2526 with content hash 19brJon8gdBoaAPz72GIepPIcYmXtVZUeUKPyWDrmA32xnl6WeSdVm4x4Sc94S5/ImC7fsNhh/YA99M1a862dw==.
+Adding package 'Microsoft.Windows.WDK.arm64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.WDK.arm64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.WDK.arm64.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages' from source 'https://api.nuget.org/v3/index.json'
+Installed Microsoft.Windows.SDK.CPP 10.0.28000.2526 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.windows.sdk.cpp\10.0.28000.2526 with content hash 3NgnLMm7bkOc/yrO9UP3YVGjpdIlA/cA7l5n+Z3SjX7HKwqCU4ClcAursh/4xdBR/UlFmamtv8or8gQxTOGN+A==.
+Adding package 'Microsoft.Windows.SDK.CPP.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.SDK.CPP.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages'
+Added package 'Microsoft.Windows.SDK.CPP.10.0.28000.2526' to folder 'D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\packages' from source 'https://api.nuget.org/v3/index.json'
+  GET https://api.nuget.org/v3/vulnerabilities/index.json
+  OK https://api.nuget.org/v3/vulnerabilities/index.json 6ms
+  GET https://api.nuget.org/v3-vulnerabilities/2026.08.20.05.43.44/vulnerability.base.json
+  GET https://api.nuget.org/v3-vulnerabilities/2026.08.20.05.43.44/2026.08.22.23.43.59/vulnerability.update.json
+  OK https://api.nuget.org/v3-vulnerabilities/2026.08.20.05.43.44/vulnerability.base.json 2ms
+  OK https://api.nuget.org/v3-vulnerabilities/2026.08.20.05.43.44/2026.08.22.23.43.59/vulnerability.update.json 2ms
+
+NuGet Config files used:
+    C:\Users\runneradmin\AppData\Roaming\NuGet\NuGet.Config
+    C:\Program Files (x86)\NuGet\Config\Microsoft.VisualStudio.FallbackLocation.config
+    C:\Program Files (x86)\NuGet\Config\Microsoft.VisualStudio.Offline.config
+
+Feeds used:
+    https://api.nuget.org/v3/index.json
+    C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\
+
+Installed:
+    5 package(s) to packages.config projects

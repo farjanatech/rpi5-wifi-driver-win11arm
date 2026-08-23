@@ -1,0 +1,12 @@
+
+FullName                                                                                         Length LastWriteTime
+--------                                                                                         ------ -------------
+D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\ARM64\Debug\rpi5cyw.Build.CppClean.log       0 8/23/2026 5:11:00 PM
+D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\ARM64\Debug\rpi5cyw.pdb                 552960 8/23/2026 5:11:05 PM
+D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\ARM64\Debug\rpi5cyw.sys                  32192 8/23/2026 5:11:06 PM
+D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\ARM64\Debug\vc145.pdb                   249856 8/23/2026 5:11:02 PM
+D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\ci-logs\build.log                      2513830 8/23/2026 5:11:06 PM
+D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\ci-logs\nuget-restore.log                 9032 8/23/2026 5:10:55 PM
+D:\a\rpi5-wifi-driver-win11arm\rpi5-wifi-driver-win11arm\package\rpi5cyw.inf                       1477 8/23/2026 5:09:05 PM
+
+
