@@ -58,7 +58,9 @@ Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
 & $signtool.FullName sign /v /fd SHA256 /sha1 $cert.Thumbprint (Join-Path $stage 'rpi5cyw.sys')
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for SYS with exit code $LASTEXITCODE" }
 
-& $inf2cat.FullName /driver:$stage /os:10_ARM64 /verbose
+# Current Inf2Cat identifiers for Windows 11 ARM64. Target 25H2, 24H2 and
+# 22H2 so the bring-up package can be validated on the common Pi 5 test builds.
+& $inf2cat.FullName /driver:$stage /os:10_25H2_ARM64,10_GE_ARM64,10_NI_ARM64 /verbose
 if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed with exit code $LASTEXITCODE" }
 
 $cat = Get-ChildItem $stage -Filter '*.cat' -File | Select-Object -First 1
