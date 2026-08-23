@@ -2,6 +2,12 @@
 
 #include <ntddk.h>
 #include <wdf.h>
+/*
+ * ntddsd.h declares GUID_SDBUS_INTERFACE_STANDARD. initguid.h must be
+ * included first in one translation unit so the GUID is instantiated;
+ * otherwise sdbus.lib links with an unresolved GUID symbol.
+ */
+#include <initguid.h>
 #include <ntddsd.h>
 #include <sddef.h>
 
