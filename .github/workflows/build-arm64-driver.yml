@@ -1,4 +1,4 @@
-name: Build Windows 11 ARM64 driver
+name: Build CYW43455 direct-SDIO NDIS ARM64 driver
 
 on:
   push:
@@ -7,7 +7,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: cyw43455-direct-sdio-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-arm64:
@@ -47,8 +51,6 @@ jobs:
           nuget restore packages.config -PackagesDirectory packages -NonInteractive -Verbosity detailed 2>&1 |
             Tee-Object -FilePath ci-logs/nuget-restore.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-ChildItem packages -Directory | Select-Object Name,FullName |
-            Format-Table -AutoSize | Out-String | Set-Content ci-logs/restored-packages.txt
 
       - name: Build Debug ARM64
         id: build
@@ -81,11 +83,11 @@ jobs:
             Tee-Object -FilePath ci-logs/package.log
           exit $LASTEXITCODE
 
-      - name: Upload ready driver package
+      - name: Upload direct-SDIO driver package
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-win11-arm64-debug
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-debug
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
@@ -94,57 +96,21 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-ci-logs
+          name: rpi5-cyw43455-direct-sdio-ci-logs
           path: ci-logs/
           if-no-files-found: warn
           retention-days: 30
-
-      - name: Publish build result to ci-output branch
-        if: always()
-        shell: pwsh
-        run: |
-          $publish = Join-Path $env:RUNNER_TEMP 'rpi5cyw-ci-publish'
-          if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
-          New-Item -ItemType Directory -Path $publish -Force | Out-Null
-
-          @"
-          SOURCE_COMMIT=$env:GITHUB_SHA
-          WORKFLOW_RUN=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
-          BUILD_OUTCOME=${{ steps.build.outcome }}
-          PACKAGE_OUTCOME=${{ steps.package.outcome }}
-          CONFIGURATION=$env:Configuration
-          PLATFORM=$env:Platform
-          "@ | Set-Content (Join-Path $publish 'STATUS.txt') -Encoding UTF8
-
-          if (Test-Path 'ci-logs') {
-            Copy-Item 'ci-logs' (Join-Path $publish 'ci-logs') -Recurse -Force
-          }
-
-          if ('${{ steps.package.outcome }}' -eq 'success' -and (Test-Path 'artifacts\rpi5cyw-test-driver')) {
-            Compress-Archive -Path 'artifacts\rpi5cyw-test-driver\*' `
-              -DestinationPath (Join-Path $publish 'rpi5-cyw43455-win11-arm64-debug.zip') -Force
-          }
-
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout --orphan ci-output
-          git rm -rf . 2>$null
-          git clean -fdx
-          Copy-Item (Join-Path $publish '*') . -Recurse -Force
-          git add -A
-          git commit -m "CI output for $env:GITHUB_SHA"
-          git push --force origin HEAD:ci-output
 
       - name: Fail workflow if build or packaging failed
         if: always()
         shell: pwsh
         run: |
           if ('${{ steps.build.outcome }}' -ne 'success') {
-            Write-Error 'ARM64 driver build failed. See ci-output/ci-logs.'
+            Write-Error 'ARM64 direct-SDIO NDIS driver build failed. See CI log artifact.'
             exit 1
           }
           if ('${{ steps.package.outcome }}' -ne 'success') {
-            Write-Error 'Driver packaging/test-signing failed. See ci-output/ci-logs.'
+            Write-Error 'Driver packaging/test-signing failed. See CI log artifact.'
             exit 1
           }
-          Write-Host 'ARM64 driver package built and published successfully.'
+          Write-Host 'ARM64 direct-SDIO NDIS driver package built successfully.'
