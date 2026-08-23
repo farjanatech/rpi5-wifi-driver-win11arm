@@ -35,6 +35,17 @@ jobs:
         shell: pwsh
         run: New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
 
+      - name: Compile and run SDIO protocol tests
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $install) { throw 'Visual C++ build tools were not found.' }
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $command = 'call "{0}" && cl /nologo /W4 /WX /TC tests\sdio_protocol_tests.c /Fe:ci-logs\sdio_protocol_tests.exe && ci-logs\sdio_protocol_tests.exe' -f $vcvars
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\sdio-protocol-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Record runner toolchain
         shell: pwsh
         run: |

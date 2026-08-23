@@ -98,35 +98,6 @@ SdioResetHost(
     return STATUS_IO_TIMEOUT;
 }
 
-static USHORT
-SdioCalculateClockDivider(
-    _In_ ULONG BaseClockKhz,
-    _In_ ULONG TargetClockKhz
-    )
-{
-    ULONG RealDivisor;
-
-    if (BaseClockKhz == 0 || TargetClockKhz == 0 || BaseClockKhz <= TargetClockKhz)
-    {
-        return 0;
-    }
-
-    for (RealDivisor = 2; RealDivisor < 2046; RealDivisor += 2)
-    {
-        if ((BaseClockKhz / RealDivisor) <= TargetClockKhz)
-        {
-            break;
-        }
-    }
-
-    if (RealDivisor >= 2046)
-    {
-        RealDivisor = 2046;
-    }
-
-    return (USHORT)(RealDivisor >> 1);
-}
-
 static NTSTATUS
 SdioInitializeHost(
     _Inout_ PRPI5CYW_ADAPTER Adapter
@@ -340,8 +311,11 @@ SdioCmd52Read(
         return STATUS_INVALID_PARAMETER;
     }
 
-    Argument = ((ULONG)(Function & 7) << 28) |
-               ((Address & 0x1FFFFUL) << 9);
+    Argument = SdioBuildCmd52Argument(FALSE,
+                                      Function,
+                                      FALSE,
+                                      Address,
+                                      0);
 
     Status = SdioSendCommand(Adapter,
                              SDCMD_IO_RW_DIRECT,
@@ -353,7 +327,7 @@ SdioCmd52Read(
         return Status;
     }
 
-    if ((Response & 0x0000CB00UL) != 0)
+    if (SdioR5HasError(Response))
     {
         return STATUS_IO_DEVICE_ERROR;
     }

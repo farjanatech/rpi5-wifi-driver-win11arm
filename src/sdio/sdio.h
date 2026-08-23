@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../driver/driver.h"
+#include "sdio_protocol.h"
 
 #define SDHCI_BLOCK_SIZE              0x04
 #define SDHCI_BLOCK_COUNT             0x06
