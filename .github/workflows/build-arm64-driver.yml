@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-arm64:
@@ -99,16 +99,52 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
+      - name: Publish build result to ci-output branch
+        if: always()
+        shell: pwsh
+        run: |
+          $publish = Join-Path $env:RUNNER_TEMP 'rpi5cyw-ci-publish'
+          if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
+          New-Item -ItemType Directory -Path $publish -Force | Out-Null
+
+          @"
+          SOURCE_COMMIT=$env:GITHUB_SHA
+          WORKFLOW_RUN=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
+          BUILD_OUTCOME=${{ steps.build.outcome }}
+          PACKAGE_OUTCOME=${{ steps.package.outcome }}
+          CONFIGURATION=$env:Configuration
+          PLATFORM=$env:Platform
+          "@ | Set-Content (Join-Path $publish 'STATUS.txt') -Encoding UTF8
+
+          if (Test-Path 'ci-logs') {
+            Copy-Item 'ci-logs' (Join-Path $publish 'ci-logs') -Recurse -Force
+          }
+
+          if ('${{ steps.package.outcome }}' -eq 'success' -and (Test-Path 'artifacts\rpi5cyw-test-driver')) {
+            Compress-Archive -Path 'artifacts\rpi5cyw-test-driver\*' `
+              -DestinationPath (Join-Path $publish 'rpi5-cyw43455-win11-arm64-debug.zip') -Force
+          }
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan ci-output
+          git rm -rf . 2>$null
+          git clean -fdx
+          Copy-Item (Join-Path $publish '*') . -Recurse -Force
+          git add -A
+          git commit -m "CI output for $env:GITHUB_SHA"
+          git push --force origin HEAD:ci-output
+
       - name: Fail workflow if build or packaging failed
         if: always()
         shell: pwsh
         run: |
           if ('${{ steps.build.outcome }}' -ne 'success') {
-            Write-Error 'ARM64 driver build failed. See the CI logs artifact.'
+            Write-Error 'ARM64 driver build failed. See ci-output/ci-logs.'
             exit 1
           }
           if ('${{ steps.package.outcome }}' -ne 'success') {
-            Write-Error 'Driver packaging/test-signing failed. See the CI logs artifact.'
+            Write-Error 'Driver packaging/test-signing failed. See ci-output/ci-logs.'
             exit 1
           }
-          Write-Host 'ARM64 driver package built and uploaded successfully.'
+          Write-Host 'ARM64 driver package built and published successfully.'
