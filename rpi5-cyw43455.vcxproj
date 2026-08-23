@@ -65,9 +65,12 @@
     <ClInclude Include="src\cyw43455\chip.h" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Inf Include="package\rpi5cyw.inf" />
-  </ItemGroup>
+  <!--
+    The INF is deliberately packaged outside MSBuild by scripts/package-ci.ps1.
+    WDK NuGet target packages provide the ARM64 headers/libs, while the GitHub
+    runner does not expose stampinf.exe on PATH during the compile target.
+    Keeping packaging separate also lets CI surface C/link errors first.
+  -->
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
