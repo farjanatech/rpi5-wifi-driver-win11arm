@@ -41,11 +41,8 @@ if ($pdb) { Copy-Item $pdb.FullName (Join-Path $stage 'rpi5cyw.pdb') -Force }
 
 $signtool = Find-Tool 'signtool.exe'
 $inf2cat = Find-Tool 'inf2cat.exe'
-if (-not $signtool) { throw 'signtool.exe was not found in restored WDK/SDK packages or Windows Kits.' }
-if (-not $inf2cat) { throw 'inf2cat.exe was not found in restored WDK packages or Windows Kits.' }
-
-Write-Host "SignTool: $($signtool.FullName)"
-Write-Host "Inf2Cat:  $($inf2cat.FullName)"
+if (-not $signtool) { throw 'signtool.exe was not found.' }
+if (-not $inf2cat) { throw 'inf2cat.exe was not found.' }
 
 $subject = 'CN=RPI5 CYW43455 GitHub Test Driver'
 $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $subject `
@@ -58,37 +55,35 @@ Export-Certificate -Cert $cert -FilePath $cerPath -Force | Out-Null
 & $signtool.FullName sign /v /fd SHA256 /sha1 $cert.Thumbprint (Join-Path $stage 'rpi5cyw.sys')
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for SYS with exit code $LASTEXITCODE" }
 
-# Current Inf2Cat identifiers for Windows 11 ARM64. Target 25H2, 24H2 and
-# 22H2 so the bring-up package can be validated on the common Pi 5 test builds.
 & $inf2cat.FullName /driver:$stage /os:10_25H2_ARM64,10_GE_ARM64,10_NI_ARM64 /verbose
 if ($LASTEXITCODE -ne 0) { throw "Inf2Cat failed with exit code $LASTEXITCODE" }
 
 $cat = Get-ChildItem $stage -Filter '*.cat' -File | Select-Object -First 1
 if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
-
 & $signtool.FullName sign /v /fd SHA256 /sha1 $cert.Thumbprint $cat.FullName
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - SDIO bring-up build
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - direct SDIO / NDIS build
 
 Configuration: $Configuration
 Platform:      $Platform
 Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-THIS IS AN EXPERIMENTAL TEST-SIGNED DRIVER.
-It is currently intended only to validate SDIO enumeration/CMD52 bring-up.
-It is not yet a functional Windows Wi-Fi driver.
+Architecture:
+  ACPI\\RPI5WIFI -> NDIS 6.30 Ethernet miniport -> direct Pi 5 SDHCI -> CYW43455
 
-Target preparation:
-1. Use a recoverable Raspberry Pi 5 Windows test installation.
-2. Secure Boot must not prevent test-signed kernel drivers.
-3. Enable Windows test signing from an elevated prompt:
-     bcdedit /set testsigning on
-   then reboot.
-4. Run install-test-driver.ps1 as Administrator.
-5. Run collect-diagnostics.ps1 as Administrator and send its output ZIP back for analysis.
+This package deliberately does NOT depend on Microsoft sdbus and does not bind
+to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
+CMD0/CMD5/CMD3/CMD7/CMD52 directly.
+
+The driver remains disconnected until the CYW43455 firmware/SDPCM/BCDC and
+association datapath are completed. A successful CMD52 diagnostic is a hardware
+protocol milestone, NOT a claim that Wi-Fi is working.
+
+Use only with the matching UEFI build that exposes ACPI\\RPI5WIFI and leaves
+MAX_50MHZ_MODE untouched. Confirm the physical fan operates normally after boot.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @'
@@ -103,7 +98,8 @@ certutil.exe -addstore -f Root $cer
 certutil.exe -addstore -f TrustedPublisher $cer
 pnputil.exe /add-driver $inf /install
 pnputil.exe /scan-devices
-Write-Host 'Install attempted. Run collect-diagnostics.ps1 next.'
+Write-Host 'Direct-SDIO driver installation attempted.'
+Write-Host 'Run collect-direct-sdio-diagnostics.ps1 next.'
 '@ | Set-Content (Join-Path $stage 'install-test-driver.ps1') -Encoding UTF8
 
 @'
@@ -111,7 +107,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 $dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$out = Join-Path $dir "diagnostics-$stamp"
+$out = Join-Path $dir "direct-sdio-diagnostics-$stamp"
 New-Item -ItemType Directory -Path $out -Force | Out-Null
 
 function Capture([string]$Name, [scriptblock]$Command) {
@@ -119,31 +115,63 @@ function Capture([string]$Name, [scriptblock]$Command) {
     catch { ($_ | Out-String) | Set-Content (Join-Path $out $Name) -Encoding UTF8 }
 }
 
-Capture 'windows.txt' { Get-ComputerInfo | Format-List * }
-Capture 'bcdedit.txt' { bcdedit /enum all }
-Capture 'secureboot.txt' { try { Confirm-SecureBootUEFI } catch { $_ } }
-Capture 'pnputil-devices.txt' { pnputil /enum-devices /connected; pnputil /enum-devices /problem; pnputil /enum-drivers }
-Capture 'pnp-cyw-sd.txt' {
+Capture 'DIRECT-SDIO-RESULT.txt' {
+    'Raspberry Pi 5 CYW43455 DIRECT SDIO / NDIS diagnostic'
+    ''
+    $key = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
+    if (Test-Path $key) {
+        $d = Get-ItemProperty $key
+        "Stage=$($d.Stage)"
+        ('LastStatus=0x{0:X8}' -f ([uint32]$d.LastStatus))
+        ('MMIO=0x{0:X8}{1:X8} Length=0x{2:X}' -f ([uint32]$d.RegPhysHi),([uint32]$d.RegPhysLo),([uint32]$d.RegLength))
+        ('HostVersion=0x{0:X4} Capabilities=0x{1:X8} Capabilities2=0x{2:X8}' -f ([uint32]$d.HostVersion),([uint32]$d.Capabilities),([uint32]$d.Capabilities2))
+        ('CMD5 probe=0x{0:X8} SDIO OCR=0x{1:X8} functions={2}' -f ([uint32]$d.Cmd5ProbeResponse),([uint32]$d.SdioOcr),$d.SdioFunctions)
+        ('RCA=0x{0:X4}' -f ([uint32]$d.RelativeAddress))
+        ('CCCR rev=0x{0:X2} IOEx=0x{1:X2} IORx=0x{2:X2} F1 IF=0x{3:X2} F2 IF=0x{4:X2}' -f ([uint32]$d.CccrRevision),([uint32]$d.IoEnable),([uint32]$d.IoReady),([uint32]$d.F1InterfaceCode),([uint32]$d.F2InterfaceCode))
+        ''
+        if ([int]$d.Stage -ge 90 -and [uint32]$d.LastStatus -eq 0) {
+            'DIRECT SDIO RESULT: CMD52 PATH REACHED SUCCESSFULLY'
+            'This proves host-to-CYW SDIO command communication only; it is not yet working Wi-Fi.'
+        } else {
+            'DIRECT SDIO RESULT: PROBE DID NOT REACH COMPLETE CMD52 READS'
+            'Use LastCommand/LastArgument/LastInterruptStatus/LastResponse from registry.txt to locate the hardware/protocol failure.'
+        }
+    } else {
+        'DIRECT SDIO RESULT: DRIVER DIAGNOSTIC REGISTRY KEY NOT FOUND'
+    }
+}
+Capture 'registry.txt' { reg.exe query 'HKLM\SOFTWARE\Rpi5CywDirectDiag' /s }
+Capture 'windows.txt' { Get-ComputerInfo | Format-List WindowsProductName,WindowsVersion,OsBuildNumber,OsArchitecture,BiosFirmwareType,BiosVersion }
+Capture 'bcdedit.txt' { bcdedit /enum '{current}' }
+Capture 'pnp-rpi5wifi.txt' {
     Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
-      Where-Object { $_.InstanceId -match 'VID_02D0|PID_A9BF|PID_4345|^SD\\' -or $_.FriendlyName -match 'CYW|Broadcom|Cypress|Infineon|SDIO|SD Host' } |
+      Where-Object { $_.InstanceId -match 'RPI5WIFI' -or $_.FriendlyName -match 'CYW43455|Direct SDIO' } |
       Format-List *
 }
+Capture 'pnp-properties.txt' {
+    $dev = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'RPI5WIFI' } | Select-Object -First 1
+    if ($dev) {
+        $dev | Format-List *
+        Get-PnpDeviceProperty -InstanceId $dev.InstanceId -ErrorAction SilentlyContinue | Format-Table KeyName,Type,Data -AutoSize
+    } else { 'ACPI RPI5WIFI device not found' }
+}
 Capture 'service.txt' { sc.exe query rpi5cyw; sc.exe qc rpi5cyw; reg.exe query 'HKLM\SYSTEM\CurrentControlSet\Services\rpi5cyw' /s }
-Capture 'enum-sd-registry.txt' { reg.exe query 'HKLM\SYSTEM\CurrentControlSet\Enum\SD' /s }
+Capture 'pnputil.txt' { pnputil /enum-devices /connected; pnputil /enum-devices /problem; pnputil /enum-drivers }
+Capture 'netadapters.txt' { Get-NetAdapter -IncludeHidden | Format-List Name,InterfaceDescription,Status,LinkSpeed,MacAddress,DriverInformation,DriverFileName,PnPDeviceID }
 Capture 'system-events.txt' {
-    $start=(Get-Date).AddHours(-12)
+    $start=(Get-Date).AddHours(-6)
     Get-WinEvent -FilterHashtable @{LogName='System';StartTime=$start} -ErrorAction SilentlyContinue |
-      Where-Object { $_.ProviderName -match 'Kernel-PnP|DriverFrameworks|Service Control Manager' -or $_.Message -match 'rpi5cyw|VID_02D0|CYW43455' } |
+      Where-Object { $_.ProviderName -match 'Kernel-PnP|NDIS|Service Control Manager' -or $_.Message -match 'RPI5WIFI|rpi5cyw|CYW43455' } |
       Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message | Format-List
 }
 $setup = Join-Path $env:windir 'INF\setupapi.dev.log'
 if (Test-Path $setup) { Copy-Item $setup (Join-Path $out 'setupapi.dev.log') -Force }
-$zip = Join-Path $dir "RPI5-WIFI-DIAGNOSTICS-$stamp.zip"
+$zip = Join-Path $dir "RPI5-CYW43455-DIRECT-SDIO-DIAGNOSTICS-$stamp.zip"
 Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zip -Force
 Write-Host "Diagnostics: $zip"
-'@ | Set-Content (Join-Path $stage 'collect-diagnostics.ps1') -Encoding UTF8
+'@ | Set-Content (Join-Path $stage 'collect-direct-sdio-diagnostics.ps1') -Encoding UTF8
 
 $hashes = Get-ChildItem $stage -File | ForEach-Object { Get-FileHash $_.FullName -Algorithm SHA256 }
 $hashes | Format-Table -AutoSize | Out-String | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding UTF8
 
-Write-Host "Packaged test driver at $stage"
+Write-Host "Packaged direct-SDIO NDIS driver at $stage"
