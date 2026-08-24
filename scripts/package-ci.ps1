@@ -35,6 +35,8 @@ Copy-Item $sys.FullName (Join-Path $stage 'rpi5cyw.sys') -Force
 Copy-Item $inf (Join-Path $stage 'rpi5cyw.inf') -Force
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE') -Force
 Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.md') (Join-Path $stage 'THIRD_PARTY_NOTICES.md') -Force
+Copy-Item (Join-Path $root 'diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1') (Join-Path $stage 'Collect-RPi5-WiFi-Diagnostics.ps1') -Force
+Copy-Item (Join-Path $root 'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd') (Join-Path $stage 'Run-RPi5-WiFi-Diagnostics.cmd') -Force
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -224,6 +226,12 @@ if (Test-Path $setup) { Copy-Item $setup (Join-Path $out 'setupapi.dev.log') -Fo
 $zip = Join-Path $dir "RPI5-CYW43455-DIRECT-SDIO-DIAGNOSTICS-$stamp.zip"
 Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zip -Force
 Write-Host "Diagnostics: $zip"
+'@ | Set-Content (Join-Path $stage 'collect-direct-sdio-diagnostics.ps1') -Encoding UTF8
+
+# Keep the original command name, but route it to the audited one-click collector.
+@'
+& (Join-Path $PSScriptRoot 'Collect-RPi5-WiFi-Diagnostics.ps1') @args
+exit $LASTEXITCODE
 '@ | Set-Content (Join-Path $stage 'collect-direct-sdio-diagnostics.ps1') -Encoding UTF8
 
 Get-ChildItem $stage -File | Sort-Object Name | ForEach-Object {

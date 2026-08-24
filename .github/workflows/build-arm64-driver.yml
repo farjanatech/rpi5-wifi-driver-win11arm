@@ -46,6 +46,24 @@ jobs:
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\sdio-protocol-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Test one-click diagnostics utility
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
+          $analysis = @(
+            '.\diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1',
+            '.\scripts\package-diagnostics.ps1',
+            '.\tests\diagnostics_utility_tests.ps1'
+          ) | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning }
+          $analysis | Format-Table -AutoSize | Out-String -Width 500 |
+            Tee-Object -FilePath ci-logs\diagnostics-scriptanalyzer.log
+          if ($analysis.Count -ne 0) {
+            throw "PSScriptAnalyzer reported $($analysis.Count) error(s)/warning(s)."
+          }
+          .\tests\diagnostics_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\diagnostics-utility-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Record runner toolchain
         shell: pwsh
         run: |
@@ -94,6 +112,16 @@ jobs:
             Tee-Object -FilePath ci-logs/package.log
           exit $LASTEXITCODE
 
+      - name: Package one-click diagnostics utility
+        id: diagnostics
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          .\scripts\package-diagnostics.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\package-diagnostics.log
+          exit $LASTEXITCODE
+
       - name: Upload direct-SDIO driver package
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
@@ -102,6 +130,15 @@ jobs:
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Upload one-click diagnostics utility
+        if: steps.diagnostics.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi5-wifi-one-click-diagnostics-v0.2.0
+          path: artifacts/rpi5-wifi-one-click-diagnostics/
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload CI logs
         if: always()
@@ -122,6 +159,10 @@ jobs:
           }
           if ('${{ steps.package.outcome }}' -ne 'success') {
             Write-Error 'Driver packaging/test-signing failed. See CI log artifact.'
+            exit 1
+          }
+          if ('${{ steps.diagnostics.outcome }}' -ne 'success') {
+            Write-Error 'Diagnostics utility packaging failed. See CI log artifact.'
             exit 1
           }
           Write-Host 'ARM64 direct-SDIO NDIS driver package built successfully.'
