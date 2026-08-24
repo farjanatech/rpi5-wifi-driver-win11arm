@@ -89,6 +89,12 @@ protocol milestone, NOT a claim that Wi-Fi is working.
 Use only with the matching UEFI build that exposes ACPI\\RPI0011 and leaves
 MAX_50MHZ_MODE untouched. Confirm the physical fan operates normally after boot.
 
+One-click installation:
+  Extract the complete ZIP, then double-click Install-RPi5-WiFi-Driver.cmd.
+  Approve the Administrator prompt. The installer verifies the package and
+  matching UEFI/device before trusting the test certificate or installing.
+  It runs the diagnostic collector automatically after the installation attempt.
+
 Security:
   This is a test-signed kernel driver. The installer refuses to enable Test
   Signing or change Secure Boot. When those prerequisites are already satisfied,
@@ -158,6 +164,10 @@ pnputil.exe /scan-devices
 Write-Host 'Direct-SDIO driver installation attempted.'
 Write-Host 'Run collect-direct-sdio-diagnostics.ps1 next.'
 '@ | Set-Content (Join-Path $stage 'install-test-driver.ps1') -Encoding UTF8
+
+# Replace the minimal CI installer with the audited self-elevating one-click installer.
+Copy-Item (Join-Path $root 'installer\Install-RPi5-WiFi-Driver.ps1') (Join-Path $stage 'install-test-driver.ps1') -Force
+Copy-Item (Join-Path $root 'installer\Install-RPi5-WiFi-Driver.cmd') (Join-Path $stage 'Install-RPi5-WiFi-Driver.cmd') -Force
 
 @'
 Set-StrictMode -Version Latest

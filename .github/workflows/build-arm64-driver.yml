@@ -52,8 +52,10 @@ jobs:
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
           $analysis = @(
             '.\diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1',
+            '.\installer\Install-RPi5-WiFi-Driver.ps1',
             '.\scripts\package-diagnostics.ps1',
-            '.\tests\diagnostics_utility_tests.ps1'
+            '.\tests\diagnostics_utility_tests.ps1',
+            '.\tests\installer_utility_tests.ps1'
           ) | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning }
           $analysis | Format-Table -AutoSize | Out-String -Width 500 |
             Tee-Object -FilePath ci-logs\diagnostics-scriptanalyzer.log
@@ -62,6 +64,9 @@ jobs:
           }
           .\tests\diagnostics_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\diagnostics-utility-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\tests\installer_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\installer-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Record runner toolchain
