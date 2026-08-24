@@ -51,4 +51,4 @@ try {
 if ((ConvertTo-Rpi5Hex32 0) -ne '0x00000000') { throw 'Hex conversion failed for zero.' }
 if ((ConvertTo-Rpi5Hex32 305419896) -ne '0x12345678') { throw 'Hex conversion failed for known value.' }
 
-Write-Host 'Diagnostics utility syntax, safety and helper tests passed.'
+Write-Output 'Diagnostics utility syntax, safety and helper tests passed.'

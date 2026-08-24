@@ -7,6 +7,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$InformationPreference = 'Continue'
 $script:UtilityVersion = '0.2.0'
 
 function Test-Rpi5Administrator {
@@ -77,9 +78,9 @@ function Get-Rpi5SetupApiExcerpt {
     param([Parameter(Mandatory=$true)][string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return 'SetupAPI device log was not found.' }
 
-    $matches = Select-String -LiteralPath $Path -Pattern 'RPI0011|rpi5cyw|CYW43455|Direct SDIO' -Context 10,18 -ErrorAction SilentlyContinue
-    if (-not $matches) { return 'No RPI0011/rpi5cyw entries were found in SetupAPI device log.' }
-    return (($matches | Select-Object -Last 40 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine)
+    $setupMatches = Select-String -LiteralPath $Path -Pattern 'RPI0011|rpi5cyw|CYW43455|Direct SDIO' -Context 10,18 -ErrorAction SilentlyContinue
+    if (-not $setupMatches) { return 'No RPI0011/rpi5cyw entries were found in SetupAPI device log.' }
+    return (($setupMatches | Select-Object -Last 40 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine)
 }
 
 function Invoke-Rpi5WiFiDiagnostic {
@@ -91,7 +92,7 @@ function Invoke-Rpi5WiFiDiagnostic {
 
     if (-not (Test-Rpi5Administrator)) {
         if (-not $PSCommandPath) { throw 'Run this collector from its saved script file.' }
-        Write-Host 'Administrator permission is required to read driver and event diagnostics.' -ForegroundColor Yellow
+        Write-Information 'Administrator permission is required to read driver and event diagnostics.'
         $quotedScript = $PSCommandPath.Replace('"', '""')
         $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$quotedScript`""
         if ($Destination) {
@@ -122,7 +123,7 @@ function Invoke-Rpi5WiFiDiagnostic {
             [Parameter(Mandatory=$true)][string]$Name,
             [Parameter(Mandatory=$true)][scriptblock]$Command
         )
-        Write-Host "Collecting $Name ..."
+        Write-Information "Collecting $Name ..."
         try {
             $text = (& $Command 2>&1 | Out-String -Width 500)
         } catch {
@@ -134,8 +135,8 @@ function Invoke-Rpi5WiFiDiagnostic {
     }
 
     try {
-        Write-Host "RPi5 Wi-Fi diagnostics utility v$script:UtilityVersion" -ForegroundColor Cyan
-        Write-Host 'This utility only reads system state and writes a diagnostic ZIP.'
+        Write-Information "RPi5 Wi-Fi diagnostics utility v$script:UtilityVersion"
+        Write-Information 'This utility only reads system state and writes a diagnostic ZIP.'
 
         $bootText = (& bcdedit.exe /enum '{current}' 2>&1 | Out-String -Width 500)
         $testSigning = if ($bootText -match '(?im)^\s*testsigning\s+Yes\s*$') { 'Enabled' } else { 'Disabled or not reported' }
@@ -331,15 +332,15 @@ ExpectedACPI=ACPI\RPI0011
 
         Compress-Archive -Path (Join-Path $work '*') -DestinationPath $zip -CompressionLevel Optimal -Force
         $zipHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
-        Write-Host ''
-        Write-Host 'Diagnostics completed successfully.' -ForegroundColor Green
-        Write-Host "ZIP: $zip" -ForegroundColor Green
-        Write-Host "SHA256: $zipHash"
-        Write-Host 'Attach this ZIP for analysis. It contains no saved Wi-Fi passwords or dump contents.'
+        Write-Information ''
+        Write-Information 'Diagnostics completed successfully.'
+        Write-Information "ZIP: $zip"
+        Write-Information "SHA256: $zipHash"
+        Write-Information 'Attach this ZIP for analysis. It contains no saved Wi-Fi passwords or dump contents.'
         return 0
     } catch {
-        Write-Host ''
-        Write-Host "Diagnostics failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Information ''
+        Write-Information "Diagnostics failed: $($_.Exception.Message)"
         return 1
     } finally {
         $resolvedWork = [IO.Path]::GetFullPath($work)

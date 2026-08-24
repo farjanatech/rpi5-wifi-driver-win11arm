@@ -27,4 +27,4 @@ Get-ChildItem -LiteralPath $stage -File | Sort-Object Name | ForEach-Object {
     "$($hash.Hash)  $($_.Name)"
 } | Set-Content -LiteralPath (Join-Path $stage 'SHA256SUMS.txt') -Encoding ASCII
 
-Write-Host "Packaged one-click diagnostics at $stage"
+Write-Output "Packaged one-click diagnostics at $stage"
