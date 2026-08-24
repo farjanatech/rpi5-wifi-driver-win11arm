@@ -28,6 +28,11 @@ foreach ($pattern in $forbidden) {
 
 if ($source -notmatch "ACPI\\\\RPI0011") { throw 'Expected RPI0011 collection is missing.' }
 if ($source -notmatch 'Compress-Archive') { throw 'ZIP creation is missing.' }
+foreach ($requiredDiagnostic in @('Cmd5AttemptCount','Cmd5SuccessAttempt','PresentStateBefore','ClockControlAfter','PowerControlAfter')) {
+    if ($source -notmatch [regex]::Escape($requiredDiagnostic)) {
+        throw "Expected CMD5 retry diagnostic is missing: $requiredDiagnostic"
+    }
+}
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) { throw 'One-click launcher is missing.' }
 
 . $scriptPath -LibraryOnly

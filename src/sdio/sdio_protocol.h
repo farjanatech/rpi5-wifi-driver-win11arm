@@ -23,6 +23,10 @@
 
 #define SDIO_R5_ERROR_MASK            0x0000CB00UL
 
+#define SDIO_CMD5_CLOCK_COUNT          3UL
+#define SDIO_CMD5_RETRIES_PER_CLOCK    3UL
+#define SDIO_CMD5_MAX_ATTEMPTS         (SDIO_CMD5_CLOCK_COUNT * SDIO_CMD5_RETRIES_PER_CLOCK)
+
 static __forceinline ULONG
 SdioBuildCmd52Argument(
     int Write,
@@ -65,6 +69,22 @@ SdioR5HasError(
     return (Response & SDIO_R5_ERROR_MASK) != 0;
 }
 
+static __forceinline ULONG
+SdioGetCmd5TargetClockKhz(
+    ULONG AttemptIndex
+    )
+{
+    static const ULONG ClockKhz[SDIO_CMD5_CLOCK_COUNT] = { 400UL, 200UL, 100UL };
+    ULONG ClockIndex = AttemptIndex / SDIO_CMD5_RETRIES_PER_CLOCK;
+
+    if (ClockIndex >= SDIO_CMD5_CLOCK_COUNT)
+    {
+        return 0;
+    }
+
+    return ClockKhz[ClockIndex];
+}
+
 static __forceinline USHORT
 SdioCalculateClockDivider(
     ULONG BaseClockKhz,
@@ -81,7 +101,8 @@ SdioCalculateClockDivider(
 
     for (RealDivisor = 2; RealDivisor < 2046; RealDivisor += 2)
     {
-        if ((BaseClockKhz / RealDivisor) <= TargetClockKhz)
+        if ((unsigned long long)BaseClockKhz <=
+            ((unsigned long long)TargetClockKhz * RealDivisor))
         {
             break;
         }

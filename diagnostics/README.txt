@@ -1,4 +1,4 @@
-Raspberry Pi 5 Wi-Fi One-Click Diagnostics v0.2.0
+Raspberry Pi 5 Wi-Fi One-Click Diagnostics v0.2.1
 =================================================
 
 Run this only inside Windows 11 ARM64 on the Raspberry Pi 5 being tested.
@@ -18,6 +18,8 @@ It can be run before or after installing the experimental driver. It collects:
 - Windows, firmware, ARM64 and boot-security state;
 - ACPI RPI0011 Wi-Fi, RPI000F fan and RPI0010 temperature device state;
 - direct-SDIO probe stages, commands, responses and controller diagnostics;
+- each bounded CMD5 attempt at 400, 200 and 100 kHz, including command-reset,
+  raw response, interrupt, clock, power and line-state snapshots;
 - target driver/service/network-adapter state and signatures;
 - targeted SetupAPI and recent relevant event-log excerpts;
 - dump-file metadata only (never dump contents).

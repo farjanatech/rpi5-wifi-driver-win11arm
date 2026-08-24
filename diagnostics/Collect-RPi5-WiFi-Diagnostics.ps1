@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.2.0'
+$script:UtilityVersion = '0.2.1'
 
 function Test-Rpi5Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -156,6 +156,8 @@ function Invoke-Rpi5WiFiDiagnostic {
         $stage = Get-Rpi5PropertyValue -Object $diag -Name 'Stage'
         $lastStatusValue = Get-Rpi5PropertyValue -Object $diag -Name 'LastStatus' -Default $null
         $lastStatus = ConvertTo-Rpi5Hex32 -Value $lastStatusValue
+        $cmd5AttemptCount = Get-Rpi5PropertyValue -Object $diag -Name 'Cmd5AttemptCount' -Default 0
+        $cmd5SuccessAttempt = Get-Rpi5PropertyValue -Object $diag -Name 'Cmd5SuccessAttempt' -Default 0
         $probeResult = 'Driver diagnostic registry data is not present.'
         if ($null -ne $diag) {
             $stageNumber = 0
@@ -181,6 +183,8 @@ function Invoke-Rpi5WiFiDiagnostic {
             "DriverDiagnosticsPresent=$([bool]$diag)"
             "Stage=$stage"
             "LastStatus=$lastStatus"
+            "Cmd5AttemptCount=$cmd5AttemptCount"
+            "Cmd5SuccessAttempt=$cmd5SuccessAttempt"
             "Result=$probeResult"
             ''
             'The probe intentionally remains media-disconnected and does not provide working Wi-Fi.'
@@ -234,7 +238,8 @@ function Invoke-Rpi5WiFiDiagnostic {
                 $names = @(
                     'Stage','LastStatus','RegPhysHi','RegPhysLo','RegLength','HostVersion',
                     'Capabilities','Capabilities2','LastCommand','LastArgument','LastInterruptStatus',
-                    'LastResponse','Cmd5ProbeResponse','SdioOcr','SdioFunctions','RelativeAddress',
+                    'LastResponse','LastCommandResetStatus','Cmd5AttemptCount','Cmd5SuccessAttempt',
+                    'Cmd5ProbeResponse','SdioOcr','SdioFunctions','RelativeAddress',
                     'CccrRevision','IoEnable','IoReady','F1InterfaceCode','F2InterfaceCode'
                 )
                 foreach ($name in $names) {
@@ -244,6 +249,28 @@ function Invoke-Rpi5WiFiDiagnostic {
                     } else {
                         "{0}={1}" -f $name,$value
                     }
+                }
+                ''
+                'Bounded CMD5 attempts (zero values after Cmd5AttemptCount were not executed):'
+                for ($attemptNumber = 1; $attemptNumber -le 9; $attemptNumber++) {
+                    $prefix = "Cmd5Attempt$attemptNumber"
+                    $clock = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}ClockKhz" -Default 0
+                    $status = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}Status" -Default 0
+                    $resetStatus = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}ResetStatus" -Default 0
+                    $interrupt = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}InterruptStatus" -Default 0
+                    $response = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}Response" -Default 0
+                    $presentBefore = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}PresentStateBefore" -Default 0
+                    $presentAfter = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}PresentStateAfter" -Default 0
+                    $clockBefore = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}ClockControlBefore" -Default 0
+                    $clockAfter = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}ClockControlAfter" -Default 0
+                    $powerBefore = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}PowerControlBefore" -Default 0
+                    $powerAfter = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}PowerControlAfter" -Default 0
+                    ('Attempt={0} ClockKhz={1} Status={2} ResetStatus={3} Interrupt={4} Response={5} PresentBefore={6} PresentAfter={7} ClockBefore={8} ClockAfter={9} PowerBefore={10} PowerAfter={11}' -f
+                        $attemptNumber,$clock,(ConvertTo-Rpi5Hex32 $status),(ConvertTo-Rpi5Hex32 $resetStatus),
+                        (ConvertTo-Rpi5Hex32 $interrupt),(ConvertTo-Rpi5Hex32 $response),
+                        (ConvertTo-Rpi5Hex32 $presentBefore),(ConvertTo-Rpi5Hex32 $presentAfter),
+                        (ConvertTo-Rpi5Hex32 $clockBefore),(ConvertTo-Rpi5Hex32 $clockAfter),
+                        (ConvertTo-Rpi5Hex32 $powerBefore),(ConvertTo-Rpi5Hex32 $powerAfter))
                 }
             } else {
                 'Driver diagnostic registry key was not found.'

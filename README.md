@@ -12,6 +12,11 @@ directly and currently implements only a bounded CMD0/CMD5/CMD3/CMD7/CMD52
 probe. It does not yet implement CMD53 data transfer, CYW43455 firmware loading,
 association, transmit or receive traffic.
 
+The CMD5 identification probe uses three bounded attempts at each of 400, 200
+and 100 kHz. Every attempt records the raw response, interrupt status,
+command-line reset result, and before/after clock, power and line state for
+hardware diagnosis.
+
 Windows therefore sees a disconnected Ethernet adapter even when the probe
 succeeds. This is intentional diagnostic behavior, not working Wi-Fi.
 

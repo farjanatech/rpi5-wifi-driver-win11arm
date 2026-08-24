@@ -108,7 +108,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 1);
+    SET_DWORD(L"DiagVersion", 2);
     SET_DWORD(L"Stage", Stage);
     SET_DWORD(L"LastStatus", Status);
     SET_DWORD(L"ResourceCount", Adapter->ResourceCount);
@@ -127,6 +127,47 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"LastArgument", Adapter->LastArgument);
     SET_DWORD(L"LastInterruptStatus", Adapter->LastInterruptStatus);
     SET_DWORD(L"LastResponse", Adapter->LastResponse);
+    SET_DWORD(L"LastCommandResetStatus", Adapter->LastCommandResetStatus);
+    SET_DWORD(L"Cmd5AttemptCount", Adapter->Cmd5AttemptCount);
+    SET_DWORD(L"Cmd5SuccessAttempt", Adapter->Cmd5SuccessAttempt);
+#define WIDEN2(_value) L##_value
+#define WIDEN(_value) WIDEN2(_value)
+#define SET_CMD5_ATTEMPT(_number, _index) do {                                             \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"ClockKhz",                            \
+                  Adapter->Cmd5Attempts[_index].TargetClockKhz);                          \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"Status",                             \
+                  Adapter->Cmd5Attempts[_index].Status);                                  \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"ResetStatus",                        \
+                  Adapter->Cmd5Attempts[_index].ResetStatus);                             \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"InterruptStatus",                    \
+                  Adapter->Cmd5Attempts[_index].InterruptStatus);                         \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"Response",                           \
+                  Adapter->Cmd5Attempts[_index].Response);                                \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"PresentStateBefore",                 \
+                  Adapter->Cmd5Attempts[_index].PresentStateBefore);                      \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"PresentStateAfter",                  \
+                  Adapter->Cmd5Attempts[_index].PresentStateAfter);                       \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"ClockControlBefore",                 \
+                  Adapter->Cmd5Attempts[_index].ClockControlBefore);                      \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"ClockControlAfter",                  \
+                  Adapter->Cmd5Attempts[_index].ClockControlAfter);                       \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"PowerControlBefore",                 \
+                  Adapter->Cmd5Attempts[_index].PowerControlBefore);                      \
+        SET_DWORD(L"Cmd5Attempt" WIDEN(#_number) L"PowerControlAfter",                  \
+                  Adapter->Cmd5Attempts[_index].PowerControlAfter);                       \
+    } while (0)
+    SET_CMD5_ATTEMPT(1, 0);
+    SET_CMD5_ATTEMPT(2, 1);
+    SET_CMD5_ATTEMPT(3, 2);
+    SET_CMD5_ATTEMPT(4, 3);
+    SET_CMD5_ATTEMPT(5, 4);
+    SET_CMD5_ATTEMPT(6, 5);
+    SET_CMD5_ATTEMPT(7, 6);
+    SET_CMD5_ATTEMPT(8, 7);
+    SET_CMD5_ATTEMPT(9, 8);
+#undef SET_CMD5_ATTEMPT
+#undef WIDEN
+#undef WIDEN2
     SET_DWORD(L"Cmd5ProbeResponse", Adapter->Cmd5ProbeResponse);
     SET_DWORD(L"SdioOcr", Adapter->SdioOcr);
     SET_DWORD(L"SdioFunctions", Adapter->SdioFunctions);

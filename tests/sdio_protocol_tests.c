@@ -45,6 +45,12 @@ main(void)
     CheckUlong("clock 200MHz to 400kHz",
                SdioCalculateClockDivider(200000, 400),
                250);
+    CheckUlong("clock 200MHz to 200kHz",
+               SdioCalculateClockDivider(200000, 200),
+               500);
+    CheckUlong("clock 200MHz to 100kHz",
+               SdioCalculateClockDivider(200000, 100),
+               1000);
     CheckUlong("clock 200MHz to 25MHz",
                SdioCalculateClockDivider(200000, 25000),
                4);
@@ -61,6 +67,22 @@ main(void)
     CheckUlong("R5 invalid function",
                (ULONG)SdioR5HasError(0x00000200UL),
                1);
+
+    CheckUlong("CMD5 attempt 1 clock",
+               SdioGetCmd5TargetClockKhz(0),
+               400);
+    CheckUlong("CMD5 attempt 3 clock",
+               SdioGetCmd5TargetClockKhz(2),
+               400);
+    CheckUlong("CMD5 attempt 4 clock",
+               SdioGetCmd5TargetClockKhz(3),
+               200);
+    CheckUlong("CMD5 attempt 7 clock",
+               SdioGetCmd5TargetClockKhz(6),
+               100);
+    CheckUlong("CMD5 out-of-range attempt",
+               SdioGetCmd5TargetClockKhz(SDIO_CMD5_MAX_ATTEMPTS),
+               0);
 
     if (gFailures != 0)
     {

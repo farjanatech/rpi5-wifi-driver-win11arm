@@ -15,6 +15,7 @@
 #define RPI5CYW_DRIVER_VERSION 0x0100
 #define RPI5CYW_MAX_MULTICAST 32
 #define RPI5CYW_MAX_LINK_SPEED 433000000ULL
+#define RPI5CYW_CMD5_MAX_ATTEMPTS 9
 
 #define RPI5CYW_MAC_OPTIONS (NDIS_MAC_OPTION_TRANSFERS_NOT_PEND | \
                              NDIS_MAC_OPTION_COPY_LOOKAHEAD_DATA | \
@@ -25,6 +26,21 @@
                                    NDIS_PACKET_TYPE_ALL_MULTICAST | \
                                    NDIS_PACKET_TYPE_BROADCAST | \
                                    NDIS_PACKET_TYPE_PROMISCUOUS)
+
+typedef struct _RPI5CYW_CMD5_ATTEMPT_DIAG
+{
+    ULONG TargetClockKhz;
+    NTSTATUS Status;
+    NTSTATUS ResetStatus;
+    ULONG InterruptStatus;
+    ULONG Response;
+    ULONG PresentStateBefore;
+    ULONG PresentStateAfter;
+    ULONG ClockControlBefore;
+    ULONG ClockControlAfter;
+    ULONG PowerControlBefore;
+    ULONG PowerControlAfter;
+} RPI5CYW_CMD5_ATTEMPT_DIAG, *PRPI5CYW_CMD5_ATTEMPT_DIAG;
 
 typedef struct _RPI5CYW_ADAPTER
 {
@@ -68,6 +84,11 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG LastArgument;
     ULONG LastInterruptStatus;
     ULONG LastResponse;
+    NTSTATUS LastCommandResetStatus;
+
+    ULONG Cmd5AttemptCount;
+    ULONG Cmd5SuccessAttempt;
+    RPI5CYW_CMD5_ATTEMPT_DIAG Cmd5Attempts[RPI5CYW_CMD5_MAX_ATTEMPTS];
 
     ULONG Cmd5ProbeResponse;
     ULONG SdioOcr;

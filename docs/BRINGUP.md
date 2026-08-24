@@ -20,6 +20,8 @@ Current implementation status:
 
 - [x] Map the SDIO2 MMIO resource assigned to `ACPI\RPI0011`.
 - [x] Reset the host and configure an identification clock.
+- [x] Retry CMD5 three times each at 400, 200 and 100 kHz while recording raw
+  response, interrupt, command-reset, clock, power and line-state diagnostics.
 - [x] Implement bounded CMD0/CMD5/CMD3/CMD7 command polling.
 - [x] Implement CMD52 reads and read CCCR/FBR identity registers.
 - [ ] Implement CMD52 writes with read-after-write verification.
