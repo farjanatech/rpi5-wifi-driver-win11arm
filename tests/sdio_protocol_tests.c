@@ -68,21 +68,40 @@ main(void)
                (ULONG)SdioR5HasError(0x00000200UL),
                1);
 
-    CheckUlong("CMD5 attempt 1 clock",
-               SdioGetCmd5TargetClockKhz(0),
+    CheckUlong("CMD5 cycle 1 clock",
+               SdioGetCmd5CycleClockKhz(0),
                400);
-    CheckUlong("CMD5 attempt 3 clock",
-               SdioGetCmd5TargetClockKhz(2),
+    CheckUlong("CMD5 cycle 3 clock",
+               SdioGetCmd5CycleClockKhz(2),
                400);
-    CheckUlong("CMD5 attempt 4 clock",
-               SdioGetCmd5TargetClockKhz(3),
+    CheckUlong("CMD5 cycle 4 clock",
+               SdioGetCmd5CycleClockKhz(3),
                200);
-    CheckUlong("CMD5 attempt 7 clock",
-               SdioGetCmd5TargetClockKhz(6),
+    CheckUlong("CMD5 cycle 7 clock",
+               SdioGetCmd5CycleClockKhz(6),
                100);
-    CheckUlong("CMD5 out-of-range attempt",
-               SdioGetCmd5TargetClockKhz(SDIO_CMD5_MAX_ATTEMPTS),
+    CheckUlong("CMD5 out-of-range cycle",
+               SdioGetCmd5CycleClockKhz(SDIO_CMD5_MAX_CYCLES),
                0);
+    CheckUlong("CMD5 command-attempt count",
+               SDIO_CMD5_MAX_ATTEMPTS,
+               18);
+
+    CheckUlong("empty R4 is invalid",
+               (ULONG)SdioR4HasBasicInfo(0),
+               0);
+    CheckUlong("shift-suspect R4 is invalid",
+               (ULONG)SdioR4HasBasicInfo(0x10004000UL),
+               0);
+    CheckUlong("two-function R4 has basic info",
+               (ULONG)SdioR4HasBasicInfo(0x20008000UL),
+               1);
+    CheckUlong("not-ready R4 is not ready",
+               (ULONG)SdioR4IsReady(0x20008000UL),
+               0);
+    CheckUlong("ready two-function R4 is ready",
+               (ULONG)SdioR4IsReady(0xA0008000UL),
+               1);
 
     if (gFailures != 0)
     {

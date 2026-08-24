@@ -23,9 +23,11 @@
 
 #define SDIO_R5_ERROR_MASK            0x0000CB00UL
 
-#define SDIO_CMD5_CLOCK_COUNT          3UL
-#define SDIO_CMD5_RETRIES_PER_CLOCK    3UL
-#define SDIO_CMD5_MAX_ATTEMPTS         (SDIO_CMD5_CLOCK_COUNT * SDIO_CMD5_RETRIES_PER_CLOCK)
+#define SDIO_CMD5_CLOCK_COUNT             3UL
+#define SDIO_CMD5_CYCLES_PER_CLOCK        3UL
+#define SDIO_CMD5_COMMANDS_PER_CYCLE      2UL
+#define SDIO_CMD5_MAX_CYCLES              (SDIO_CMD5_CLOCK_COUNT * SDIO_CMD5_CYCLES_PER_CLOCK)
+#define SDIO_CMD5_MAX_ATTEMPTS            (SDIO_CMD5_MAX_CYCLES * SDIO_CMD5_COMMANDS_PER_CYCLE)
 
 static __forceinline ULONG
 SdioBuildCmd52Argument(
@@ -70,12 +72,12 @@ SdioR5HasError(
 }
 
 static __forceinline ULONG
-SdioGetCmd5TargetClockKhz(
-    ULONG AttemptIndex
+SdioGetCmd5CycleClockKhz(
+    ULONG CycleIndex
     )
 {
     static const ULONG ClockKhz[SDIO_CMD5_CLOCK_COUNT] = { 400UL, 200UL, 100UL };
-    ULONG ClockIndex = AttemptIndex / SDIO_CMD5_RETRIES_PER_CLOCK;
+    ULONG ClockIndex = CycleIndex / SDIO_CMD5_CYCLES_PER_CLOCK;
 
     if (ClockIndex >= SDIO_CMD5_CLOCK_COUNT)
     {
@@ -83,6 +85,24 @@ SdioGetCmd5TargetClockKhz(
     }
 
     return ClockKhz[ClockIndex];
+}
+
+static __forceinline int
+SdioR4HasBasicInfo(
+    ULONG Response
+    )
+{
+    return ((Response & 0x70000000UL) != 0) &&
+           ((Response & 0x00FF8000UL) != 0);
+}
+
+static __forceinline int
+SdioR4IsReady(
+    ULONG Response
+    )
+{
+    return SdioR4HasBasicInfo(Response) &&
+           ((Response & 0x80000000UL) != 0);
 }
 
 static __forceinline USHORT

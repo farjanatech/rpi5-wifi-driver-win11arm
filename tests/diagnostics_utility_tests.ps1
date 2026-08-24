@@ -28,7 +28,11 @@ foreach ($pattern in $forbidden) {
 
 if ($source -notmatch "ACPI\\\\RPI0011") { throw 'Expected RPI0011 collection is missing.' }
 if ($source -notmatch 'Compress-Archive') { throw 'ZIP creation is missing.' }
-foreach ($requiredDiagnostic in @('Cmd5AttemptCount','Cmd5SuccessAttempt','PresentStateBefore','ClockControlAfter','PowerControlAfter')) {
+foreach ($requiredDiagnostic in @(
+    'Cmd5AttemptCount','Cmd5ValidAttempt','Cmd5SuccessAttempt','ResponseValid',
+    'PresentStateBefore','ClockControlAfter','PowerControlAfter','HostControl2After',
+    'TimeoutControlAfter','CmdLineBefore','Get-Rpi5DeviceByAcpiId'
+)) {
     if ($source -notmatch [regex]::Escape($requiredDiagnostic)) {
         throw "Expected CMD5 retry diagnostic is missing: $requiredDiagnostic"
     }

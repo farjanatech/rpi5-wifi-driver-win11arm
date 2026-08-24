@@ -140,7 +140,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.2.1
+          name: rpi5-wifi-one-click-diagnostics-v0.3.0
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

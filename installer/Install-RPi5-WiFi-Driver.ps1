@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.3.0'
+$script:InstallerVersion = '0.3.1'
 $script:RequiredUefiRevision = '5a5013a'
 
 function Test-Rpi5Administrator {

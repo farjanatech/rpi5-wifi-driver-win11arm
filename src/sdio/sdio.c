@@ -215,11 +215,21 @@ SdioInitializeHost(
                 SDHCI_INT_CMD_ERROR_MASK);
     SdioWrite32(Adapter, SDHCI_INT_SIGNAL_ENABLE, 0);
 
-    SdioDelayMilliseconds(10);
+    /*
+     * The soldered CYW43455 may already have been enabled by firmware, but a
+     * cold boot and a PnP restart do not produce identical power timing.  Keep
+     * this bounded settle interval before the first command so both paths give
+     * the device time to reach its SDIO command state.
+     */
+    SdioDelayMilliseconds(200);
 
     Adapter->PresentState = SdioRead32(Adapter, SDHCI_PRESENT_STATE);
     Adapter->ClockControl = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
     Adapter->PowerControl = SdioRead8(Adapter, SDHCI_POWER_CONTROL);
+    Adapter->HostControl = SdioRead8(Adapter, SDHCI_HOST_CONTROL);
+    Adapter->HostControl2 = SdioRead16(Adapter, SDHCI_HOST_CONTROL2);
+    Adapter->TimeoutControl = SdioRead8(Adapter, SDHCI_TIMEOUT_CONTROL);
+    Adapter->SoftwareReset = SdioRead8(Adapter, SDHCI_SOFTWARE_RESET);
     return STATUS_SUCCESS;
 }
 
@@ -319,23 +329,42 @@ SdioSendCommand(
 }
 
 static NTSTATUS
-SdioProbeCmd5WithRetries(
+SdioNegotiateOperatingConditionWithRetries(
     _Inout_ PRPI5CYW_ADAPTER Adapter,
-    _Out_ PULONG Response
+    _Out_ PULONG ReadyResponse
     )
 {
-    ULONG AttemptIndex;
+    static const ULONG Arguments[SDIO_CMD5_COMMANDS_PER_CYCLE] =
+    {
+        0,
+        SDIO_OCR_VDD_RANGE
+    };
+    ULONG AttemptIndex = 0;
+    ULONG CommandIndex;
+    ULONG CycleIndex;
+    ULONG Response;
     ULONG TargetClockKhz = 0;
-    NTSTATUS Status = STATUS_IO_DEVICE_ERROR;
+    NTSTATUS LastStatus = STATUS_DEVICE_DATA_ERROR;
+    NTSTATUS Status;
+    BOOLEAN SawValidResponse = FALSE;
+
+    if (ReadyResponse == NULL)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
 
     Adapter->Cmd5AttemptCount = 0;
+    Adapter->Cmd5ValidAttempt = 0;
     Adapter->Cmd5SuccessAttempt = 0;
+    Adapter->Cmd5ProbeResponse = 0;
+    Adapter->SdioOcr = 0;
+    Adapter->SdioFunctions = 0;
     RtlZeroMemory(Adapter->Cmd5Attempts, sizeof(Adapter->Cmd5Attempts));
+    *ReadyResponse = 0;
 
-    for (AttemptIndex = 0; AttemptIndex < SDIO_CMD5_MAX_ATTEMPTS; AttemptIndex++)
+    for (CycleIndex = 0; CycleIndex < SDIO_CMD5_MAX_CYCLES; CycleIndex++)
     {
-        PRPI5CYW_CMD5_ATTEMPT_DIAG Attempt = &Adapter->Cmd5Attempts[AttemptIndex];
-        ULONG RequestedClockKhz = SdioGetCmd5TargetClockKhz(AttemptIndex);
+        ULONG RequestedClockKhz = SdioGetCmd5CycleClockKhz(CycleIndex);
 
         if (RequestedClockKhz != TargetClockKhz)
         {
@@ -358,37 +387,98 @@ SdioProbeCmd5WithRetries(
             SdioDelayMilliseconds(2);
         }
 
-        Attempt->TargetClockKhz = TargetClockKhz;
-        Attempt->PresentStateBefore = SdioRead32(Adapter, SDHCI_PRESENT_STATE);
-        Attempt->ClockControlBefore = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
-        Attempt->PowerControlBefore = SdioRead8(Adapter, SDHCI_POWER_CONTROL);
-
-        *Response = 0;
-        Status = SdioSendCommand(Adapter,
-                                 SDCMD_IO_SEND_OP_COND,
-                                 0,
-                                 SDHCI_CMD_RESP_48,
-                                 Response);
-
-        Attempt->Status = Status;
-        Attempt->ResetStatus = Adapter->LastCommandResetStatus;
-        Attempt->InterruptStatus = Adapter->LastInterruptStatus;
-        Attempt->Response = Adapter->LastResponse;
-        Attempt->PresentStateAfter = SdioRead32(Adapter, SDHCI_PRESENT_STATE);
-        Attempt->ClockControlAfter = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
-        Attempt->PowerControlAfter = SdioRead8(Adapter, SDHCI_POWER_CONTROL);
-        Adapter->Cmd5AttemptCount = AttemptIndex + 1;
-
-        if (NT_SUCCESS(Status))
+        for (CommandIndex = 0;
+             CommandIndex < SDIO_CMD5_COMMANDS_PER_CYCLE;
+             CommandIndex++)
         {
-            Adapter->Cmd5SuccessAttempt = AttemptIndex + 1;
-            return STATUS_SUCCESS;
-        }
+            PRPI5CYW_CMD5_ATTEMPT_DIAG Attempt;
+            ULONG Argument = Arguments[CommandIndex];
 
-        SdioDelayMilliseconds(5);
+            if (AttemptIndex >= SDIO_CMD5_MAX_ATTEMPTS)
+            {
+                return STATUS_INTERNAL_ERROR;
+            }
+            Attempt = &Adapter->Cmd5Attempts[AttemptIndex];
+            Attempt->TargetClockKhz = TargetClockKhz;
+            Attempt->Argument = Argument;
+            Attempt->PresentStateBefore = SdioRead32(Adapter, SDHCI_PRESENT_STATE);
+            Attempt->ClockControlBefore = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
+            Attempt->PowerControlBefore = SdioRead8(Adapter, SDHCI_POWER_CONTROL);
+            Attempt->HostControlBefore = SdioRead8(Adapter, SDHCI_HOST_CONTROL);
+            Attempt->HostControl2Before = SdioRead16(Adapter, SDHCI_HOST_CONTROL2);
+            Attempt->TimeoutControlBefore = SdioRead8(Adapter, SDHCI_TIMEOUT_CONTROL);
+
+            Response = 0;
+            Status = SdioSendCommand(Adapter,
+                                     SDCMD_IO_SEND_OP_COND,
+                                     Argument,
+                                     SDHCI_CMD_RESP_48,
+                                     &Response);
+
+            Attempt->Status = Status;
+            Attempt->ResetStatus = Adapter->LastCommandResetStatus;
+            Attempt->InterruptStatus = Adapter->LastInterruptStatus;
+            Attempt->Response = Adapter->LastResponse;
+            Attempt->PresentStateAfter = SdioRead32(Adapter, SDHCI_PRESENT_STATE);
+            Attempt->ClockControlAfter = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
+            Attempt->PowerControlAfter = SdioRead8(Adapter, SDHCI_POWER_CONTROL);
+            Attempt->HostControlAfter = SdioRead8(Adapter, SDHCI_HOST_CONTROL);
+            Attempt->HostControl2After = SdioRead16(Adapter, SDHCI_HOST_CONTROL2);
+            Attempt->TimeoutControlAfter = SdioRead8(Adapter, SDHCI_TIMEOUT_CONTROL);
+
+            Adapter->PresentState = Attempt->PresentStateAfter;
+            Adapter->ClockControl = Attempt->ClockControlAfter;
+            Adapter->PowerControl = Attempt->PowerControlAfter;
+            Adapter->HostControl = Attempt->HostControlAfter;
+            Adapter->HostControl2 = Attempt->HostControl2After;
+            Adapter->TimeoutControl = Attempt->TimeoutControlAfter;
+            Adapter->SoftwareReset = SdioRead8(Adapter, SDHCI_SOFTWARE_RESET);
+            Adapter->Cmd5AttemptCount = ++AttemptIndex;
+
+            if (Argument == 0)
+            {
+                Adapter->Cmd5ProbeResponse = Response;
+            }
+            else
+            {
+                Adapter->SdioOcr = Response;
+            }
+
+            if (NT_SUCCESS(Status) && SdioR4HasBasicInfo(Response))
+            {
+                Attempt->ResponseValid = 1;
+                SawValidResponse = TRUE;
+                if (Adapter->Cmd5ValidAttempt == 0)
+                {
+                    Adapter->Cmd5ValidAttempt = AttemptIndex;
+                }
+                Adapter->SdioFunctions =
+                    (Response & SDIO_OCR_NUM_FUNCTIONS_MASK) >> SDIO_OCR_NUM_FUNCTIONS_SHIFT;
+
+                if (Argument != 0 && SdioR4IsReady(Response))
+                {
+                    Adapter->Cmd5SuccessAttempt = AttemptIndex;
+                    *ReadyResponse = Response;
+                    return STATUS_SUCCESS;
+                }
+
+                LastStatus = STATUS_IO_TIMEOUT;
+            }
+            else if (NT_SUCCESS(Status))
+            {
+                /* Transport completion with an empty/malformed R4 is not success. */
+                LastStatus = STATUS_DEVICE_DATA_ERROR;
+            }
+            else
+            {
+                LastStatus = Status;
+            }
+
+            SdioDelayMilliseconds(5);
+        }
     }
 
-    return Status;
+    return SawValidResponse ? STATUS_IO_TIMEOUT : LastStatus;
 }
 
 static NTSTATUS
@@ -440,7 +530,6 @@ Rpi5CywDirectSdioProbe(
 {
     NTSTATUS Status;
     ULONG Response;
-    ULONG Timeout;
     UCHAR Value;
 
     if (Adapter == NULL || Adapter->RegisterBase == NULL)
@@ -455,60 +544,14 @@ Rpi5CywDirectSdioProbe(
         return Status;
     }
 
-    Status = SdioSendCommand(Adapter, SDCMD_GO_IDLE_STATE, 0, SDHCI_CMD_RESP_NONE, NULL);
-    Rpi5CywWriteDiagnostics(Adapter, 30, Status);
-    if (!NT_SUCCESS(Status))
-    {
-        return Status;
-    }
-    SdioDelayMilliseconds(1);
-
     Response = 0;
-    Status = SdioProbeCmd5WithRetries(Adapter, &Response);
-    Adapter->Cmd5ProbeResponse = Response;
+    Status = SdioNegotiateOperatingConditionWithRetries(Adapter, &Response);
     Rpi5CywWriteDiagnostics(Adapter, 40, Status);
     if (!NT_SUCCESS(Status))
     {
         return Status;
     }
-
-    for (Timeout = 0; Timeout < 2000; Timeout++)
-    {
-        Response = 0;
-        Status = SdioSendCommand(Adapter,
-                                 SDCMD_IO_SEND_OP_COND,
-                                 SDIO_OCR_VDD_RANGE,
-                                 SDHCI_CMD_RESP_48,
-                                 &Response);
-        if (!NT_SUCCESS(Status))
-        {
-            Rpi5CywWriteDiagnostics(Adapter, 41, Status);
-            return Status;
-        }
-
-        Adapter->SdioOcr = Response;
-        if ((Response & SDIO_OCR_READY) != 0)
-        {
-            break;
-        }
-        SdioDelayMilliseconds(1);
-    }
-
-    if (Timeout == 2000)
-    {
-        Status = STATUS_IO_TIMEOUT;
-        Rpi5CywWriteDiagnostics(Adapter, 42, Status);
-        return Status;
-    }
-
-    Adapter->SdioFunctions =
-        (Adapter->SdioOcr & SDIO_OCR_NUM_FUNCTIONS_MASK) >> SDIO_OCR_NUM_FUNCTIONS_SHIFT;
-    if (Adapter->SdioFunctions == 0)
-    {
-        Status = STATUS_DEVICE_DATA_ERROR;
-        Rpi5CywWriteDiagnostics(Adapter, 43, Status);
-        return Status;
-    }
+    Adapter->SdioOcr = Response;
     Rpi5CywWriteDiagnostics(Adapter, 50, STATUS_SUCCESS);
 
     Response = 0;

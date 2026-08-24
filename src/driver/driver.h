@@ -15,7 +15,7 @@
 #define RPI5CYW_DRIVER_VERSION 0x0100
 #define RPI5CYW_MAX_MULTICAST 32
 #define RPI5CYW_MAX_LINK_SPEED 433000000ULL
-#define RPI5CYW_CMD5_MAX_ATTEMPTS 9
+#define RPI5CYW_CMD5_MAX_ATTEMPTS 18
 
 #define RPI5CYW_MAC_OPTIONS (NDIS_MAC_OPTION_TRANSFERS_NOT_PEND | \
                              NDIS_MAC_OPTION_COPY_LOOKAHEAD_DATA | \
@@ -30,8 +30,10 @@
 typedef struct _RPI5CYW_CMD5_ATTEMPT_DIAG
 {
     ULONG TargetClockKhz;
+    ULONG Argument;
     NTSTATUS Status;
     NTSTATUS ResetStatus;
+    ULONG ResponseValid;
     ULONG InterruptStatus;
     ULONG Response;
     ULONG PresentStateBefore;
@@ -40,6 +42,12 @@ typedef struct _RPI5CYW_CMD5_ATTEMPT_DIAG
     ULONG ClockControlAfter;
     ULONG PowerControlBefore;
     ULONG PowerControlAfter;
+    ULONG HostControlBefore;
+    ULONG HostControlAfter;
+    ULONG HostControl2Before;
+    ULONG HostControl2After;
+    ULONG TimeoutControlBefore;
+    ULONG TimeoutControlAfter;
 } RPI5CYW_CMD5_ATTEMPT_DIAG, *PRPI5CYW_CMD5_ATTEMPT_DIAG;
 
 typedef struct _RPI5CYW_ADAPTER
@@ -79,6 +87,10 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG PresentState;
     ULONG ClockControl;
     ULONG PowerControl;
+    ULONG HostControl;
+    ULONG HostControl2;
+    ULONG TimeoutControl;
+    ULONG SoftwareReset;
 
     ULONG LastCommand;
     ULONG LastArgument;
@@ -87,6 +99,7 @@ typedef struct _RPI5CYW_ADAPTER
     NTSTATUS LastCommandResetStatus;
 
     ULONG Cmd5AttemptCount;
+    ULONG Cmd5ValidAttempt;
     ULONG Cmd5SuccessAttempt;
     RPI5CYW_CMD5_ATTEMPT_DIAG Cmd5Attempts[RPI5CYW_CMD5_MAX_ATTEMPTS];
 

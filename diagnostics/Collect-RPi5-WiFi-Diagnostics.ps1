@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.2.1'
+$script:UtilityVersion = '0.3.0'
 
 function Test-Rpi5Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -71,6 +71,31 @@ function Get-Rpi5SecureBootState {
         return 'Disabled'
     } catch {
         return "Unavailable ($($_.Exception.GetType().Name))"
+    }
+}
+
+function Get-Rpi5DeviceByAcpiId {
+    param([Parameter(Mandatory=$true)][string]$AcpiId)
+
+    $pattern = '^ACPI\\' + [regex]::Escape($AcpiId) + '(?:\\|$)'
+    $device = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
+        Where-Object { $_.InstanceId -match $pattern } |
+        Select-Object -First 1
+    if ($device) { return $device }
+
+    $cimDevice = Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+        Where-Object { $_.PNPDeviceID -match $pattern } |
+        Select-Object -First 1
+    if (-not $cimDevice) { return $null }
+
+    return [pscustomobject]@{
+        InstanceId = $cimDevice.PNPDeviceID
+        Status = $cimDevice.Status
+        Class = $cimDevice.PNPClass
+        FriendlyName = $cimDevice.Name
+        Problem = $cimDevice.ConfigManagerErrorCode
+        ConfigManagerErrorCode = $cimDevice.ConfigManagerErrorCode
+        DiscoverySource = 'Win32_PnPEntity fallback'
     }
 }
 
@@ -142,21 +167,16 @@ function Invoke-Rpi5WiFiDiagnostic {
         $testSigning = if ($bootText -match '(?im)^\s*testsigning\s+Yes\s*$') { 'Enabled' } else { 'Disabled or not reported' }
         $secureBoot = Get-Rpi5SecureBootState
         $architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-        $targetDevice = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
-            Where-Object { $_.InstanceId -match '^ACPI\\RPI0011(?:\\|$)' } |
-            Select-Object -First 1
-        $fanDevice = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
-            Where-Object { $_.InstanceId -match '^ACPI\\RPI000F(?:\\|$)' } |
-            Select-Object -First 1
-        $temperatureDevice = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
-            Where-Object { $_.InstanceId -match '^ACPI\\RPI0010(?:\\|$)' } |
-            Select-Object -First 1
+        $targetDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI0011'
+        $fanDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI000F'
+        $temperatureDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI0010'
         $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
         $diag = if (Test-Path -LiteralPath $diagKey) { Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue } else { $null }
         $stage = Get-Rpi5PropertyValue -Object $diag -Name 'Stage'
         $lastStatusValue = Get-Rpi5PropertyValue -Object $diag -Name 'LastStatus' -Default $null
         $lastStatus = ConvertTo-Rpi5Hex32 -Value $lastStatusValue
         $cmd5AttemptCount = Get-Rpi5PropertyValue -Object $diag -Name 'Cmd5AttemptCount' -Default 0
+        $cmd5ValidAttempt = Get-Rpi5PropertyValue -Object $diag -Name 'Cmd5ValidAttempt' -Default 0
         $cmd5SuccessAttempt = Get-Rpi5PropertyValue -Object $diag -Name 'Cmd5SuccessAttempt' -Default 0
         $probeResult = 'Driver diagnostic registry data is not present.'
         if ($null -ne $diag) {
@@ -184,6 +204,7 @@ function Invoke-Rpi5WiFiDiagnostic {
             "Stage=$stage"
             "LastStatus=$lastStatus"
             "Cmd5AttemptCount=$cmd5AttemptCount"
+            "Cmd5ValidAttempt=$cmd5ValidAttempt"
             "Cmd5SuccessAttempt=$cmd5SuccessAttempt"
             "Result=$probeResult"
             ''
@@ -217,9 +238,9 @@ function Invoke-Rpi5WiFiDiagnostic {
             $bootText
         }
         Write-Capture '03-rpi-acpi-devices.txt' {
-            Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
-                Where-Object { $_.InstanceId -match '^ACPI\\RPI00(?:0F|10|11)(?:\\|$)' } |
-                Format-List Status,Class,FriendlyName,InstanceId,Problem,ConfigManagerErrorCode
+            @($fanDevice, $temperatureDevice, $targetDevice) |
+                Where-Object { $null -ne $_ } |
+                Format-List Status,Class,FriendlyName,InstanceId,Problem,ConfigManagerErrorCode,DiscoverySource
         }
         Write-Capture '04-rpi0011-properties.txt' {
             if ($targetDevice) {
@@ -237,8 +258,10 @@ function Invoke-Rpi5WiFiDiagnostic {
             if ($diag) {
                 $names = @(
                     'Stage','LastStatus','RegPhysHi','RegPhysLo','RegLength','HostVersion',
-                    'Capabilities','Capabilities2','LastCommand','LastArgument','LastInterruptStatus',
-                    'LastResponse','LastCommandResetStatus','Cmd5AttemptCount','Cmd5SuccessAttempt',
+                    'Capabilities','Capabilities2','PresentState','ClockControl','PowerControl',
+                    'HostControl','HostControl2','TimeoutControl','SoftwareReset',
+                    'LastCommand','LastArgument','LastInterruptStatus','LastResponse',
+                    'LastCommandResetStatus','Cmd5AttemptCount','Cmd5ValidAttempt','Cmd5SuccessAttempt',
                     'Cmd5ProbeResponse','SdioOcr','SdioFunctions','RelativeAddress',
                     'CccrRevision','IoEnable','IoReady','F1InterfaceCode','F2InterfaceCode'
                 )
@@ -252,11 +275,13 @@ function Invoke-Rpi5WiFiDiagnostic {
                 }
                 ''
                 'Bounded CMD5 attempts (zero values after Cmd5AttemptCount were not executed):'
-                for ($attemptNumber = 1; $attemptNumber -le 9; $attemptNumber++) {
+                for ($attemptNumber = 1; $attemptNumber -le 18; $attemptNumber++) {
                     $prefix = "Cmd5Attempt$attemptNumber"
                     $clock = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}ClockKhz" -Default 0
+                    $argument = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}Argument" -Default 0
                     $status = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}Status" -Default 0
                     $resetStatus = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}ResetStatus" -Default 0
+                    $responseValid = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}ResponseValid" -Default 0
                     $interrupt = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}InterruptStatus" -Default 0
                     $response = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}Response" -Default 0
                     $presentBefore = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}PresentStateBefore" -Default 0
@@ -265,12 +290,24 @@ function Invoke-Rpi5WiFiDiagnostic {
                     $clockAfter = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}ClockControlAfter" -Default 0
                     $powerBefore = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}PowerControlBefore" -Default 0
                     $powerAfter = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}PowerControlAfter" -Default 0
-                    ('Attempt={0} ClockKhz={1} Status={2} ResetStatus={3} Interrupt={4} Response={5} PresentBefore={6} PresentAfter={7} ClockBefore={8} ClockAfter={9} PowerBefore={10} PowerAfter={11}' -f
-                        $attemptNumber,$clock,(ConvertTo-Rpi5Hex32 $status),(ConvertTo-Rpi5Hex32 $resetStatus),
+                    $hostBefore = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}HostControlBefore" -Default 0
+                    $hostAfter = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}HostControlAfter" -Default 0
+                    $host2Before = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}HostControl2Before" -Default 0
+                    $host2After = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}HostControl2After" -Default 0
+                    $timeoutBefore = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}TimeoutControlBefore" -Default 0
+                    $timeoutAfter = Get-Rpi5PropertyValue -Object $diag -Name "${prefix}TimeoutControlAfter" -Default 0
+                    $cmdLineBefore = if (([uint32]$presentBefore -band 0x01000000) -ne 0) { 'High' } else { 'Low' }
+                    $cmdLineAfter = if (([uint32]$presentAfter -band 0x01000000) -ne 0) { 'High' } else { 'Low' }
+                    ('Attempt={0} ClockKhz={1} Argument={2} ResponseValid={3} Status={4} ResetStatus={5} Interrupt={6} Response={7} CmdLineBefore={8} CmdLineAfter={9} PresentBefore={10} PresentAfter={11} ClockBefore={12} ClockAfter={13} PowerBefore={14} PowerAfter={15} HostBefore={16} HostAfter={17} Host2Before={18} Host2After={19} TimeoutBefore={20} TimeoutAfter={21}' -f
+                        $attemptNumber,$clock,(ConvertTo-Rpi5Hex32 $argument),$responseValid,
+                        (ConvertTo-Rpi5Hex32 $status),(ConvertTo-Rpi5Hex32 $resetStatus),
                         (ConvertTo-Rpi5Hex32 $interrupt),(ConvertTo-Rpi5Hex32 $response),
-                        (ConvertTo-Rpi5Hex32 $presentBefore),(ConvertTo-Rpi5Hex32 $presentAfter),
+                        $cmdLineBefore,$cmdLineAfter,(ConvertTo-Rpi5Hex32 $presentBefore),(ConvertTo-Rpi5Hex32 $presentAfter),
                         (ConvertTo-Rpi5Hex32 $clockBefore),(ConvertTo-Rpi5Hex32 $clockAfter),
-                        (ConvertTo-Rpi5Hex32 $powerBefore),(ConvertTo-Rpi5Hex32 $powerAfter))
+                        (ConvertTo-Rpi5Hex32 $powerBefore),(ConvertTo-Rpi5Hex32 $powerAfter),
+                        (ConvertTo-Rpi5Hex32 $hostBefore),(ConvertTo-Rpi5Hex32 $hostAfter),
+                        (ConvertTo-Rpi5Hex32 $host2Before),(ConvertTo-Rpi5Hex32 $host2After),
+                        (ConvertTo-Rpi5Hex32 $timeoutBefore),(ConvertTo-Rpi5Hex32 $timeoutAfter))
                 }
             } else {
                 'Driver diagnostic registry key was not found.'
