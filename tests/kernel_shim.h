@@ -14,10 +14,12 @@ typedef int NDIS_MEDIA_CONNECT_STATE, NDIS_MEDIA_DUPLEX_STATE;
 typedef struct { ULONG LowPart; long HighPart; } NDIS_PHYSICAL_ADDRESS;
 typedef struct { LONGLONG QuadPart; } LARGE_INTEGER;
 typedef NTSTATUS DRIVER_INITIALIZE(void);
+#ifndef _In_
 #define _In_
 #define _Inout_
 #define _Out_
 #define _Out_opt_
+#endif
 #define TRUE 1
 #define FALSE 0
 #define PASSIVE_LEVEL 0

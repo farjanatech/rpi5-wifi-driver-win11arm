@@ -17,7 +17,13 @@ UCHAR READ_REGISTER_UCHAR(PUCHAR Address) { return *Address; }
 USHORT READ_REGISTER_USHORT(PUSHORT Address) { return *Address; }
 ULONG READ_REGISTER_ULONG(PULONG Address)
 {
-    if (Offset(Address) == SDHCI_BUFFER) { FifoReads++; return Fifo; }
+    if (Offset(Address) == SDHCI_BUFFER)
+    {
+        FifoReads++;
+        if (Fault == 10) Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_XFER_COMPLETE;
+        if (Fault == 11) Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_DATA_CRC;
+        return Fifo;
+    }
     return *Address;
 }
 void WRITE_REGISTER_UCHAR(PUCHAR Address, UCHAR Value)
@@ -56,6 +62,8 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
         if (Fault == 3) Response = 0x200;
         if (Fault == 4) Registers[SDHCI_INT_STATUS / 4] = SDHCI_INT_CMD_COMPLETE;
         if (Fault == 5) Registers[SDHCI_INT_STATUS / 4] &= ~SDHCI_INT_XFER_COMPLETE;
+        if (Fault == 10 || Fault == 11)
+            Registers[SDHCI_INT_STATUS / 4] &= ~SDHCI_INT_XFER_COMPLETE;
         if (Fault == 6 && Command53Count == 2) Fifo ^= 0x10000;
     }
     else if (Command == 52)
@@ -136,6 +144,14 @@ int main(void)
     TestIrql = 2;
     CHECK(SdioCmd53Read(&Adapter, 1, 0, Buffer, 4) == STATUS_INVALID_DEVICE_STATE);
     CHECK(CommandCount == 0);
+    Init(&Adapter); Fault = 10;
+    CHECK(SdioCmd53Read(&Adapter, 1, 0x8000, Buffer, 4) == 0);
+    Init(&Adapter); Fault = 11;
+    CHECK(SdioCmd53Read(&Adapter, 1, 0x8000, Buffer, 4) == STATUS_IO_DEVICE_ERROR);
+    CHECK(SdioLoadLe32(Buffer) == 0);
+    Init(&Adapter); Registers[SDHCI_PRESENT_STATE / 4] = SDHCI_PS_DATA_INHIBIT;
+    CHECK(SdioCmd53Read(&Adapter, 1, 0x8000, Buffer, 4) == STATUS_IO_TIMEOUT);
+    CHECK(CommandCount == 0 && ResetCount == 1);
 
     for (Mode = 1; Mode <= 5; Mode++)
     {
