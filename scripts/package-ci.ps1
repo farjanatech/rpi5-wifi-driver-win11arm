@@ -80,11 +80,17 @@ Architecture:
 
 This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
-CMD0/CMD5/CMD3/CMD7/CMD52 directly.
+CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
 The driver remains disconnected until the CYW43455 firmware/SDPCM/BCDC and
 association datapath are completed. A successful CMD52 diagnostic is a hardware
 protocol milestone, NOT a claim that Wi-Fi is working.
+
+Driver exp0.4 adds F1/ALP initialization and 16 matching chip-ID reads. It restores
+temporary card settings and never writes chip firmware/RAM. Physical testing is
+required. Expected: ProbePhase=250, Cmd53ReadCount=16, ChipId=0x4345, LastStatus=0,
+ProbeRestoreStatus=0. If restoration fails, power-cycle the Pi before retesting.
+Keep UEFI exp.0.3 (source bda4c47); this package contains NO UEFI update.
 
 Use only with the matching UEFI build that exposes ACPI\\RPI0011 and leaves
 MAX_50MHZ_MODE untouched. Confirm the physical fan operates normally after boot.
@@ -94,6 +100,11 @@ One-click installation:
   Approve the Administrator prompt. The installer verifies the package and
   matching UEFI/device before trusting the test certificate or installing.
   It runs the diagnostic collector automatically after the installation attempt.
+  Save your work before installation. If a reboot is requested, restart manually
+  and run Run-RPi5-WiFi-Diagnostics.cmd again. No uninstall is required first.
+  Recovery: Device Manager -> this adapter -> Driver -> Roll Back Driver (if
+  available), or disable only this adapter and reinstall the previous package.
+  Do not remove unrelated network/storage drivers or reflash Windows.
 
 Security:
   This is a test-signed kernel driver. The installer refuses to enable Test

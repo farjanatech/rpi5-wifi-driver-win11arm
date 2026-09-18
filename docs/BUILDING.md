@@ -23,7 +23,9 @@ From a Visual Studio/WDK developer environment:
 msbuild .\rpi5-cyw43455.sln /m /p:Configuration=Debug /p:Platform=ARM64
 ```
 
-The project links against `sdbus.lib`, which provides the Windows SD bus helper routines used by this driver.
+Builds and tests for distributed packages run in GitHub Actions. The driver
+links against `ndis.lib` and directly owns the dedicated ACPI RPI0011 SDIO2
+controller. It does not use `sdbus.lib`, WDF, or WiFiCx.
 
 ## Driver signing
 
@@ -31,22 +33,29 @@ During bring-up, use only a dedicated test machine with Windows test-signing/ker
 
 ## Current bring-up behavior
 
-The driver now contains the first Windows-native SDBUS transport slice.
+Driver 0.4 remains an experimental NDIS hardware probe, not working Wi-Fi.
 
-During `EvtDevicePrepareHardware` it:
+During its serialized PASSIVE_LEVEL miniport initialization it:
 
-1. opens `SDBUS_INTERFACE_STANDARD` for the SDIO function PDO;
-2. initializes the bus interface without enabling card interrupts yet;
-3. queries `SDP_FUNCTION_NUMBER`;
-4. configures block length to 64 bytes for function 1 and 512 bytes for function 2;
-5. performs read-only CMD52 checks of CCCR/FBR registers.
+1. maps the ACPI resource and initializes the SDHCI host;
+2. runs CMD5/CMD3/CMD7 and CMD52 identification;
+3. enables F1 and requests its ALP clock;
+4. selects the ChipCommon backplane window;
+5. performs 16 four-byte CMD53 reads of chip ID;
+6. restores the saved window, clock control and F1 enable state.
 
-A successful device start should emit a debugger line similar to:
+A successful new probe is identified in the diagnostic ZIP by:
 
 ```text
-RPI5CYW: SDIO ready fn=1 block=64 CCCR=0x.. IOEx=0x.. IORx=0x.. FBR=0x..
+ProbePhase=250, LastStatus=0, ProbeRestoreStatus=0, Cmd53ReadCount=16, ChipId=0x4345
 ```
 
-The source also contains a bounded synchronous CMD53 helper, but the driver does not execute CMD53 automatically during startup. That is intentional: first hardware validation should be non-destructive.
+The CMD53 helper reads byte-mode transfers only, with address/length bounds,
+separate command/data/transfer completion handling, and reset/zero-output on
+failure. Startup reads the ID register only: no arbitrary memory scan or RAM write.
 
-A successful compile proves only that the WDK/SDBUS-facing source is accepted by the toolchain. Real SDIO behavior still has to be validated on the Raspberry Pi 5.
+A successful build and host simulation do not prove physical SDIO behavior.
+GitHub compiles the actual sdio.c/chip.c against a fake-register test platform;
+tests cover 512 transfer lengths, simultaneous status bits, R5/data errors,
+timeouts, bounds, verification mismatch and each CMD52 failure/restore position.
+The ARM64 WDK build then compiles the same source against real Windows headers.

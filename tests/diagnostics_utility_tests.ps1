@@ -61,3 +61,18 @@ if ((ConvertTo-Rpi5Hex32 0) -ne '0x00000000') { throw 'Hex conversion failed for
 if ((ConvertTo-Rpi5Hex32 305419896) -ne '0x12345678') { throw 'Hex conversion failed for known value.' }
 
 Write-Output 'Diagnostics utility syntax, safety and helper tests passed.'
+
+$boot = [datetime]'2026-09-18T00:00:00Z'
+$good = [pscustomobject]@{
+    SnapshotTimeUtc=$boot.AddMinutes(1).ToFileTimeUtc(); ProbePhase=250
+    LastStatus=0; ProbeRestoreStatus=0; Cmd53ReadCount=16; ChipId=0x4345
+}
+if ((Get-Rpi5ProbeResult $good 'Running' $boot) -notlike 'PASS:*') { throw 'Good probe rejected.' }
+if ((Get-Rpi5ProbeResult $good 'Stopped' $boot) -notlike '*not running*') { throw 'Stopped driver accepted.' }
+if ((Get-Rpi5ProbeResult $good 'Running' $boot.AddHours(1)) -notlike '*predate*') { throw 'Stale data accepted.' }
+$good.ProbeRestoreStatus = 1
+if ((Get-Rpi5ProbeResult $good 'Running' $boot) -like 'PASS:*') { throw 'Restore failure accepted.' }
+$good.ProbeRestoreStatus = 0
+$good.Cmd53ReadCount = 15
+if ((Get-Rpi5ProbeResult $good 'Running' $boot) -like 'PASS:*') { throw 'Incomplete reads accepted.' }
+Write-Output 'Freshness and CMD53 summary tests passed.'

@@ -9,8 +9,11 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 The current branch binds an NDIS 6.30 Ethernet miniport to the dedicated
 `ACPI\RPI0011` SDIO2 host exposed by the matching UEFI. The driver maps SDIO2
 directly and currently implements only a bounded CMD0/CMD5/CMD3/CMD7/CMD52
-probe. It does not yet implement CMD53 data transfer, CYW43455 firmware loading,
-association, transmit or receive traffic.
+probe. Experimental driver 0.4 additionally enables function 1, requests ALP,
+selects the ChipCommon backplane window, and performs 16 bounded CMD53 PIO
+chip-ID reads at the identification clock. Temporary card settings are restored
+on success and failure. It does not implement firmware loading, association,
+transmit or receive traffic. It does not enable function 2 or write chip RAM.
 
 The CMD5 identification probe uses three bounded query/voltage-request cycles
 at each of 400, 200 and 100 kHz. It rejects empty or malformed R4 responses and
@@ -20,6 +23,10 @@ host-control, timeout, clock, power and line state for hardware diagnosis.
 
 Windows therefore sees a disconnected Ethernet adapter even when the probe
 succeeds. This is intentional diagnostic behavior, not working Wi-Fi.
+
+The user physically validated CMD5/CMD52 with driver 0.3 and UEFI source
+`bda4c47` on 2026-09-18. The new CMD53/chip test still requires Pi validation.
+Keep UEFI exp.0.3 installed. Do not reflash Windows for this driver update.
 
 ## Architecture
 

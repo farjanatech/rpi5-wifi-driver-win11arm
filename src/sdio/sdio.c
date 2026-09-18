@@ -1,4 +1,5 @@
 #include "sdio.h"
+#include "../cyw43455/chip.h"
 
 C_ASSERT(RPI5CYW_CMD5_MAX_ATTEMPTS == SDIO_CMD5_MAX_ATTEMPTS);
 
@@ -59,7 +60,7 @@ SdioWrite32(
     WRITE_REGISTER_ULONG((PULONG)((PUCHAR)Adapter->RegisterBase + Offset), Value);
 }
 
-static VOID
+VOID
 SdioDelayMilliseconds(
     _In_ ULONG Milliseconds
     )
@@ -211,6 +212,8 @@ SdioInitializeHost(
     SdioWrite32(Adapter, SDHCI_INT_STATUS_ENABLE,
                 SDHCI_INT_CMD_COMPLETE |
                 SDHCI_INT_XFER_COMPLETE |
+                SDHCI_INT_BUFFER_READ_READY |
+                SDHCI_INT_DATA_ERROR_MASK |
                 SDHCI_INT_ERROR |
                 SDHCI_INT_CMD_ERROR_MASK);
     SdioWrite32(Adapter, SDHCI_INT_SIGNAL_ENABLE, 0);
@@ -481,7 +484,7 @@ SdioNegotiateOperatingConditionWithRetries(
     return SawValidResponse ? STATUS_IO_TIMEOUT : LastStatus;
 }
 
-static NTSTATUS
+NTSTATUS
 SdioCmd52Read(
     _Inout_ PRPI5CYW_ADAPTER Adapter,
     _In_ UCHAR Function,
@@ -493,7 +496,8 @@ SdioCmd52Read(
     ULONG Response;
     NTSTATUS Status;
 
-    if (Value == NULL || Function > 7 || Address > 0x1FFFF)
+    if (Adapter == NULL || Adapter->RegisterBase == NULL ||
+        Value == NULL || Function > 7 || Address > 0x1FFFF)
     {
         return STATUS_INVALID_PARAMETER;
     }
@@ -521,6 +525,124 @@ SdioCmd52Read(
 
     *Value = (UCHAR)(Response & 0xFF);
     return STATUS_SUCCESS;
+}
+
+NTSTATUS
+SdioCmd52Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
+               UCHAR Value, UCHAR VerifyMask)
+{
+    ULONG Response;
+    UCHAR ReadBack;
+    NTSTATUS Status;
+    if (Adapter == NULL || Adapter->RegisterBase == NULL ||
+        Function > 7 || Address > SDIO_CMD52_ADDRESS_MASK)
+        return STATUS_INVALID_PARAMETER;
+
+    Status = SdioSendCommand(Adapter, SDCMD_IO_RW_DIRECT,
+        SdioBuildCmd52Argument(TRUE, Function, FALSE, Address, Value),
+        SDHCI_CMD_RESP_48 | SDHCI_CMD_CRC_CHECK | SDHCI_CMD_INDEX_CHECK,
+        &Response);
+    if (!NT_SUCCESS(Status)) return Status;
+    if (SdioR5HasError(Response)) return STATUS_IO_DEVICE_ERROR;
+    if (VerifyMask == 0) return STATUS_SUCCESS;
+    Status = SdioCmd52Read(Adapter, Function, Address, &ReadBack);
+    if (!NT_SUCCESS(Status)) return Status;
+    return ((ReadBack ^ Value) & VerifyMask) == 0 ?
+        STATUS_SUCCESS : STATUS_DEVICE_DATA_ERROR;
+}
+
+/* PASSIVE_LEVEL, serialized startup only. No DMA, IRQ callbacks or RAM writes.
+ * Keep data-ready and transfer-complete latched until their phase consumes
+ * them: the command-only path clears all status and cannot be reused here.
+ */
+NTSTATUS
+SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
+              PUCHAR Buffer, ULONG Length)
+{
+    ULONG InterruptStatus = 0, Response, Offset, Word, Byte, Poll;
+    NTSTATUS Status;
+    const ULONG Errors = SDHCI_INT_ERROR | SDHCI_INT_CMD_ERROR_MASK |
+                         SDHCI_INT_DATA_ERROR_MASK;
+    const ULONG Events[3] = { SDHCI_INT_CMD_COMPLETE,
+        SDHCI_INT_BUFFER_READ_READY, SDHCI_INT_XFER_COMPLETE };
+    ULONG Phase;
+
+    if (Adapter == NULL || Adapter->RegisterBase == NULL || Buffer == NULL ||
+        !SdioIsValidByteRead(Function, Address, Length))
+        return STATUS_INVALID_PARAMETER;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL) return STATUS_INVALID_DEVICE_STATE;
+    RtlZeroMemory(Buffer, Length);
+    Adapter->Cmd53BytesTransferred = 0;
+    Adapter->Cmd53ResetStatus = STATUS_SUCCESS;
+    Adapter->LastCommand = SDCMD_IO_RW_EXTENDED;
+    Adapter->LastArgument = SdioBuildCmd53Argument(FALSE, Function, FALSE,
+                                                  TRUE, Address, Length);
+    Adapter->LastResponse = 0;
+    Adapter->LastInterruptStatus = 0;
+    Status = SdioWaitInhibitClear(Adapter,
+        SDHCI_PS_CMD_INHIBIT | SDHCI_PS_DATA_INHIBIT);
+    if (!NT_SUCCESS(Status)) goto Failed;
+
+    SdioWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
+    SdioWrite16(Adapter, SDHCI_BLOCK_SIZE, (USHORT)Length);
+    SdioWrite16(Adapter, SDHCI_BLOCK_COUNT, 1);
+    SdioWrite16(Adapter, SDHCI_TRANSFER_MODE, SDHCI_TRNS_READ);
+    SdioWrite32(Adapter, SDHCI_ARGUMENT, Adapter->LastArgument);
+    KeMemoryBarrier();
+    SdioWrite16(Adapter, SDHCI_COMMAND, SDHCI_MAKE_CMD(SDCMD_IO_RW_EXTENDED,
+        SDHCI_CMD_RESP_48 | SDHCI_CMD_CRC_CHECK | SDHCI_CMD_INDEX_CHECK |
+        SDHCI_CMD_DATA_PRESENT));
+
+    for (Phase = 0; Phase < 3; Phase++)
+    {
+        for (Poll = 0; Poll < 250; Poll++)
+        {
+            InterruptStatus = SdioRead32(Adapter, SDHCI_INT_STATUS);
+            Adapter->LastInterruptStatus = InterruptStatus;
+            if ((InterruptStatus & Errors) != 0)
+            {
+                Status = STATUS_IO_DEVICE_ERROR;
+                goto Failed;
+            }
+            if ((InterruptStatus & Events[Phase]) != 0) break;
+            SdioDelayMilliseconds(1);
+        }
+        if (Poll == 250)
+        {
+            Status = STATUS_IO_TIMEOUT;
+            goto Failed;
+        }
+        if (Phase == 0)
+        {
+            Response = SdioRead32(Adapter, SDHCI_RESPONSE0);
+            Adapter->LastResponse = Response;
+            if (SdioR5HasError(Response))
+            {
+                Status = STATUS_IO_DEVICE_ERROR;
+                goto Failed;
+            }
+        }
+        SdioWrite32(Adapter, SDHCI_INT_STATUS, Events[Phase]);
+        if (Phase == 1)
+        {
+            for (Offset = 0; Offset < Length; Offset += 4)
+            {
+                Word = SdioRead32(Adapter, SDHCI_BUFFER);
+                for (Byte = 0; Byte < 4 && Offset + Byte < Length; Byte++)
+                    Buffer[Offset + Byte] = (UCHAR)(Word >> (Byte * 8));
+            }
+            Adapter->Cmd53BytesTransferred = Length;
+        }
+    }
+    Adapter->Cmd53ReadCount++;
+    return STATUS_SUCCESS;
+
+Failed:
+    Adapter->Cmd53ResetStatus = SdioResetHost(Adapter,
+                                             SDHCI_RESET_CMD | SDHCI_RESET_DATA);
+    SdioWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
+    RtlZeroMemory(Buffer, Length);
+    return Status;
 }
 
 NTSTATUS
@@ -629,5 +751,5 @@ Rpi5CywDirectSdioProbe(
     Adapter->ClockControl = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
     Adapter->PowerControl = SdioRead8(Adapter, SDHCI_POWER_CONTROL);
     Rpi5CywWriteDiagnostics(Adapter, 90, STATUS_SUCCESS);
-    return STATUS_SUCCESS;
+    return Cyw43455Probe(Adapter);
 }

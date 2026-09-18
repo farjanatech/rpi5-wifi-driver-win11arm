@@ -29,6 +29,12 @@ CheckUlong(
 int
 main(void)
 {
+    const UCHAR Bytes[4] = { 0x45, 0x43, 0x03, 0x15 };
+    CheckUlong("little endian ID", SdioLoadLe32(Bytes), 0x15034345UL);
+    CheckUlong("byte read max", (ULONG)SdioIsValidByteRead(1, 0x1FE00, 512), 1);
+    CheckUlong("byte read crosses boundary", (ULONG)SdioIsValidByteRead(1, 0x1FE01, 512), 0);
+    CheckUlong("zero byte read", (ULONG)SdioIsValidByteRead(1, 0, 0), 0);
+    CheckUlong("invalid function", (ULONG)SdioIsValidByteRead(8, 0, 1), 0);
     CheckUlong("CMD52 read fn0/address0",
                SdioBuildCmd52Argument(0, 0, 0, 0, 0),
                0x00000000UL);

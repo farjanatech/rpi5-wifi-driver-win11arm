@@ -57,6 +57,7 @@
   <ItemGroup>
     <ClCompile Include="src\driver\driver.c" />
     <ClCompile Include="src\sdio\sdio.c" />
+    <ClCompile Include="src\cyw43455\chip.c" />
   </ItemGroup>
 
   <ItemGroup>

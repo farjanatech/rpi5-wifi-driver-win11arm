@@ -29,6 +29,22 @@
 #define SDIO_CMD5_MAX_CYCLES              (SDIO_CMD5_CLOCK_COUNT * SDIO_CMD5_CYCLES_PER_CLOCK)
 #define SDIO_CMD5_MAX_ATTEMPTS            (SDIO_CMD5_MAX_CYCLES * SDIO_CMD5_COMMANDS_PER_CYCLE)
 
+/* Single byte-mode incrementing transfer; never silently wrap an address. */
+static __forceinline int
+SdioIsValidByteRead(UCHAR Function, ULONG Address, ULONG Length)
+{
+    return Function >= 1 && Function <= 7 && Length >= 1 && Length <= 512 &&
+           Address <= SDIO_CMD53_ADDRESS_MASK &&
+           (Length - 1) <= SDIO_CMD53_ADDRESS_MASK - Address;
+}
+
+static __forceinline ULONG
+SdioLoadLe32(const UCHAR *Bytes)
+{
+    return (ULONG)Bytes[0] | ((ULONG)Bytes[1] << 8) |
+           ((ULONG)Bytes[2] << 16) | ((ULONG)Bytes[3] << 24);
+}
+
 static __forceinline ULONG
 SdioBuildCmd52Argument(
     int Write,

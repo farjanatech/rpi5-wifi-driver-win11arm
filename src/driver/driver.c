@@ -81,6 +81,8 @@ Rpi5CywWriteDiagnostics(
 
     Adapter->DiagStage = Stage;
     Adapter->ProbeStatus = Status;
+    if ((Stage >= 20 && Stage <= 90) || (Stage >= 200 && Stage <= 260))
+        Adapter->ProbePhase = Stage;
 
     RtlInitUnicodeString(&KeyName, L"\\Registry\\Machine\\SOFTWARE\\Rpi5CywDirectDiag");
     InitializeObjectAttributes(&Attributes,
@@ -108,7 +110,13 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 3);
+    SET_DWORD(L"DiagVersion", 4);
+    {
+        LARGE_INTEGER Now;
+        KeQuerySystemTime(&Now);
+        RtlInitUnicodeString(&ValueName, L"SnapshotTimeUtc");
+        (VOID)ZwSetValueKey(KeyHandle, &ValueName, 0, REG_QWORD, &Now, sizeof(Now));
+    }
     SET_DWORD(L"Stage", Stage);
     SET_DWORD(L"LastStatus", Status);
     SET_DWORD(L"ResourceCount", Adapter->ResourceCount);
@@ -207,6 +215,16 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"IoReady", Adapter->IoReady);
     SET_DWORD(L"F1InterfaceCode", Adapter->F1InterfaceCode);
     SET_DWORD(L"F2InterfaceCode", Adapter->F2InterfaceCode);
+    SET_DWORD(L"ProbePhase", Adapter->ProbePhase);
+    SET_DWORD(L"Function1Ready", Adapter->Function1Ready);
+    SET_DWORD(L"ChipClockCsr", Adapter->ChipClockCsr);
+    SET_DWORD(L"ChipIdRaw", Adapter->ChipIdRaw);
+    SET_DWORD(L"ChipId", Adapter->ChipId);
+    SET_DWORD(L"ChipRevision", Adapter->ChipRevision);
+    SET_DWORD(L"Cmd53ReadCount", Adapter->Cmd53ReadCount);
+    SET_DWORD(L"Cmd53BytesTransferred", Adapter->Cmd53BytesTransferred);
+    SET_DWORD(L"Cmd53ResetStatus", Adapter->Cmd53ResetStatus);
+    SET_DWORD(L"ProbeRestoreStatus", Adapter->ProbeRestoreStatus);
 
 #undef SET_DWORD
 

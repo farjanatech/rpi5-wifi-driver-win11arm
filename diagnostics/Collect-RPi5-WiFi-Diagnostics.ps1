@@ -8,7 +8,31 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.3.0'
+$script:UtilityVersion = '0.4.0'
+
+function Get-Rpi5ProbeResult {
+    param([AllowNull()]$Diagnostic, [string]$ServiceStatus, [datetime]$BootTime)
+    if ($null -eq $Diagnostic) { return 'No saved driver diagnostics.' }
+    if ($ServiceStatus -ne 'Running') {
+        return 'Driver is not running. Saved probe results may be stale; check device enable/problem status.'
+    }
+    $stamp = Get-Rpi5PropertyValue $Diagnostic 'SnapshotTimeUtc' -Default 0
+    try { $snapshot = [datetime]::FromFileTimeUtc([int64]$stamp) }
+    catch { return 'Invalid diagnostic timestamp; cannot verify this test is current.' }
+    if ($snapshot -lt $BootTime.ToUniversalTime()) {
+        return 'Saved results predate this boot or have no timestamp; rerun with the updated driver.'
+    }
+    $phase = Get-Rpi5PropertyValue $Diagnostic 'ProbePhase' -Default 0
+    $status = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'LastStatus' -Default $null)
+    $restored = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'ProbeRestoreStatus' -Default $null)
+    $reads = Get-Rpi5PropertyValue $Diagnostic 'Cmd53ReadCount' -Default 0
+    $chip = Get-Rpi5PropertyValue $Diagnostic 'ChipId' -Default 0
+    if ($phase -eq 250 -and $status -eq '0x00000000' -and
+        $restored -eq '0x00000000' -and $reads -eq 16 -and $chip -eq 0x4345) {
+        return 'PASS: 16 matching CMD53 chip-ID reads and restoration completed. This is not working Wi-Fi.'
+    }
+    return "Probe not complete: phase=$phase status=$status restoration=$restored. Inspect controller registers."
+}
 
 function Test-Rpi5Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -178,16 +202,10 @@ function Invoke-Rpi5WiFiDiagnostic {
         $cmd5AttemptCount = Get-Rpi5PropertyValue -Object $diag -Name 'Cmd5AttemptCount' -Default 0
         $cmd5ValidAttempt = Get-Rpi5PropertyValue -Object $diag -Name 'Cmd5ValidAttempt' -Default 0
         $cmd5SuccessAttempt = Get-Rpi5PropertyValue -Object $diag -Name 'Cmd5SuccessAttempt' -Default 0
-        $probeResult = 'Driver diagnostic registry data is not present.'
-        if ($null -ne $diag) {
-            $stageNumber = 0
-            [void][int]::TryParse([string]$stage, [ref]$stageNumber)
-            if ($stageNumber -ge 90 -and $lastStatus -eq '0x00000000') {
-                $probeResult = 'CMD52 path reached successfully. This is not working Wi-Fi.'
-            } else {
-                $probeResult = 'Probe did not complete CMD52 reads. Inspect controller-registers.txt and driver-registry.txt.'
-            }
-        }
+        $driverService = Get-Service -Name rpi5cyw -ErrorAction SilentlyContinue
+        $serviceStatus = [string](Get-Rpi5PropertyValue $driverService 'Status' -Default 'Unavailable')
+        $bootTime = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
+        $probeResult = Get-Rpi5ProbeResult $diag $serviceStatus $bootTime
 
         $summary = @(
             'Raspberry Pi 5 CYW43455 direct-SDIO diagnostic summary'
@@ -202,6 +220,11 @@ function Invoke-Rpi5WiFiDiagnostic {
             "Temperature_ACPI_RPI0010=$([bool]$temperatureDevice)"
             "DriverDiagnosticsPresent=$([bool]$diag)"
             "Stage=$stage"
+            "DriverService=$serviceStatus"
+            "ProbePhase=$(Get-Rpi5PropertyValue $diag 'ProbePhase')"
+            "SnapshotTimeUtc=$(Get-Rpi5PropertyValue $diag 'SnapshotTimeUtc')"
+            "ChipId=$(ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $diag 'ChipId' -Default $null))"
+            "Cmd53ReadCount=$(Get-Rpi5PropertyValue $diag 'Cmd53ReadCount')"
             "LastStatus=$lastStatus"
             "Cmd5AttemptCount=$cmd5AttemptCount"
             "Cmd5ValidAttempt=$cmd5ValidAttempt"
@@ -263,7 +286,10 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'LastCommand','LastArgument','LastInterruptStatus','LastResponse',
                     'LastCommandResetStatus','Cmd5AttemptCount','Cmd5ValidAttempt','Cmd5SuccessAttempt',
                     'Cmd5ProbeResponse','SdioOcr','SdioFunctions','RelativeAddress',
-                    'CccrRevision','IoEnable','IoReady','F1InterfaceCode','F2InterfaceCode'
+                    'CccrRevision','IoEnable','IoReady','F1InterfaceCode','F2InterfaceCode',
+                    'DiagVersion','ProbePhase','Function1Ready','ChipClockCsr','ChipIdRaw',
+                    'ChipId','ChipRevision','Cmd53ReadCount','Cmd53BytesTransferred',
+                    'Cmd53ResetStatus','ProbeRestoreStatus'
                 )
                 foreach ($name in $names) {
                     $value = Get-Rpi5PropertyValue -Object $diag -Name $name

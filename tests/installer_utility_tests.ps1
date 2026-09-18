@@ -26,7 +26,7 @@ foreach ($pattern in $forbidden) {
 }
 
 foreach ($required in @(
-    '5a5013a','ACPI\\RPI0011','Test-Rpi5PackageManifest','Get-AuthenticodeSignature',
+    'bda4c47','ACPI\\RPI0011','Test-Rpi5PackageManifest','Get-AuthenticodeSignature',
     'certutil.exe -addstore','pnputil.exe /add-driver','Collect-RPi5-WiFi-Diagnostics.ps1'
 )) {
     if ($source -notmatch [regex]::Escape($required)) { throw "Required safety/install behavior is missing: $required" }
@@ -34,6 +34,11 @@ foreach ($required in @(
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) { throw 'One-click installer launcher is missing.' }
 
 . $scriptPath -LibraryOnly
+if (-not (Test-Rpi5PnpSuccess 0) -or -not (Test-Rpi5PnpSuccess 3010) -or
+    (Test-Rpi5PnpSuccess 5)) { throw 'PnP exit code classification failed.' }
+if ($source -notmatch [regex]::Escape('pnputil.exe /enable-device $device.InstanceId')) {
+    throw 'Exact target enable is missing.'
+}
 foreach ($bad in @('..\evil.sys','folder\file.sys','C:\evil.sys','..','SHA256SUMS.txt')) {
     if (Test-Rpi5ManifestName -Name $bad) { throw "Unsafe manifest name was accepted: $bad" }
 }

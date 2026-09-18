@@ -9,6 +9,7 @@
 #define SDHCI_TRANSFER_MODE           0x0C
 #define SDHCI_COMMAND                 0x0E
 #define SDHCI_RESPONSE0               0x10
+#define SDHCI_BUFFER                  0x20
 #define SDHCI_PRESENT_STATE           0x24
 #define SDHCI_HOST_CONTROL            0x28
 #define SDHCI_POWER_CONTROL           0x29
@@ -45,6 +46,8 @@
 
 #define SDHCI_INT_CMD_COMPLETE        0x00000001UL
 #define SDHCI_INT_XFER_COMPLETE       0x00000002UL
+#define SDHCI_INT_BUFFER_READ_READY   0x00000020UL
+#define SDHCI_INT_DATA_ERROR_MASK     0x00700000UL
 #define SDHCI_INT_ERROR               0x00008000UL
 #define SDHCI_INT_CMD_TIMEOUT         0x00010000UL
 #define SDHCI_INT_CMD_CRC             0x00020000UL
@@ -70,6 +73,8 @@
 #define SDHCI_CMD_RESP_MASK           0x0003
 #define SDHCI_CMD_CRC_CHECK           0x0008
 #define SDHCI_CMD_INDEX_CHECK         0x0010
+#define SDHCI_CMD_DATA_PRESENT        0x0020
+#define SDHCI_TRNS_READ               0x0010
 #define SDHCI_CMD_INDEX_SHIFT         8
 #define SDHCI_MAKE_CMD(_idx,_flags)   ((USHORT)(((_idx) << SDHCI_CMD_INDEX_SHIFT) | (_flags)))
 
@@ -78,6 +83,7 @@
 #define SDCMD_SEND_RELATIVE_ADDR      3
 #define SDCMD_SELECT_CARD             7
 #define SDCMD_IO_RW_DIRECT            52
+#define SDCMD_IO_RW_EXTENDED          53
 
 #define SDIO_OCR_READY                0x80000000UL
 #define SDIO_OCR_NUM_FUNCTIONS_MASK   0x70000000UL
@@ -89,3 +95,11 @@
 #define CYW_SDIO_CCCR_IO_READY        0x00003UL
 #define CYW_SDIO_F1_INTERFACE         0x00100UL
 #define CYW_SDIO_F2_INTERFACE         0x00200UL
+
+NTSTATUS SdioCmd52Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
+                       ULONG Address, PUCHAR Value);
+NTSTATUS SdioCmd52Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
+                        ULONG Address, UCHAR Value, UCHAR VerifyMask);
+NTSTATUS SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
+                       ULONG Address, PUCHAR Buffer, ULONG Length);
+VOID SdioDelayMilliseconds(ULONG Milliseconds);

@@ -25,9 +25,11 @@ Current implementation status:
   command-reset, host-control, timeout, clock, power and line-state diagnostics.
 - [x] Implement bounded CMD0/CMD5/CMD3/CMD7 command polling.
 - [x] Implement CMD52 reads and read CCCR/FBR identity registers.
-- [ ] Implement CMD52 writes with read-after-write verification.
+- [x] Implement CMD52 writes with masked read-after-write verification.
 - [ ] Configure and enable function 1/function 2.
-- [ ] Implement a bounded PIO CMD53 helper.
+- [x] Implement a bounded byte-mode PIO CMD53 read helper (1..512 bytes).
+- [x] Add function-1 enable, ALP clock and 16 ChipCommon ID reads, with restoration.
+- [ ] Validate the new CMD53 path on the Raspberry Pi (host simulation is not hardware proof).
 - [ ] Validate the above on Raspberry Pi 5 hardware.
 - [ ] Validate repeated CMD53 reads/writes against known-safe CYW43455 registers/RAM.
 - [ ] Register and acknowledge card interrupts.
@@ -65,18 +67,28 @@ Do not proceed to firmware loading until repeated SDIO reads/writes are stable.
 
 Firmware binaries are not committed yet. Their licensing and provenance must be preserved when they are added.
 
-## Milestone 2 - WiFiCx
+## Milestone 2 - Ethernet-style NDIS data path and Wi-Fi control
 
 Only after Milestone 1 is stable:
 
-- add WiFiCx/NetAdapterCx device creation;
-- expose station capabilities;
-- map scan results/events;
-- implement connect/disconnect;
-- add WPA2/WPA3 key handling;
+- keep the NDIS Ethernet-style adapter requested by the user;
+- provide a restricted control interface/utility for scan results and credentials;
+- implement connect/disconnect and firmware security configuration;
+- implement WPA2 first; advertise no unimplemented WPA3 capability;
 - connect TX/RX data path;
 - implement power transitions.
 
 ## Debugging rule
 
 A failed stage should be diagnosed at the lowest working layer. For example, do not debug WiFiCx scan callbacks while CMD53 or firmware event reception is still unreliable.
+
+## Driver 0.4 probe phases
+
+200: save/enable F1; 210: wait F1 ready; 220: ALP clock request/availability;
+230: save/select backplane window; 240: CMD53 chip ID; 250: all 16 IDs matched;
+260: chip reads succeeded but restoration failed. ProbePhase survives the NDIS
+Stage=120 marker. LastStatus and ProbeRestoreStatus must both be zero.
+IoEnable/IoReady/ChipClockCsr record observations during the probe, not post-restore
+card state. No card IRQs, core resets, firmware/RAM writes or network connection
+are attempted. F1, clock control and window registers are restored best-effort;
+power-cycle the Pi if restoration fails. Diagnostics record any cleanup failure.

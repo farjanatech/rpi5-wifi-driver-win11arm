@@ -1,9 +1,13 @@
 #pragma once
 
+#ifdef RPI5CYW_HOST_TEST
+#include "../../tests/kernel_shim.h"
+#else
 #include <ntddk.h>
 #include <ndis.h>
 #include <ifdef.h>
 #include <ipifcons.h>
+#endif
 
 #ifndef ETH_LENGTH_OF_ADDRESS
 #define ETH_LENGTH_OF_ADDRESS 6
@@ -112,6 +116,16 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG IoReady;
     ULONG F1InterfaceCode;
     ULONG F2InterfaceCode;
+    ULONG ProbePhase;
+    ULONG Function1Ready;
+    ULONG ChipClockCsr;
+    ULONG ChipIdRaw;
+    ULONG ChipId;
+    ULONG ChipRevision;
+    ULONG Cmd53ReadCount;
+    ULONG Cmd53BytesTransferred;
+    NTSTATUS Cmd53ResetStatus;
+    NTSTATUS ProbeRestoreStatus;
 } RPI5CYW_ADAPTER, *PRPI5CYW_ADAPTER;
 
 DRIVER_INITIALIZE DriverEntry;

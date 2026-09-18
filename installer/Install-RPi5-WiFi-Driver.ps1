@@ -7,8 +7,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.3.1'
-$script:RequiredUefiRevision = '5a5013a'
+$script:InstallerVersion = '0.4.0'
+$script:RequiredUefiRevision = 'bda4c47'
+
+function Test-Rpi5PnpSuccess {
+    param([int]$Code)
+    return $Code -in @(0, 3010)
+}
 
 function Test-Rpi5Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -115,6 +120,7 @@ function Invoke-Rpi5DriverInstall {
     try {
         Write-InstallMessage "RPi5 direct-SDIO driver one-click installer v$script:InstallerVersion"
         Write-InstallMessage 'This installer will not change UEFI, Secure Boot, Test Signing or BCD.'
+        Write-InstallMessage 'Experimental chip/data-transfer probe only: this version does not connect to Wi-Fi.'
 
         if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.InteropServices.Architecture]::Arm64) {
             throw 'This package can only be installed on Windows ARM64 running on Raspberry Pi 5.'
@@ -186,10 +192,20 @@ function Invoke-Rpi5DriverInstall {
         Write-InstallMessage 'Trusted the verified test certificate for this experimental driver.'
 
         & pnputil.exe /add-driver $inf /install | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
-        if ($LASTEXITCODE -ne 0) { throw "PnPUtil rejected the driver package with exit code $LASTEXITCODE." }
+        $installCode = $LASTEXITCODE
+        if (-not (Test-Rpi5PnpSuccess $installCode)) { throw "PnPUtil rejected the driver package with exit code $installCode." }
+        $rebootRequired = $installCode -eq 3010
+        # Enable only this verified ACPI device; never restart other adapters.
+        & pnputil.exe /enable-device $device.InstanceId | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
+        $enableCode = $LASTEXITCODE
+        if (-not (Test-Rpi5PnpSuccess $enableCode)) { throw "Device enable failed with exit code $enableCode." }
+        $rebootRequired = $rebootRequired -or $enableCode -eq 3010
         & pnputil.exe /scan-devices | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
         if ($LASTEXITCODE -ne 0) { throw "PnP device rescan failed with exit code $LASTEXITCODE." }
         Write-InstallMessage 'Driver package installation and PnP rescan completed.'
+        if ($rebootRequired) {
+            Write-InstallMessage 'Windows requires a reboot. Save your work and restart manually, then run diagnostics again.'
+        }
 
         Start-Sleep -Seconds 2
         $service = Get-Service -Name rpi5cyw -ErrorAction SilentlyContinue
