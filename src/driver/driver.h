@@ -150,6 +150,9 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG FirmwareError;
     ULONG FirmwareCommand;
     ULONG FirmwareBytes;
+    ULONG RamTransferAddress;
+    ULONG RamTransferLength;
+    ULONG RamTransferWrite;
     ULONG RamSize;
     ULONG LinkEvent;
     ULONG LinkReason;

@@ -100,6 +100,14 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
         if (Fault == 6 && Command53Count == 2) Fifo ^= 0x10000;
         if (Command53Count == Fail53At)
             Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_DATA_CRC;
+        /* Replay the observed exp0.6 failure: F1 rejects the oversized
+         * byte-mode request before the host may put data in the FIFO. */
+        if (Fault == 14 && Fn == 1 && !(Argument & 0x08000000UL) &&
+            ((Argument & 511) == 0 || (Argument & 511) > 64))
+        {
+            Response = 0x1100;
+            Registers[SDHCI_INT_STATUS / 4] = 0x11;
+        }
     }
     else if (Command == 52)
     {
@@ -166,6 +174,17 @@ int main(void)
     C_ASSERT(sizeof(ULONG) == 4);
     C_ASSERT(sizeof(NTSTATUS) == 4);
     RunEromTests();
+    Init(&Adapter); Fault=14; memset(Buffer,0xA5,sizeof(Buffer));
+    CHECK(SdioCmd53Write(&Adapter,1,0x8000,Buffer,512)==STATUS_IO_DEVICE_ERROR);
+    CHECK(Adapter.LastArgument==0x95000000UL && Adapter.LastResponse==0x1100);
+    CHECK(Adapter.LastInterruptStatus==0x11 && Adapter.Cmd53BytesTransferred==0);
+    CHECK(FifoWrites==0 && ResetCount==1);
+    Init(&Adapter); Fault=14;
+    CHECK(SdioCmd53Write(&Adapter,1,0x8000,Buffer,64)==STATUS_SUCCESS);
+    CHECK(Adapter.LastArgument==0x95000040UL && FifoWrites==16);
+    Init(&Adapter); Fault=14;
+    CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,64)==STATUS_SUCCESS);
+    CHECK(FifoReads==16);
     Init(&Adapter); memset(FifoBuffer,0,sizeof(FifoBuffer));
     CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,sizeof(FifoBuffer),FALSE)==0);
     CHECK(Command53Count==2 && FifoReads==256);

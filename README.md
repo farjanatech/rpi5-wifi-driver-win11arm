@@ -4,7 +4,13 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6 candidate — not yet hardware validated
+### Integrated exp0.6.1 candidate — firmware-transfer correction
+
+Physical exp0.6 diagnostics exposed rejection of the first 512-byte F1 RAM
+write (`0x95000000`, R5 `0x1100`, phase 420). exp0.6.1 configures/verifies F1
+at 64 bytes and uses RAM requests no larger than 64 bytes. New regression
+tests replay that response and test full-size firmware across window boundaries.
+This correction still needs physical confirmation; Wi-Fi is not yet validated.
 
 Driver 0.5 has now passed core discovery on the user's Pi 5: chip 0x4345 rev 6,
 11 cores, 8 CR4 banks and successful restoration. The current source builds on

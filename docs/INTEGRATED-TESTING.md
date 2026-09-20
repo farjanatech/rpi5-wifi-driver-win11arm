@@ -1,8 +1,14 @@
-# exp0.6 integrated candidate: physical test checklist
+# exp0.6.1 firmware-transfer candidate: physical test checklist
 
 This candidate has not yet demonstrated working Wi-Fi on hardware. Previous
 physical evidence covers SDIO identification and core discovery only. A passing
 GitHub build, loaded driver or firmware response is not proof of networking.
+
+exp0.6 installed but failed at its first 512-byte F1 RAM write (CMD53 argument
+`0x95000000`, R5 `0x1100`, phase 420). exp0.6.1 explicitly configures/verifies
+F1's 64-byte block size and caps RAM byte-mode requests at 64 bytes. This is a
+targeted compatibility correction, not confirmation that later startup or Wi-Fi
+will succeed. The exact hardware size limit has not been measured.
 
 ## Before installation
 
@@ -37,7 +43,9 @@ GitHub build, loaded driver or firmware response is not proof of networking.
 |---|---|
 | 400 | Reading packaged firmware and board configuration |
 | 410 | Halting CR4, holding D11, measuring RAM banks |
-| 420 | Firmware upload and readback verification |
+| 420 | Firmware upload |
+| 421 | Full firmware readback verification |
+| 422 | NVRAM and reset-vector writes |
 | 430 | Starting firmware and requesting high-throughput chip clock |
 | 440 | Function 2 transport enabled |
 | 500 | Configured but not authenticated |
@@ -49,6 +57,9 @@ Phase 600 is not a claim of DHCP, DNS or successful packet traffic.
 Diagnostics contain numeric firmware command/error and link event/reason, not
 credentials. Captured setup/Windows logs can still include device identifiers;
 review the ZIP before posting it publicly.
+`RamTransferAddress`, `RamTransferLength` and `RamTransferWrite` identify the
+most recent RAM operation (write=1, read=0); `FirmwareBytes` counts verified
+firmware bytes, not uploaded bytes. Failed transfers are not blindly retried.
 
 ## Limitations and recovery
 

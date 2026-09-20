@@ -9,6 +9,10 @@
 
 #define TRY(x) do { Status=(x); if(!NT_SUCCESS(Status)) goto Exit; } while(0)
 #define FW_DIR L"\\SystemRoot\\System32\\drivers\\rpi5cyw\\"
+/* Linux brcmfmac configures F1 for 64 bytes. exp0.6's first 512-byte
+ * byte-mode RAM write was rejected on the Pi with R5 OUT_OF_RANGE (0x1100).
+ * Use conservative nonzero byte counts, not a blind retry or new block engine. */
+#define CYW_F1_RAM_CHUNK 64UL
 
 #ifndef RPI5CYW_FIRMWARE_TEST
 NTSTATUS CywReadFirmwareFile(PCWSTR Name, PUCHAR *Data, PULONG Size, ULONG Limit)
@@ -74,14 +78,22 @@ NTSTATUS CywBpWrite(PRPI5CYW_ADAPTER A, ULONG Address, ULONG Value)
 static NTSTATUS CywRam(PRPI5CYW_ADAPTER A, ULONG Address, PUCHAR Data,
                        ULONG Length, BOOLEAN Write)
 {
-    ULONG n; NTSTATUS Status;
+    ULONG n, window=0xffffffffUL; NTSTATUS Status;
     if(!Length || !Data || !((Address==0 && Length==4) ||
         (Address>=A->RamBase && Address-A->RamBase<=A->RamSize &&
          Length<=A->RamSize-(Address-A->RamBase)))) return STATUS_INVALID_PARAMETER;
     while(Length) {
         if(CywNetworkCancelled(A))return STATUS_CANCELLED;
-        n=0x8000-(Address&0x7fff); if(n>512)n=512; if(n>Length)n=Length;
-        Status=CywWindow(A,Address); if(!NT_SUCCESS(Status)) return Status;
+        n=0x8000-(Address&0x7fff);
+        if(n>CYW_F1_RAM_CHUNK)n=CYW_F1_RAM_CHUNK; if(n>Length)n=Length;
+        A->RamTransferAddress=Address; A->RamTransferLength=n;
+        A->RamTransferWrite=Write;
+        /* The sole SDIO worker owns the window throughout this call. Select
+         * once per 32KiB boundary, not six CMD52 operations per small chunk. */
+        if(window!=(Address&0xffff8000UL)) {
+            Status=CywWindow(A,Address); if(!NT_SUCCESS(Status)) return Status;
+            window=Address&0xffff8000UL;
+        }
         Status=Write ? SdioCmd53Write(A,1,(Address&0x7fff)|0x8000,Data,n) :
                        SdioCmd53Read(A,1,(Address&0x7fff)|0x8000,Data,n);
         if(!NT_SUCCESS(Status)) return Status;
@@ -162,6 +174,8 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     if(A->ChipId!=0x4345 || A->ChipRevision!=6 || !A->CoreInventoryComplete ||
         A->SdioFunctions<2 || !A->Cr4WrapperBase) return Status;
     A->NetworkPhase=400;
+    A->FirmwareBytes=0; A->RamTransferAddress=0; A->RamTransferLength=0;
+    A->RamTransferWrite=0;
     /* Read every file before touching the CPU. Firmware is installed by INF,
      * catalog covered, with pinned source hashes recorded in the package. */
     TRY(CywReadFirmwareFile(FW_DIR L"cyfmac43455-sdio.bin",&fw,&fwSize,1024*1024));
@@ -177,6 +191,10 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     TRY(SdioCmd52Write(A,0,2,(UCHAR)(byte&~4),0xfe));
     TRY(SdioCmd52Write(A,0,4,0,7));
     TRY(SdioCmd52Write(A,0,6,2,0));
+    /* FBR1 block-size bytes are in function 0, independent of host BLKSIZE.
+     * Verify both before firmware transfers; never depend on warm-boot state. */
+    TRY(SdioCmd52Write(A,0,0x110,(UCHAR)CYW_F1_RAM_CHUNK,0xff));
+    TRY(SdioCmd52Write(A,0,0x111,0,0xff));
     TRY(CywEnable(A,2)); TRY(CywClock(A,0x28,0x40));
     TRY(SdioCmd52Write(A,1,0x1000e,0x21,0x3f)); KeStallExecutionProcessor(65);
     A->NetworkPhase=410;
@@ -197,6 +215,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
         fwPadded>A->RamSize-nvSize-4) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
     A->NetworkPhase=420;
     TRY(CywRam(A,A->RamBase,fw,fwPadded,TRUE));
+    A->NetworkPhase=421;
     /* Full readback, not just the first word. Refuse to start a corrupt upload. */
     for(off=0;off<fwPadded;off+=n) {
         n=fwPadded-off;if(n>sizeof(check))n=sizeof(check);
@@ -204,6 +223,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
         if(RtlCompareMemory(check,fw+off,n)!=n) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
         A->FirmwareBytes=min(off+n,fwSize);
     }
+    A->NetworkPhase=422;
     address=A->RamBase+A->RamSize-(ULONG)nvSize-4;
     TRY(CywRam(A,address,nv,(ULONG)nvSize,TRUE));
     token=(ULONG)(nvSize/4);token=((~token&0xffff)<<16)|(token&0xffff);
