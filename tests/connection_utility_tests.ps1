@@ -5,6 +5,19 @@ $tokens = $null; $errors = $null
 [void][Management.Automation.Language.Parser]::ParseFile($sourcePath, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'Connection utility has syntax errors.' }
 . $sourcePath -LibraryOnly
+$state = [byte[]]::new(48)
+[BitConverter]::GetBytes([uint32]2).CopyTo($state, 0)
+[BitConverter]::GetBytes([uint32]510).CopyTo($state, 4)
+[BitConverter]::GetBytes([uint32]263).CopyTo($state, 12)
+[BitConverter]::GetBytes([int32]-2).CopyTo($state, 16)
+[BitConverter]::GetBytes([uint32]2).CopyTo($state, 32)
+$message = Get-Rpi5DriverFailure $state
+if ($message -notmatch 'Connection setup/runtime' -or $message -notmatch 'country-set' -or
+    $message -notmatch 'firmware error -2' -or $message -match 'Firmware startup failed') {
+    throw 'Connection failure is mislabelled or lacks exact setting/error.'
+}
+if ((Get-Rpi5ConnectStepName 9) -ne 'sup_wpa') { throw 'Connection step mapping wrong.' }
+if ((Get-Rpi5DriverFailure ([byte[]]::new(32))) -notmatch 'Firmware startup') { throw 'Old status ABI broken.' }
 if (-not (Test-Rpi5ConnectionInput 'BD' 'test-network')) { throw 'Valid connection rejected.' }
 foreach ($bad in @('', 'B', '123', 'bd', 'BD;')) {
     if (Test-Rpi5ConnectionInput $bad 'test') { throw 'Invalid country accepted.' }

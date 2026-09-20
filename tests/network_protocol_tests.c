@@ -9,6 +9,14 @@ int main(void)
     CYW_CONNECT_REQUEST r={0};
     const uint8_t mac[6]={2,1,2,3,4,5},group[6]={1,0,0x5e,0,0,1},bc[6]={255,255,255,255,255,255};
     CHECK(sizeof(r)==76);
+    CHECK(CywCountryRequest((const uint8_t*)"BD",out));
+    CHECK(memcmp(out,"BD\0\0\0\0\0\0BD\0\0",12)==0);
+    CHECK(CywCountryMatches((const uint8_t*)"BD",out,12));
+    for(i=0;i<12;++i)CHECK(!CywCountryMatches((const uint8_t*)"BD",out,i));
+    out[8]='U';CHECK(!CywCountryMatches((const uint8_t*)"BD",out,12));out[8]='B';
+    CywPut32(out+4,0xffffffff);CHECK(!CywCountryMatches((const uint8_t*)"BD",out,12));
+    CHECK(!CywCountryRequest((const uint8_t*)"bd",out));
+    CHECK(!CywCountryRequest(NULL,out));CHECK(!CywCountryMatches(NULL,out,12));
     CHECK(CywPackNvram(raw,sizeof(raw)-1,out,sizeof(out),&used));
     CHECK(used==12 && memcmp(out,"a=1\0b=2\0\0",9)==0);
     CHECK(!CywPackNvram(raw,sizeof(raw),out,sizeof(out),&used));

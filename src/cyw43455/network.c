@@ -180,7 +180,7 @@ NTSTATUS CywFirmwareCommand(PRPI5CYW_ADAPTER A, ULONG Command, BOOLEAN Set, PUCH
     /* BCDC control flags have NO protocol-version bits: bit 1 means SET. */
     CywPut32(message+8,(id<<16)|(Set?2:0));
     if(Length)RtlCopyMemory(message+16,Data,Length);
-    A->FirmwareCommand=Command;A->FirmwareError=0;
+    A->FirmwareCommand=Command;A->FirmwareError=0;A->FirmwareReplyLength=0;
     until=KeQueryInterruptTime()+50000000ULL;
     while(!CywTxCredit(N->TxSeq,N->TxMax,0) && KeQueryInterruptTime()<until && !N->Stop) {
         Status=CywPoll(A,&channel,&off,&len);
@@ -201,6 +201,7 @@ NTSTATUS CywFirmwareCommand(PRPI5CYW_ADAPTER A, ULONG Command, BOOLEAN Set, PUCH
         if(!Set) {
             if(copy>len-off-16 || copy>Length) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
             RtlZeroMemory(Data,Length);RtlCopyMemory(Data,N->Rx+off+16,copy);
+            A->FirmwareReplyLength=copy;
         }
         Status=STATUS_SUCCESS;goto Exit;
     }
@@ -248,29 +249,7 @@ static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
     A->NetworkPhase=500;
 Exit: if(clm)ExFreePoolWithTag(clm,RPI5CYW_TAG);return Status;
 }
-static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
-{
-    UCHAR country[12]={0},pmk[132]={0},ssid[36]={0};
-    UCHAR rsn[22]={0x30,0x14,1,0,0,0x0f,0xac,4,1,0,0,0x0f,0xac,4,1,0,0,0x0f,0xac,2,0,0};
-    NTSTATUS Status;
-    A->Network->Associated=A->Network->Authorized=FALSE;CywLink(A,FALSE);
-    A->NetworkPhase=510;
-    TRY(CywCmdInt(A,3,0));
-    A->Network->Associated=A->Network->Authorized=FALSE;
-    country[0]=country[8]=R->Country[0];country[1]=country[9]=R->Country[1];
-    CywPut32(country+4,0xffffffff);
-    TRY(CywIovar(A,"country",TRUE,country,sizeof(country)));
-    TRY(CywCmdInt(A,20,1));TRY(CywCmdInt(A,22,0));TRY(CywCmdInt(A,134,4));
-    TRY(CywCmdInt(A,165,0x80));TRY(CywInt(A,"mfp",0));TRY(CywInt(A,"sup_wpa",1));
-    TRY(CywIovar(A,"wpaie",TRUE,rsn,sizeof(rsn)));
-    CywPut16(pmk,32);RtlCopyMemory(pmk+4,R->Pmk,32);
-    TRY(CywFirmwareCommand(A,268,TRUE,pmk,sizeof(pmk)));
-    TRY(CywCmdInt(A,2,0));
-    CywPut32(ssid,R->SsidLength);RtlCopyMemory(ssid+4,R->Ssid,R->SsidLength);
-    TRY(CywFirmwareCommand(A,26,TRUE,ssid,sizeof(ssid)));
-    A->NetworkPhase=520;
-Exit: RtlSecureZeroMemory(pmk,sizeof(pmk));RtlSecureZeroMemory(ssid,sizeof(ssid));return Status;
-}
+#include "connection.h"
 static VOID CywWorker(PVOID Context)
 {
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
@@ -493,6 +472,11 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
             out[3]=A->FirmwareCommand;out[4]=A->FirmwareError;out[5]=A->LinkEvent;
             out[6]=A->LinkReason;out[7]=A->MediaConnectState==MediaConnectStateConnected;
             bytes=32;Status=STATUS_SUCCESS;
+            /* Keep the original 32-byte ABI usable by older utilities. */
+            if(Stack->Parameters.DeviceIoControl.OutputBufferLength>=48) {
+                out[0]=2;out[8]=A->ConnectStep;out[9]=A->CountryRequested;
+                out[10]=A->CountryApplied;out[11]=A->CountryRevision;bytes=48;
+            }
         } else if((code==CYW_IOCTL_CONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==sizeof(CYW_CONNECT_REQUEST) &&
                     CywValidConnect(Irp->AssociatedIrp.SystemBuffer)) ||
                   (code==CYW_IOCTL_DISCONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==0)) {

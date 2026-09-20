@@ -86,9 +86,11 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.1 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
-It targets exp0.6's first firmware-write rejection with configured F1=64 bytes
-and RAM transfers capped at 64 bytes; physical confirmation is still required.
+Driver exp0.6.2 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
+exp0.6.1 physically passed firmware upload/readback and initialization, but
+connection setup failed. This update uses ISO country revision zero with strict
+readback, and records ConnectStep to identify any rejected connection setting.
+No substitute country or ignored regulatory error is allowed.
 It uploads firmware, checks RAM readback, uses SDPCM/BCDC and a polled packet path.
 It DOES NOT prove successful Wi-Fi until tested physically on the Pi.
 Run Connect-RPi5-WiFi.cmd as administrator AFTER installation and restart.

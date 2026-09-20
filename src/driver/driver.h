@@ -148,8 +148,13 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG NetworkPhase;
     NTSTATUS NetworkStatus;
     ULONG FirmwareError;
+    ULONG FirmwareReplyLength;
     ULONG FirmwareCommand;
     ULONG FirmwareBytes;
+    ULONG ConnectStep;
+    ULONG CountryRequested;
+    ULONG CountryApplied;
+    ULONG CountryRevision;
     ULONG RamTransferAddress;
     ULONG RamTransferLength;
     ULONG RamTransferWrite;

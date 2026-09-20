@@ -62,7 +62,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
-          $command = 'call "{0}" && cl /nologo /W4 /WX /TC tests\network_protocol_tests.c /Fe:ci-logs\network_protocol_tests.exe && ci-logs\network_protocol_tests.exe' -f $vcvars
+          $command = 'call "{0}" && cl /nologo /W4 /WX /TC tests\network_protocol_tests.c /Fe:ci-logs\network_protocol_tests.exe && ci-logs\network_protocol_tests.exe && cl /nologo /W4 /WX /TC /std:c17 tests\connection_sequence_tests.c /Fe:ci-logs\connection_sequence_tests.exe && ci-logs\connection_sequence_tests.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\network-protocol-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -178,7 +178,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.1
+          name: rpi5-wifi-one-click-diagnostics-v0.6.2
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

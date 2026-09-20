@@ -1,14 +1,21 @@
-# exp0.6.1 firmware-transfer candidate: physical test checklist
+# exp0.6.2 country-setting candidate: physical test checklist
 
 This candidate has not yet demonstrated working Wi-Fi on hardware. Previous
-physical evidence covers SDIO identification and core discovery only. A passing
-GitHub build, loaded driver or firmware response is not proof of networking.
+physical evidence now includes exp0.6.1's full 609,309-byte firmware readback and
+phase 500 startup. A passing build, loaded driver or firmware response is not
+proof of networking. Its connection request failed at phase 510 / SET_VAR (-2).
+
+exp0.6.2 uses ISO country revision zero (Linux's 4345 fallback) and requires a
+complete matching country readback before continuing. Keep your actual country:
+`BD` for Bangladesh. Never substitute another country to bypass rejection.
+The old log lacks the failed variable name; the revision was a compatibility
+defect found in review, not yet the proven cause of that particular rejection.
 
 exp0.6 installed but failed at its first 512-byte F1 RAM write (CMD53 argument
 `0x95000000`, R5 `0x1100`, phase 420). exp0.6.1 explicitly configures/verifies
 F1's 64-byte block size and caps RAM byte-mode requests at 64 bytes. This is a
-targeted compatibility correction, not confirmation that later startup or Wi-Fi
-will succeed. The exact hardware size limit has not been measured.
+targeted compatibility correction that passed the user's upload/readback test.
+The exact hardware size limit has not been measured.
 
 ## Before installation
 
@@ -60,6 +67,15 @@ review the ZIP before posting it publicly.
 `RamTransferAddress`, `RamTransferLength` and `RamTransferWrite` identify the
 most recent RAM operation (write=1, read=0); `FirmwareBytes` counts verified
 firmware bytes, not uploaded bytes. Failed transfers are not blindly retried.
+
+Connection errors now report `ConnectStep`: 1 radio-down, 2 country-set,
+3 country-readback, 4 infrastructure, 5 authentication-mode, 6 AES-cipher,
+7 WPA2-mode, 8 mfp, 9 sup_wpa, 10 wpaie, 11 PMK, 12 radio-up, 13 join-SSID.
+Only step identifiers are logged, never SSID/password/PMK contents.
+CountryRequested/Applied pack the first letter in the low byte and the second
+in the next byte (`BD` = `0x4442`). CountryRevision is the firmware readback.
+The control utility now labels connection errors correctly instead of calling
+them firmware-startup failures. Collect diagnostics before restarting on error.
 
 ## Limitations and recovery
 

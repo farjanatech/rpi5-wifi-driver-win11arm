@@ -65,6 +65,7 @@
   <ItemGroup>
     <ClInclude Include="src\driver\driver.h" />
     <ClInclude Include="src\sdio\sdio.h" />
+    <ClInclude Include="src\cyw43455\connection.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

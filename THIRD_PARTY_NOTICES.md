@@ -2,6 +2,12 @@
 
 ## Integrated candidate 0.6 references and redistributed firmware
 
+exp0.6.2 country-request handling references Linux v6.12 brcmfmac/cfg80211.c
+`brmcf_use_iso3166_ccode_fallback` and `brcmf_translate_country_code`: chip 4345
+uses the requested ISO3166 country and revision zero when no board mapping is
+supplied. ISC Broadcom notice below applies. Country readback validation and
+numeric step diagnostics are maintained in this repository.
+
 `src/cyw43455/firmware.c` and `network.c` adapt sequences and wire formats from
 Ahmed ARIF's `cyw43455/chip.c`, `fwil.c` and `cyw43455.h` at ReactOS revision
 `9bb45e56ca5e456bfe40357a161b6ea60af0356e`.

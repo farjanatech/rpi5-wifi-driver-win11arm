@@ -97,6 +97,22 @@ typedef struct CYW_CONNECT_REQUEST {
     uint32_t Version, SsidLength;
     uint8_t Country[2], Reserved[2], Ssid[32], Pmk[32];
 } CYW_CONNECT_REQUEST;
+/* brcmfmac cfg80211.c: ISO3166 fallback for 4345 uses revision zero.
+ * Never substitute a different country or ignore a firmware rejection. */
+static __inline int CywCountryRequest(const uint8_t *alpha2,uint8_t *out)
+{
+    if(!alpha2 || !out || alpha2[0]<'A' || alpha2[0]>'Z' ||
+        alpha2[1]<'A' || alpha2[1]>'Z')return 0;
+    memset(out,0,12);
+    out[0]=out[8]=alpha2[0];out[1]=out[9]=alpha2[1];
+    return 1;
+}
+static __inline int CywCountryMatches(const uint8_t *alpha2,const uint8_t *value,size_t length)
+{
+    return alpha2 && value && length>=12 && value[0]==alpha2[0] && value[1]==alpha2[1] &&
+        !value[2] && !value[3] && value[8]==alpha2[0] && value[9]==alpha2[1] &&
+        !value[10] && !value[11] && !(CywLe32(value+4)&0x80000000u);
+}
 static __inline int CywValidConnect(const CYW_CONNECT_REQUEST *r)
 {
     if(!r || r->Version!=1 || !r->SsidLength || r->SsidLength>32 ||

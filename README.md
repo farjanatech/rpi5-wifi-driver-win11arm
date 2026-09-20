@@ -4,13 +4,22 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6.1 candidate — firmware-transfer correction
+### Integrated exp0.6.2 candidate — country configuration and precise failures
+
+The user's exp0.6.1 Pi report confirms all 609,309 firmware bytes passed readback
+and startup reached phase 500. Connection setup then failed at phase 510 with
+SET_VAR / BADARG (-2); the old log cannot identify which variable was rejected.
+exp0.6.2 changes the ISO country revision from -1 to 0, following Linux's 4345
+fallback, verifies the country returned by the firmware before enabling the
+radio, and records all 13 connection steps. It does not substitute countries or
+ignore a firmware rejection. This addresses a supported compatibility issue;
+the exact cause of the previous BADARG remains unproven until physical retesting.
 
 Physical exp0.6 diagnostics exposed rejection of the first 512-byte F1 RAM
 write (`0x95000000`, R5 `0x1100`, phase 420). exp0.6.1 configures/verifies F1
 at 64 bytes and uses RAM requests no larger than 64 bytes. New regression
 tests replay that response and test full-size firmware across window boundaries.
-This correction still needs physical confirmation; Wi-Fi is not yet validated.
+The upload correction is now physically confirmed; Wi-Fi is not yet validated.
 
 Driver 0.5 has now passed core discovery on the user's Pi 5: chip 0x4345 rev 6,
 11 cores, 8 CR4 banks and successful restoration. The current source builds on

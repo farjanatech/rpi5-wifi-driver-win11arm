@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.1'
+$script:UtilityVersion = '0.6.2'
 
 function Get-Rpi5ProbeResult {
     param([AllowNull()]$Diagnostic, [string]$ServiceStatus, [datetime]$BootTime)
@@ -26,7 +26,8 @@ function Get-Rpi5ProbeResult {
     $networkPhase = Get-Rpi5PropertyValue $Diagnostic 'NetworkPhase' -Default 0
     if ($networkPhase -ge 400) {
         $networkStatus = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'NetworkStatus')
-        return "Integrated candidate: NetworkPhase=$networkPhase status=$networkStatus. Authenticated link, IP address and traffic still require separate confirmation."
+        $connectStep = Get-Rpi5PropertyValue $Diagnostic 'ConnectStep' -Default 0
+        return "Integrated candidate: NetworkPhase=$networkPhase status=$networkStatus ConnectStep=$connectStep. Authenticated link, IP address and traffic still require separate confirmation."
     }
     $status = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'LastStatus' -Default $null)
     $restored = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'ProbeRestoreStatus' -Default $null)
@@ -306,6 +307,7 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'D11CoreBase','Cr4CoreBase','Cr4WrapperBase','Cr4Capabilities',
                     'Cr4IoControl','Cr4ResetControl','RamBankCount','RamBase','CoreInventoryComplete',
                     'NetworkPhase','NetworkStatus','FirmwareCommand','FirmwareError','FirmwareBytes',
+                    'ConnectStep','CountryRequested','CountryApplied','CountryRevision',
                     'RamTransferAddress','RamTransferLength','RamTransferWrite',
                     'RamSize','LinkEvent','LinkReason','TxPackets','RxPackets'
                 )

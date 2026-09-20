@@ -8,6 +8,28 @@ function Test-Rpi5ConnectionInput {
     return $Country -cmatch '^[A-Z]{2}$' -and
         [Text.Encoding]::UTF8.GetByteCount($Ssid) -in 1..32
 }
+function Get-Rpi5ConnectStepName {
+    param([uint32]$Step)
+    switch ($Step) {
+        1 { 'radio-down' } 2 { 'country-set' } 3 { 'country-readback' }
+        4 { 'infrastructure' } 5 { 'authentication-mode' } 6 { 'AES-cipher' }
+        7 { 'WPA2-mode' } 8 { 'mfp' } 9 { 'sup_wpa' } 10 { 'wpaie' }
+        11 { 'PMK' } 12 { 'radio-up' } 13 { 'join-SSID' }
+        default { 'not-recorded' }
+    }
+}
+function Get-Rpi5DriverFailure {
+    param([byte[]]$State)
+    if ($State.Length -lt 32) { return 'Incomplete driver status. Run diagnostics.' }
+    $phase = [BitConverter]::ToUInt32($State, 4)
+    $step = if ($State.Length -ge 48 -and [BitConverter]::ToUInt32($State, 0) -ge 2) {
+        Get-Rpi5ConnectStepName ([BitConverter]::ToUInt32($State, 32))
+    } else { 'not-recorded' }
+    $stage = if ($phase -ge 500) { 'Connection setup/runtime' } else { 'Firmware startup' }
+    return ('{0} failed: phase {1}, step {2}, status 0x{3:X8}, firmware command {4}, firmware error {5}. Run diagnostics.' -f
+        $stage, $phase, $step, [BitConverter]::ToUInt32($State, 8),
+        [BitConverter]::ToUInt32($State, 12), [BitConverter]::ToInt32($State, 16))
+}
 # Deliberately no transcript, saved password, command-line credential or profile.
 Add-Type -TypeDefinition @'
 using System;
@@ -46,9 +68,11 @@ public static class Rpi5WifiControl {
     public static byte[] Call(uint code, byte[] input) {
         using(var h=CreateFile(@"\\.\Rpi5CywControl",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero)) {
             if(h.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
-            byte[] output=new byte[32]; int count;
+            byte[] output=new byte[48]; int count;
             if(!DeviceIoControl(h,code,input,input==null?0:input.Length,output,output.Length,out count,IntPtr.Zero))
                 throw new Win32Exception(Marshal.GetLastWin32Error());
+            if(code==0x126004 && (count<32 || (BitConverter.ToUInt32(output,0)>=2 && count<48)))
+                throw new InvalidOperationException("Incomplete driver status response.");
             return output;
         }
     }
@@ -73,7 +97,7 @@ if ($Disconnect) {
         $readyState = [Rpi5WifiControl]::Call(0x126004, $null)
         $readyPhase = [BitConverter]::ToUInt32($readyState, 4)
         $readyError = [BitConverter]::ToUInt32($readyState, 8)
-        if ($readyError -ne 0) { throw ('Firmware startup failed: phase {0}, status 0x{1:X8}. Run diagnostics.' -f $readyPhase, $readyError) }
+        if ($readyError -ne 0) { throw (Get-Rpi5DriverFailure $readyState) }
         if ($readyPhase -ge 500) { break }
         Write-Output "Firmware initialization: phase $readyPhase. Waiting before requesting credentials..."
         Start-Sleep -Seconds 3
@@ -125,6 +149,7 @@ for ($attempt = 0; $attempt -lt $limit; $attempt++) {
     $eventType = [BitConverter]::ToUInt32($state, 20)
     $reason = [BitConverter]::ToUInt32($state, 24)
     Write-Output ('Phase={0} Status=0x{1:X8} AuthenticatedLink={2} Event={3} Reason={4}' -f $phase, $errorCode, $connected, $eventType, $reason)
+    if ($errorCode -ne 0) { Write-Output (Get-Rpi5DriverFailure $state) }
     if ($connected -or $errorCode -ne 0) { break }
     if ($attempt + 1 -lt $limit) { Start-Sleep -Seconds 2 }
 }
