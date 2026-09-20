@@ -30,8 +30,8 @@ typedef struct TEST_NBL { struct TEST_NBL *Next;PNET_BUFFER First;PVOID CancelId
 #include "../src/cyw43455/tx_types.h"
 static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter,Immediate,Poison;
 static ULONG64 Clock;
-static CYW_TX_STATE Q;
-static RPI5CYW_ADAPTER A;
+static CYW_TX_STATE TestQueue;
+static RPI5CYW_ADAPTER TestAdapter;
 static NET_BUFFER_LIST Reentrant;
 static NET_BUFFER ReentrantNb;
 #define CHECK(x) do {if(!(x)){printf("FAIL %d: %s\n",__LINE__,#x);Failures++;}}while(0)
@@ -48,9 +48,9 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
 {
     (void)adapter;CHECK(!Locks);TransferCalls++;
     CHECK(length>=18 && length<=1518 && data[0]==0x20 && !data[1] && !data[2] && !data[3]);
-    if(Hook==1)CywTxCancel(&Q,Q.Entries[0].CancelId);
-    if(Hook==2)CywTxSetGate(&Q,NDIS_STATUS_PAUSED);
-    if(Hook==3)CywTxSetGate(&Q,NDIS_STATUS_LOW_POWER_STATE);
+    if(Hook==1)CywTxCancel(&TestQueue,TestQueue.Entries[0].CancelId);
+    if(Hook==2)CywTxSetGate(&TestQueue,NDIS_STATUS_PAUSED);
+    if(Hook==3)CywTxSetGate(&TestQueue,NDIS_STATUS_LOW_POWER_STATE);
     if(Busy)return STATUS_DEVICE_BUSY;
     if(FailTransfer)return STATUS_IO_DEVICE_ERROR;
     CHECK(Credits>0);Credits--;return STATUS_SUCCESS;
@@ -59,19 +59,19 @@ static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST 
 {
     (void)handle;CHECK(!Locks && nbl->Completions==0 && !nbl->Next);
     nbl->Completions++;nbl->Flags=flags;
-    if(Reenter){Reenter=0;CHECK(CywTxSubmit(&A,&Q,&Reentrant)==NDIS_STATUS_PENDING);}
+    if(Reenter){Reenter=0;CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&Reentrant)==NDIS_STATUS_PENDING);}
     if(Poison)nbl->Next=(PNET_BUFFER_LIST)(size_t)1; /* freed/reused NBL surrogate */
 }
 static NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER adapter,PNET_BUFFER_LIST nbl)
 {
-    NDIS_STATUS status=CywTxSubmit(adapter,&Q,nbl);ULONG sent;
-    if(Immediate && status==NDIS_STATUS_PENDING)CHECK(CywTxPump(adapter,&Q,4,&sent)==0);
+    NDIS_STATUS status=CywTxSubmit(adapter,&TestQueue,nbl);ULONG sent;
+    if(Immediate && status==NDIS_STATUS_PENDING)CHECK(CywTxPump(adapter,&TestQueue,4,&sent)==0);
     return status;
 }
 #include "../src/cyw43455/tx_dispatch.h"
 static void Init(void)
 {
-    memset(&A,0,sizeof(A));memset(&Q,0,sizeof(Q));Clock=0;Credits=100;
+    memset(&TestAdapter,0,sizeof(TestAdapter));memset(&TestQueue,0,sizeof(TestQueue));Clock=0;Credits=100;
     TransferCalls=Busy=FailTransfer=Hook=Reenter=Immediate=Poison=0;CHECK(!Locks);
 }
 static void Packet(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG length,PVOID id)
@@ -81,75 +81,75 @@ static void Packet(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG length,PVOID id)
 }
 int main(void)
 {
-    NET_BUFFER_LIST nbl[65];NET_BUFFER nb[65];ULONG sent,i;PVOID id=&A;
+    NET_BUFFER_LIST nbl[65];NET_BUFFER nb[65];ULONG sent,i;PVOID id=&TestAdapter;
     Init();Packet(&nbl[0],&nb[0],100,id);Packet(&nbl[1],&nb[1],80,id);
     nb[0].Next=&nb[1];nb[1].Copy=1;
-    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING && !nbl[0].Completions);
-    CHECK(Q.Frames==2 && Q.Bytes==180 && CywTxOutstanding(&Q)==1);
-    CHECK(CywTxPump(&A,&Q,1,&sent)==0 && sent==1 && !nbl[0].Completions);
-    CHECK(Q.Frames==2 && Q.Bytes==180); /* Entire NB chain remains owned. */
-    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && sent==1 && nbl[0].Completions==1);
-    CHECK(!Q.Outstanding && !Q.Count && !Q.Frames && !Q.Bytes && A.TxPackets==2);
-    CHECK(A.TxNblAccepted==1 && A.TxNblCompleted==1 && nb[0].Next==&nb[1]);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING && !nbl[0].Completions);
+    CHECK(TestQueue.Frames==2 && TestQueue.Bytes==180 && CywTxOutstanding(&TestQueue)==1);
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,1,&sent)==0 && sent==1 && !nbl[0].Completions);
+    CHECK(TestQueue.Frames==2 && TestQueue.Bytes==180); /* Entire NB chain remains owned. */
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==1 && nbl[0].Completions==1);
+    CHECK(!TestQueue.Outstanding && !TestQueue.Count && !TestQueue.Frames && !TestQueue.Bytes && TestAdapter.TxPackets==2);
+    CHECK(TestAdapter.TxNblAccepted==1 && TestAdapter.TxNblCompleted==1 && nb[0].Next==&nb[1]);
 
     Init();for(i=0;i<65;i++)Packet(&nbl[i],&nb[i],100,id);
-    for(i=0;i<64;i++)CHECK(CywTxSubmit(&A,&Q,&nbl[i])==NDIS_STATUS_PENDING);
-    CHECK(CywTxSubmit(&A,&Q,&nbl[64])==NDIS_STATUS_RESOURCES && A.TxQueueFull==1);
-    CHECK(Q.Outstanding==64 && Q.Frames==64 && Q.Bytes==6400);
-    CywTxFlush(&A,&Q,NDIS_STATUS_PAUSED);
-    CHECK(!Q.Outstanding && A.TxNblCompleted==64);
+    for(i=0;i<64;i++)CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[64])==NDIS_STATUS_RESOURCES && TestAdapter.TxQueueFull==1);
+    CHECK(TestQueue.Outstanding==64 && TestQueue.Frames==64 && TestQueue.Bytes==6400);
+    CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);
+    CHECK(!TestQueue.Outstanding && TestAdapter.TxNblCompleted==64);
     for(i=0;i<64;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_PAUSED);
-    CHECK(CywTxSubmit(&A,&Q,&nbl[64])==NDIS_STATUS_PAUSED);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[64])==NDIS_STATUS_PAUSED);
 
     Init();Packet(&nbl[0],&nb[0],100,id);Credits=0;
-    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
-    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && !sent && !TransferCalls && !nbl[0].Completions);
-    Credits=2;Busy=1;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && !sent && Q.Frames==1);
-    CHECK(!nbl[0].Completions && A.TxCreditWaits==2);
-    Busy=0;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_SUCCESS);
-    CHECK(A.TxPackets==1 && nbl[0].Completions==1);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && !sent && !TransferCalls && !nbl[0].Completions);
+    Credits=2;Busy=1;CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && !sent && TestQueue.Frames==1);
+    CHECK(!nbl[0].Completions && TestAdapter.TxCreditWaits==2);
+    Busy=0;CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_SUCCESS);
+    CHECK(TestAdapter.TxPackets==1 && nbl[0].Completions==1);
 
     /* Cancellation behind blocked head, shared IDs, active send cancellation. */
     Init();Credits=0;
-    for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,i?&Q:id);CHECK(CywTxSubmit(&A,&Q,&nbl[i])==NDIS_STATUS_PENDING);}
-    CywTxCancel(&Q,&Q);CHECK(CywTxPump(&A,&Q,4,&sent)==0);
+    for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,i?&TestQueue:id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
+    CywTxCancel(&TestQueue,&TestQueue);CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0);
     CHECK(!nbl[0].Completions && nbl[1].Status==NDIS_STATUS_SEND_ABORTED && nbl[2].Completions==1);
-    CHECK(Q.Count==1 && A.TxCancelled==2);Credits=1;Hook=1;
-    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_SEND_ABORTED && !Q.Outstanding);
+    CHECK(TestQueue.Count==1 && TestAdapter.TxCancelled==2);Credits=1;Hook=1;
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_SEND_ABORTED && !TestQueue.Outstanding);
 
-    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
-    Hook=2;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_PAUSED && !Q.Outstanding);
-    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
-    Hook=3;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_LOW_POWER_STATE);
+    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
+    Hook=2;CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_PAUSED && !TestQueue.Outstanding);
+    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
+    Hook=3;CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_LOW_POWER_STATE);
 
-    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
-    Credits=0;Clock=CYW_TX_MAX_AGE;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && A.TxExpired==1 && !Q.Outstanding);
+    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
+    Credits=0;Clock=CYW_TX_MAX_AGE;CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && TestAdapter.TxExpired==1 && !TestQueue.Outstanding);
     CHECK(nbl[0].Status==NDIS_STATUS_FAILURE);
 
-    Init();for(i=0;i<2;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&A,&Q,&nbl[i])==NDIS_STATUS_PENDING);}
-    FailTransfer=1;CHECK(CywTxPump(&A,&Q,4,&sent)==STATUS_IO_DEVICE_ERROR && nbl[0].Completions==1);
-    CywTxFlush(&A,&Q,NDIS_STATUS_MEDIA_DISCONNECTED);CHECK(nbl[1].Completions==1 && !Q.Outstanding);
+    Init();for(i=0;i<2;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
+    FailTransfer=1;CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==STATUS_IO_DEVICE_ERROR && nbl[0].Completions==1);
+    CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_MEDIA_DISCONNECTED);CHECK(nbl[1].Completions==1 && !TestQueue.Outstanding);
     Init();Packet(&nbl[0],&nb[0],100,id);nb[0].MapFail=1;
-    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
-    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_FAILURE && !TransferCalls);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_FAILURE && !TransferCalls);
 
-    Init();Packet(&nbl[0],&nb[0],13,id);CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
-    nb[0].Length=1515;CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
-    nbl[0].First=NULL;CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
+    Init();Packet(&nbl[0],&nb[0],13,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
+    nb[0].Length=1515;CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
+    nbl[0].First=NULL;CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
     for(i=0;i<65;i++){Packet(&nbl[i],&nb[i],100,id);if(i)nb[i-1].Next=&nb[i];}
-    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_RESOURCES && !Q.Count);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_RESOURCES && !TestQueue.Count);
 
     Init();Packet(&nbl[0],&nb[0],100,id);Packet(&Reentrant,&ReentrantNb,100,id);
-    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);Reenter=1;
-    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && sent==2 && !Q.Outstanding);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);Reenter=1;
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==2 && !TestQueue.Outstanding);
     CHECK(nbl[0].Completions==1 && Reentrant.Completions==1);
 
     /* Mixed send-chain admission + completion BEFORE submit returns. */
     Init();for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,id);if(i)nbl[i-1].Next=&nbl[i];}
-    nb[1].Length=1;Immediate=Poison=1;CywDispatchSendChain(&A,&nbl[0],1);
+    nb[1].Length=1;Immediate=Poison=1;CywDispatchSendChain(&TestAdapter,&nbl[0],1);
     for(i=0;i<3;i++)CHECK(nbl[i].Completions==1);
     CHECK(nbl[0].Flags==0 && nbl[1].Flags==1 && nbl[2].Flags==0);
-    CHECK(nbl[1].Status==NDIS_STATUS_INVALID_LENGTH && A.TxNblCompleted==2 && !Q.Outstanding);
+    CHECK(nbl[1].Status==NDIS_STATUS_INVALID_LENGTH && TestAdapter.TxNblCompleted==2 && !TestQueue.Outstanding);
     CHECK(!Locks);if(Failures)return 1;
     puts("PASS: actual pending TX/dispatch: bounded admission, multi-NB, busy retry, cancellation, pause/power, timeout, bus failure, mapping, reentrant/early completion");return 0;
 }
