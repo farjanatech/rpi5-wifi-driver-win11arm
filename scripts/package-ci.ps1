@@ -87,14 +87,19 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.8 is an UNVALIDATED latency/packet-fairness candidate.
-F2 completion short-poll budget: 40 us per transaction, then scheduler yield.
-CMD53 phase deadline: 250 ms elapsed. Receive work yields to transmit after
-four frames or 2 ms, measured between frames. No idle sleep after received work.
-New polling/queue/error counters and read-only routing/DNS snapshots are included.
+Driver exp0.6.9 is an UNVALIDATED pending-transmit/backpressure candidate.
+Windows sends remain pending until every frame is transferred to the chip.
+Firmware-busy sends retain their place and retry without duplicating completed
+frames. Bounded bursts run before and after receive polling. No per-packet
+allocation; still at most 64 retained frames and 64 outstanding NBLs.
+Cancellation, pause, disconnect, stop and power-down return pending ownership.
+Requests expire after 30 seconds rather than being held indefinitely.
+New completion/expiry/credit diagnostics and isolated optional Windows stats.
+The exp0.6.8 SDIO polling changes and 1-bit/400 kHz bus are unchanged.
 Physical exp0.6.7 showed authentication, DHCP, ping, DNS and HTTPS responses,
-but high latency and intermittent DNS timeouts. This build is not a proven fix.
-Compare against exp0.6.7 and keep it for rollback. See INTEGRATED-TESTING.md.
+but high latency and intermittent DNS timeouts. exp0.6.8 recorded 1274 queue-full
+rejections matching transmit errors. This build is not a proven speed fix.
+Keep the previous packages for rollback. See INTEGRATED-TESTING.md.
 This release packages the user-requested ReactOS CYW43455 firmware/CLM pair:
 firmware 7.45.229 (631467 bytes), CLM 7163 bytes. The firmware version is OLDER,
 not the newer Infineon 7.45.286. No radio-parameter or regulatory-data edits.

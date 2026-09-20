@@ -2,6 +2,14 @@
 
 ## Integrated candidate 0.6 references and redistributed firmware
 
+exp0.6.9 pending-NBL completion, retry-on-firmware-busy and transmit-draining
+design references Ahmed ARIF's `CywDrainTxQueue` and `CywQueueTxWork` in
+`drivers/network/dd/cyw43455/cyw43455.c` and the bus worker in `fwil.c`, revision
+`929bdd689d1e18d0ef71214741d4e16eec74409c`, Copyright 2026 Ahmed ARIF,
+GPL-2.0-or-later. `tx_queue.h` is a bounded direct-host adaptation with separate
+ownership tests. The SD-bus companion is not installed or represented as
+compatible with this direct-host miniport.
+
 exp0.6.2 country-request handling references Linux v6.12 brcmfmac/cfg80211.c
 `brmcf_use_iso3166_ccode_fallback` and `brcmf_translate_country_code`: chip 4345
 uses the requested ISO3166 country and revision zero when no board mapping is

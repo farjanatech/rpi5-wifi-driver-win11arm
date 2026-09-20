@@ -8,7 +8,21 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.8'
+$script:UtilityVersion = '0.6.9'
+
+function Invoke-Rpi5ReadOnlyCapture {
+    param([Parameter(Mandatory=$true)][scriptblock]$Command)
+    $lines = [Collections.Generic.List[string]]::new()
+    $failure = $null
+    try {
+        & $Command 2>&1 | Out-String -Width 500 -Stream |
+            ForEach-Object { $lines.Add([string]$_) }
+    } catch {
+        $failure = $_.Exception.Message
+        $lines.Add("COLLECTION ERROR: $($_.Exception.GetType().FullName): $failure")
+    }
+    [pscustomobject]@{ Text=($lines -join [Environment]::NewLine); Failure=$failure }
+}
 
 function Get-Rpi5ProbeResult {
     param([AllowNull()]$Diagnostic, [string]$ServiceStatus, [datetime]$BootTime)
@@ -186,13 +200,9 @@ function Invoke-Rpi5WiFiDiagnostic {
             [Parameter(Mandatory=$true)][scriptblock]$Command
         )
         Write-Information "Collecting $Name ..."
-        try {
-            $text = (& $Command 2>&1 | Out-String -Width 500)
-        } catch {
-            $text = "COLLECTION ERROR: $($_.Exception.GetType().FullName): $($_.Exception.Message)"
-            $collectionErrors.Add("$Name`: $($_.Exception.Message)")
-        }
-        Protect-Rpi5DiagnosticText -Text $text |
+        $capture = Invoke-Rpi5ReadOnlyCapture -Command $Command
+        if ($capture.Failure) { $collectionErrors.Add("$Name`: $($capture.Failure)") }
+        Protect-Rpi5DiagnosticText -Text $capture.Text |
             Set-Content -LiteralPath (Join-Path $work $Name) -Encoding UTF8
     }
 
@@ -400,7 +410,19 @@ function Invoke-Rpi5WiFiDiagnostic {
                     Format-List InterfaceIndex,AddressFamily,ServerAddresses
                 Get-NetNeighbor -InterfaceIndex $index -ErrorAction Stop |
                     Format-Table IPAddress,LinkLayerAddress,State -AutoSize
-                Get-NetAdapterStatistics -Name $wifiAdapter.Name -ErrorAction Stop | Format-List *
+            }
+        }
+        Write-Capture '17-optional-windows-statistics.txt' {
+            # Not implemented by every experimental miniport. Never discard
+            # configuration/route evidence when this optional query fails.
+            try {
+                Get-NetAdapter -IncludeHidden -ErrorAction Stop |
+                    Where-Object { $_.PnPDeviceID -match 'RPI0011' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' } |
+                    ForEach-Object { Get-NetAdapterStatistics -Name $_.Name -ErrorAction Stop } |
+                    Format-List *
+            } catch {
+                "Optional Windows adapter statistics unavailable: $($_.Exception.Message)"
+                'Use TxPackets/RxPackets and queue counters in 05-driver-registry.txt instead.'
             }
         }
         Write-Capture '10-package-signatures-and-hashes.txt' {

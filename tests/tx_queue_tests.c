@@ -1,0 +1,155 @@
+/* Actual pending queue + send-chain dispatch, simulated NDIS/transport only. */
+#include <stdio.h>
+#include <stdlib.h>
+#define RPI5CYW_HOST_TEST 1
+#include "../src/driver/driver.h"
+typedef unsigned long NDIS_STATUS;
+typedef int KSPIN_LOCK,KIRQL;
+typedef struct TEST_NB { struct TEST_NB *Next;ULONG Length;UCHAR Data[1514];int MapFail,Copy; } NET_BUFFER,*PNET_BUFFER;
+typedef struct TEST_NBL { struct TEST_NBL *Next;PNET_BUFFER First;PVOID CancelId;NDIS_STATUS Status;ULONG Completions,Flags; } NET_BUFFER_LIST,*PNET_BUFFER_LIST;
+#define NET_BUFFER_LIST_NEXT_NBL(n) ((n)->Next)
+#define NET_BUFFER_LIST_FIRST_NB(n) ((n)->First)
+#define NET_BUFFER_NEXT_NB(n) ((n)->Next)
+#define NET_BUFFER_DATA_LENGTH(n) ((n)->Length)
+#define NET_BUFFER_LIST_STATUS(n) ((n)->Status)
+#define NDIS_GET_NET_BUFFER_LIST_CANCEL_ID(n) ((n)->CancelId)
+#define NDIS_STATUS_SUCCESS 0UL
+#define NDIS_STATUS_PENDING 0x103UL
+#define NDIS_STATUS_RESOURCES 0xc000009aUL
+#define NDIS_STATUS_INVALID_LENGTH 0xc0010014UL
+#define NDIS_STATUS_PAUSED 0xc023002aUL
+#define NDIS_STATUS_SEND_ABORTED 0xc001000cUL
+#define NDIS_STATUS_FAILURE 0xc0000001UL
+#define NDIS_STATUS_MEDIA_DISCONNECTED 0xc000020cUL
+#define NDIS_STATUS_LOW_POWER_STATE 0xc023002fUL
+#define STATUS_DEVICE_BUSY ((NTSTATUS)0x80000011L)
+#define STATUS_INSUFFICIENT_RESOURCES ((NTSTATUS)0xc000009aL)
+#define NDIS_TEST_SEND_AT_DISPATCH_LEVEL(f) ((f)&1)
+#define NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL 1
+#define RtlCopyMemory memcpy
+#include "../src/cyw43455/tx_types.h"
+static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter,Immediate,Poison;
+static ULONG64 Clock;
+static CYW_TX_STATE Q;
+static RPI5CYW_ADAPTER A;
+static NET_BUFFER_LIST Reentrant;
+static NET_BUFFER ReentrantNb;
+#define CHECK(x) do {if(!(x)){printf("FAIL %d: %s\n",__LINE__,#x);Failures++;}}while(0)
+static void KeAcquireSpinLock(KSPIN_LOCK *lock,KIRQL *irql) {CHECK(!*lock && !Locks);*lock=1;Locks++;*irql=0;}
+static void KeReleaseSpinLock(KSPIN_LOCK *lock,KIRQL irql) {(void)irql;CHECK(*lock && Locks==1);*lock=0;Locks--;}
+ULONG64 KeQueryInterruptTime(void) {return Clock;}
+static PUCHAR NdisGetDataBuffer(PNET_BUFFER nb,ULONG length,PUCHAR storage,ULONG align,ULONG offset)
+{(void)align;(void)offset;CHECK(!Locks && length==nb->Length);if(nb->MapFail)return NULL;if(nb->Copy){memcpy(storage,nb->Data,length);return storage;}return nb->Data;}
+static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER adapter) {(void)adapter;CHECK(!Locks);return Credits!=0;}
+static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
+static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags);
+#include "../src/cyw43455/tx_queue.h"
+static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
+{
+    (void)adapter;CHECK(!Locks);TransferCalls++;
+    CHECK(length>=18 && length<=1518 && data[0]==0x20 && !data[1] && !data[2] && !data[3]);
+    if(Hook==1)CywTxCancel(&Q,Q.Entries[0].CancelId);
+    if(Hook==2)CywTxSetGate(&Q,NDIS_STATUS_PAUSED);
+    if(Hook==3)CywTxSetGate(&Q,NDIS_STATUS_LOW_POWER_STATE);
+    if(Busy)return STATUS_DEVICE_BUSY;
+    if(FailTransfer)return STATUS_IO_DEVICE_ERROR;
+    CHECK(Credits>0);Credits--;return STATUS_SUCCESS;
+}
+static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags)
+{
+    (void)handle;CHECK(!Locks && nbl->Completions==0 && !nbl->Next);
+    nbl->Completions++;nbl->Flags=flags;
+    if(Reenter){Reenter=0;CHECK(CywTxSubmit(&A,&Q,&Reentrant)==NDIS_STATUS_PENDING);}
+    if(Poison)nbl->Next=(PNET_BUFFER_LIST)(size_t)1; /* freed/reused NBL surrogate */
+}
+static NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER adapter,PNET_BUFFER_LIST nbl)
+{
+    NDIS_STATUS status=CywTxSubmit(adapter,&Q,nbl);ULONG sent;
+    if(Immediate && status==NDIS_STATUS_PENDING)CHECK(CywTxPump(adapter,&Q,4,&sent)==0);
+    return status;
+}
+#include "../src/cyw43455/tx_dispatch.h"
+static void Init(void)
+{
+    memset(&A,0,sizeof(A));memset(&Q,0,sizeof(Q));Clock=0;Credits=100;
+    TransferCalls=Busy=FailTransfer=Hook=Reenter=Immediate=Poison=0;CHECK(!Locks);
+}
+static void Packet(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG length,PVOID id)
+{
+    memset(nbl,0,sizeof(*nbl));memset(nb,0,sizeof(*nb));nb->Length=length;
+    nbl->First=nb;nbl->CancelId=id;
+}
+int main(void)
+{
+    NET_BUFFER_LIST nbl[65];NET_BUFFER nb[65];ULONG sent,i;PVOID id=&A;
+    Init();Packet(&nbl[0],&nb[0],100,id);Packet(&nbl[1],&nb[1],80,id);
+    nb[0].Next=&nb[1];nb[1].Copy=1;
+    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING && !nbl[0].Completions);
+    CHECK(Q.Frames==2 && Q.Bytes==180 && CywTxOutstanding(&Q)==1);
+    CHECK(CywTxPump(&A,&Q,1,&sent)==0 && sent==1 && !nbl[0].Completions);
+    CHECK(Q.Frames==1 && Q.Bytes==80);
+    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && sent==1 && nbl[0].Completions==1);
+    CHECK(!Q.Outstanding && !Q.Count && !Q.Frames && !Q.Bytes && A.TxPackets==2);
+    CHECK(A.TxNblAccepted==1 && A.TxNblCompleted==1 && nb[0].Next==&nb[1]);
+
+    Init();for(i=0;i<65;i++)Packet(&nbl[i],&nb[i],100,id);
+    for(i=0;i<64;i++)CHECK(CywTxSubmit(&A,&Q,&nbl[i])==NDIS_STATUS_PENDING);
+    CHECK(CywTxSubmit(&A,&Q,&nbl[64])==NDIS_STATUS_RESOURCES && A.TxQueueFull==1);
+    CHECK(Q.Outstanding==64 && Q.Frames==64 && Q.Bytes==6400);
+    CywTxFlush(&A,&Q,NDIS_STATUS_PAUSED);
+    CHECK(!Q.Outstanding && A.TxNblCompleted==64);
+    for(i=0;i<64;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_PAUSED);
+    CHECK(CywTxSubmit(&A,&Q,&nbl[64])==NDIS_STATUS_PAUSED);
+
+    Init();Packet(&nbl[0],&nb[0],100,id);Credits=0;
+    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
+    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && !sent && !TransferCalls && !nbl[0].Completions);
+    Credits=2;Busy=1;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && !sent && Q.Frames==1);
+    CHECK(!nbl[0].Completions && A.TxCreditWaits==2);
+    Busy=0;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_SUCCESS);
+    CHECK(A.TxPackets==1 && nbl[0].Completions==1);
+
+    /* Cancellation behind blocked head, shared IDs, active send cancellation. */
+    Init();Credits=0;
+    for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,i?&Q:id);CHECK(CywTxSubmit(&A,&Q,&nbl[i])==NDIS_STATUS_PENDING);}
+    CywTxCancel(&Q,&Q);CHECK(CywTxPump(&A,&Q,4,&sent)==0);
+    CHECK(!nbl[0].Completions && nbl[1].Status==NDIS_STATUS_SEND_ABORTED && nbl[2].Completions==1);
+    CHECK(Q.Count==1 && A.TxCancelled==2);Credits=1;Hook=1;
+    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_SEND_ABORTED && !Q.Outstanding);
+
+    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
+    Hook=2;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_PAUSED && !Q.Outstanding);
+    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
+    Hook=3;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_LOW_POWER_STATE);
+
+    Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
+    Credits=0;Clock=CYW_TX_MAX_AGE;CHECK(CywTxPump(&A,&Q,4,&sent)==0 && A.TxExpired==1 && !Q.Outstanding);
+    CHECK(nbl[0].Status==NDIS_STATUS_FAILURE);
+
+    Init();for(i=0;i<2;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&A,&Q,&nbl[i])==NDIS_STATUS_PENDING);}
+    FailTransfer=1;CHECK(CywTxPump(&A,&Q,4,&sent)==STATUS_IO_DEVICE_ERROR && nbl[0].Completions==1);
+    CywTxFlush(&A,&Q,NDIS_STATUS_MEDIA_DISCONNECTED);CHECK(nbl[1].Completions==1 && !Q.Outstanding);
+    Init();Packet(&nbl[0],&nb[0],100,id);nb[0].MapFail=1;
+    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);
+    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && nbl[0].Status==NDIS_STATUS_FAILURE && !TransferCalls);
+
+    Init();Packet(&nbl[0],&nb[0],13,id);CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
+    nb[0].Length=1515;CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
+    nbl[0].First=NULL;CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
+    for(i=0;i<65;i++){Packet(&nbl[i],&nb[i],100,id);if(i)nb[i-1].Next=&nb[i];}
+    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_RESOURCES && !Q.Count);
+
+    Init();Packet(&nbl[0],&nb[0],100,id);Packet(&Reentrant,&ReentrantNb,100,id);
+    CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING);Reenter=1;
+    CHECK(CywTxPump(&A,&Q,4,&sent)==0 && sent==2 && !Q.Outstanding);
+    CHECK(nbl[0].Completions==1 && Reentrant.Completions==1);
+
+    /* Mixed send-chain admission + completion BEFORE submit returns. */
+    Init();for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,id);if(i)nbl[i-1].Next=&nbl[i];}
+    nb[1].Length=1;Immediate=Poison=1;CywDispatchSendChain(&A,&nbl[0],1);
+    for(i=0;i<3;i++)CHECK(nbl[i].Completions==1);
+    CHECK(nbl[0].Flags==0 && nbl[1].Flags==1 && nbl[2].Flags==0);
+    CHECK(nbl[1].Status==NDIS_STATUS_INVALID_LENGTH && A.TxNblCompleted==2 && !Q.Outstanding);
+    CHECK(!Locks);if(Failures)return 1;
+    puts("PASS: actual pending TX/dispatch: bounded admission, multi-NB, busy retry, cancellation, pause/power, timeout, bus failure, mapping, reentrant/early completion");return 0;
+}

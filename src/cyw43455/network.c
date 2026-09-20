@@ -3,17 +3,17 @@
  * ReactOS cyw43455/fwil.c at 9bb45e56 (Copyright 2026 Ahmed ARIF), and
  * Linux v6.12 brcmfmac (ISC, Broadcom). See THIRD_PARTY_NOTICES.md.
  * One PASSIVE_LEVEL worker owns ALL runtime SDIO traffic. NDIS callbacks and
- * IOCTL dispatch only copy into bounded queues; no user pointers are retained.
+ * IOCTL dispatch copies credentials; pending NDIS-owned sends stay in a bounded
+ * queue until completion. No user-mode pointers are retained.
  */
 #include "network.h"
 #include "../sdio/sdio.h"
+#include "tx_types.h"
 
 #define TRY(x) do { Status=(x); if(!NT_SUCCESS(Status)) goto Exit; } while(0)
 #define CYW_IOCTL_CONNECT CTL_CODE(FILE_DEVICE_NETWORK,0x800,METHOD_BUFFERED,FILE_WRITE_DATA)
 #define CYW_IOCTL_STATUS CTL_CODE(FILE_DEVICE_NETWORK,0x801,METHOD_BUFFERED,FILE_READ_DATA)
 #define CYW_IOCTL_DISCONNECT CTL_CODE(FILE_DEVICE_NETWORK,0x802,METHOD_BUFFERED,FILE_WRITE_DATA)
-#define CYW_QUEUE 64
-typedef struct _CYW_TX { ULONG Length; UCHAR Data[1514]; } CYW_TX;
 struct _CYW_NETWORK {
     PRPI5CYW_ADAPTER Adapter;
     KSPIN_LOCK Lock;
@@ -22,9 +22,9 @@ struct _CYW_NETWORK {
     volatile LONG Stop, Paused;
     volatile BOOLEAN Ready, Associated, Authorized, Published;
     BOOLEAN RxPending, Powered;
-    ULONG Request, Head, Tail, Count;
+    ULONG Request;
     CYW_CONNECT_REQUEST Connect;
-    CYW_TX Queue[CYW_QUEUE];
+    CYW_TX_STATE Sends;
     UCHAR TxSeq, TxMax, TxFlow;
     USHORT RequestId;
     NDIS_HANDLE RxPool;
@@ -34,6 +34,7 @@ static KSPIN_LOCK ControlLock;
 static PRPI5CYW_ADAPTER ControlAdapter;
 static NDIS_HANDLE ControlHandle;
 static PDEVICE_OBJECT ControlDevice;
+static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A);
 BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A)
 {return A->IoStopped || (A->Network && A->Network->Stop);}
 
@@ -44,6 +45,7 @@ static VOID CywLink(PRPI5CYW_ADAPTER A, BOOLEAN Up)
     NDIS_MEDIA_CONNECT_STATE State=Up?MediaConnectStateConnected:MediaConnectStateDisconnected;
     if(A->MediaConnectState==State)return;
     A->MediaConnectState=State;
+    CywRefreshTxGate(A);
     A->MediaDuplexState=Up?MediaDuplexStateFull:MediaDuplexStateUnknown;
     A->LinkSpeed=NDIS_LINK_SPEED_UNKNOWN; /* Never invent a negotiated rate. */
     RtlZeroMemory(&Link,sizeof(Link));
@@ -166,6 +168,26 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULO
     if(NT_SUCCESS(Status))N->TxSeq++;
     return Status;
 }
+static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER A)
+{
+    CYW_NETWORK *N=A->Network;
+    A->TxCreditSequence=N->TxSeq;A->TxCreditMaximum=N->TxMax;A->TxFlowMask=N->TxFlow;
+    return !A->IoStopped && !N->Stop && !N->Paused && N->Ready &&
+        N->Authorized && N->Associated && CywTxCredit(N->TxSeq,N->TxMax,N->TxFlow);
+}
+static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
+{return CywSendFrame(A,2,Data,Length);}
+#include "tx_queue.h"
+static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A)
+{
+    CYW_NETWORK *N=A->Network;KIRQL irql;
+    KeAcquireSpinLock(&N->Sends.Lock,&irql);
+    N->Sends.Gate=(A->IoStopped || N->Stop)?NDIS_STATUS_LOW_POWER_STATE:
+        N->Paused?NDIS_STATUS_PAUSED:
+        (!N->Ready || !N->Associated || !N->Authorized)?NDIS_STATUS_MEDIA_DISCONNECTED:
+        NDIS_STATUS_SUCCESS;
+    KeReleaseSpinLock(&N->Sends.Lock,irql);
+}
 #include "control.h"
 static NTSTATUS CywInt(PRPI5CYW_ADAPTER A,const char *Name,ULONG Value)
 {UCHAR b[4];CywPut32(b,Value);return CywIovar(A,Name,TRUE,b,4);}
@@ -198,8 +220,8 @@ Exit: if(clm)ExFreePoolWithTag(clm,RPI5CYW_TAG);return Status;
 static VOID CywWorker(PVOID Context)
 {
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
-    CYW_CONNECT_REQUEST request;CYW_TX tx={0};
-    KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0;BOOLEAN haveTx;
+    CYW_CONNECT_REQUEST request;
+    KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0,sentBefore,sentAfter;
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
     N->Thread=PsGetCurrentThread();ObReferenceObject(N->Thread);
@@ -212,11 +234,12 @@ static VOID CywWorker(PVOID Context)
     if(!NT_SUCCESS(Status))goto Failed;
     if(N->Stop)goto Exit;
     N->Ready=TRUE;A->NetworkStatus=STATUS_SUCCESS;
+    CywRefreshTxGate(A);
     Rpi5CywWriteDiagnostics(A,120,STATUS_SUCCESS);
     while(!N->Stop) {
         if(N->Paused) {
-            KeAcquireSpinLock(&N->Lock,&irql);N->Head=N->Tail=N->Count=0;
-            KeReleaseSpinLock(&N->Lock,irql);KeSetEvent(&N->PauseAck,0,FALSE);
+            CywTxFlush(A,&N->Sends,NDIS_STATUS_PAUSED);
+            KeSetEvent(&N->PauseAck,0,FALSE);
             KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);continue;
         }
         KeClearEvent(&N->PauseAck);
@@ -224,6 +247,7 @@ static VOID CywWorker(PVOID Context)
         RtlCopyMemory(&request,&N->Connect,sizeof(request));RtlSecureZeroMemory(&N->Connect,sizeof(request));
         KeReleaseSpinLock(&N->Lock,irql);
         if(op) {
+            CywTxFlush(A,&N->Sends,NDIS_STATUS_MEDIA_DISCONNECTED);
             Status=op==1?CywConnect(A,&request):CywCmdInt(A,3,0);
             RtlSecureZeroMemory(&request,sizeof(request));
             if(op==2 || !NT_SUCCESS(Status)) {
@@ -231,7 +255,10 @@ static VOID CywWorker(PVOID Context)
                 if(op==2 && NT_SUCCESS(Status))A->NetworkPhase=500;
             }
             A->NetworkStatus=Status;Rpi5CywWriteDiagnostics(A,120,Status);
+            CywRefreshTxGate(A);
         }
+        Status=CywTxPump(A,&N->Sends,4,&sentBefore);
+        if(!NT_SUCCESS(Status))goto Failed;
         rxStart=KeQueryInterruptTime();
         for(i=0;CywReceiveBudget(i,KeQueryInterruptTime()-rxStart) && !N->Stop && !N->Paused;++i) {
             Status=CywPoll(A,&channel,&off,&len);
@@ -243,19 +270,10 @@ static VOID CywWorker(PVOID Context)
             Rpi5CywWriteDiagnostics(A,120,A->NetworkStatus);
             lastPhase=A->NetworkPhase;nextSnapshot=KeQueryInterruptTime()+300000000ULL;
         }
-        haveTx=FALSE;
-        if(N->Authorized && N->Associated && CywTxCredit(N->TxSeq,N->TxMax,N->TxFlow)) {
-            KeAcquireSpinLock(&N->Lock,&irql);
-            if(N->Count) {tx=N->Queue[N->Head];N->Head=(N->Head+1)%CYW_QUEUE;N->Count--;haveTx=TRUE;}
-            KeReleaseSpinLock(&N->Lock,irql);
-        }
-        if(haveTx) {
-            UCHAR *data=ExAllocatePool2(POOL_FLAG_NON_PAGED,tx.Length+4,RPI5CYW_TAG);
-            if(!data) {A->TxErrors++;continue;}
-            data[0]=0x20;RtlCopyMemory(data+4,tx.Data,tx.Length);
-            Status=CywSendFrame(A,2,data,tx.Length+4);ExFreePoolWithTag(data,RPI5CYW_TAG);
-            if(NT_SUCCESS(Status))A->TxPackets++;else {A->TxErrors++;goto Failed;}
-        } else if(!i) KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);
+        Status=CywTxPump(A,&N->Sends,4,&sentAfter);
+        if(!NT_SUCCESS(Status))goto Failed;
+        if(!i && !sentBefore && !sentAfter)
+            KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);
     }
     goto Exit;
 Failed:
@@ -265,7 +283,9 @@ Failed:
     CywFirmwareStop(A);
 Exit:
     RtlSecureZeroMemory(&request,sizeof(request));
-    N->Ready=FALSE;KeSetEvent(&N->PauseAck,0,FALSE);
+    N->Ready=FALSE;
+    CywTxFlush(A,&N->Sends,A->IoStopped?NDIS_STATUS_LOW_POWER_STATE:NDIS_STATUS_MEDIA_DISCONNECTED);
+    KeSetEvent(&N->PauseAck,0,FALSE);
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 NTSTATUS CywNetworkInitialize(PRPI5CYW_ADAPTER A)
@@ -275,6 +295,7 @@ NTSTATUS CywNetworkInitialize(PRPI5CYW_ADAPTER A)
     N=ExAllocatePool2(POOL_FLAG_NON_PAGED,sizeof(*N),RPI5CYW_TAG);
     if(!N)return STATUS_INSUFFICIENT_RESOURCES;
     A->Network=N;N->Adapter=A;N->TxMax=1;N->Paused=1;N->Powered=TRUE;
+    KeInitializeSpinLock(&N->Sends.Lock);N->Sends.Gate=NDIS_STATUS_PAUSED;
     KeInitializeSpinLock(&N->Lock);KeInitializeEvent(&N->Wake,SynchronizationEvent,FALSE);
     KeInitializeEvent(&N->PauseAck,NotificationEvent,TRUE);
     KeInitializeEvent(&N->ThreadStarted,NotificationEvent,FALSE);
@@ -306,10 +327,12 @@ VOID CywNetworkStop(PRPI5CYW_ADAPTER A)
     KeAcquireSpinLock(&ControlLock,&irql);if(ControlAdapter==A)ControlAdapter=NULL;
     KeReleaseSpinLock(&ControlLock,irql);
     InterlockedExchange(&N->Stop,1);KeSetEvent(&N->Wake,0,FALSE);
+    CywRefreshTxGate(A);
     if(N->Thread) {
         KeWaitForSingleObject(N->Thread,Executive,KernelMode,FALSE,NULL);
         ObDereferenceObject(N->Thread);
     }
+    CywTxFlush(A,&N->Sends,NDIS_STATUS_MEDIA_DISCONNECTED);
     if(N->Powered)CywFirmwareStop(A);
     if(N->RxPool)NdisFreeNetBufferListPool(N->RxPool);
     if(N->Rx)ExFreePoolWithTag(N->Rx,RPI5CYW_TAG);
@@ -323,7 +346,9 @@ VOID CywNetworkPause(PRPI5CYW_ADAPTER A,BOOLEAN Paused)
     if(!N)return;
     if(Paused)KeClearEvent(&N->PauseAck);
     InterlockedExchange(&N->Paused,Paused);N->Published=TRUE;KeSetEvent(&N->Wake,0,FALSE);
-    if(Paused && N->Ready)KeWaitForSingleObject(&N->PauseAck,Executive,KernelMode,FALSE,NULL);
+    CywRefreshTxGate(A);
+    if(Paused && (N->Ready || CywTxOutstanding(&N->Sends)))
+        KeWaitForSingleObject(&N->PauseAck,Executive,KernelMode,FALSE,NULL);
 }
 /* Called on an NDIS work item. Keep the network allocation alive in D3 so
  * concurrent rejected sends never race freed memory. No SDIO access in D3. */
@@ -334,14 +359,16 @@ NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER A,BOOLEAN On)
     if(!N)return STATUS_DEVICE_NOT_READY;
     if(!On) {
         N->Ready=FALSE;InterlockedExchange(&N->Stop,1);KeSetEvent(&N->Wake,0,FALSE);
+        CywRefreshTxGate(A);
         if(N->Thread) {
             KeWaitForSingleObject(N->Thread,Executive,KernelMode,FALSE,NULL);
             ObDereferenceObject(N->Thread);N->Thread=NULL;
         }
+        CywTxFlush(A,&N->Sends,NDIS_STATUS_LOW_POWER_STATE);
         if(N->Powered)CywFirmwareStop(A);
         N->Powered=FALSE;A->IoStopped=1;
         N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
-        KeAcquireSpinLock(&N->Lock,&irql);N->Head=N->Tail=N->Count=N->Request=0;
+        KeAcquireSpinLock(&N->Lock,&irql);N->Request=0;
         RtlSecureZeroMemory(&N->Connect,sizeof(N->Connect));KeReleaseSpinLock(&N->Lock,irql);
         return STATUS_SUCCESS;
     }
@@ -366,32 +393,17 @@ VOID CywNetworkShutdown(PRPI5CYW_ADAPTER A)
 }
 NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER A,PNET_BUFFER_LIST Nbl)
 {
-    CYW_NETWORK *N=A->Network;PNET_BUFFER Nb;PUCHAR data;KIRQL irql;ULONG len,count=0,tail;
+    CYW_NETWORK *N=A->Network;NDIS_STATUS status;
     if(A->IoStopped)return NDIS_STATUS_LOW_POWER_STATE;
-    if(!N || !N->Ready || N->Paused || !N->Authorized || !N->Associated)return NDIS_STATUS_MEDIA_DISCONNECTED;
-    for(Nb=NET_BUFFER_LIST_FIRST_NB(Nbl);Nb;Nb=NET_BUFFER_NEXT_NB(Nb)) {
-        len=NET_BUFFER_DATA_LENGTH(Nb);
-        if(len<14 || len>1514)return NDIS_STATUS_INVALID_LENGTH;
-        if(++count>CYW_QUEUE)return NDIS_STATUS_RESOURCES;
-    }
-    if(!count)return NDIS_STATUS_INVALID_LENGTH;
-    KeAcquireSpinLock(&N->Lock,&irql);tail=N->Tail;
-    if(N->Paused || !N->Ready || N->Count>CYW_QUEUE-count) {
-        if(N->Count>CYW_QUEUE-count)A->TxQueueFull++;
-        KeReleaseSpinLock(&N->Lock,irql);return NDIS_STATUS_RESOURCES;
-    }
-    /* A copied queue owns the frame before completion; no NBL is retained. */
-    for(Nb=NET_BUFFER_LIST_FIRST_NB(Nbl);Nb;Nb=NET_BUFFER_NEXT_NB(Nb)) {
-        len=NET_BUFFER_DATA_LENGTH(Nb);
-        data=NdisGetDataBuffer(Nb,len,N->Queue[N->Tail].Data,1,0);
-        if(!data) {N->Tail=tail;KeReleaseSpinLock(&N->Lock,irql);return NDIS_STATUS_RESOURCES;}
-        if(data!=N->Queue[N->Tail].Data)RtlCopyMemory(N->Queue[N->Tail].Data,data,len);
-        N->Queue[N->Tail].Length=len;N->Tail=(N->Tail+1)%CYW_QUEUE;
-    }
-    N->Count+=count;
-    if(N->Count>A->TxQueueHighWater)A->TxQueueHighWater=N->Count;
-    KeReleaseSpinLock(&N->Lock,irql);
-    KeSetEvent(&N->Wake,0,FALSE);return NDIS_STATUS_SUCCESS;
+    if(!N)return NDIS_STATUS_MEDIA_DISCONNECTED;
+    status=CywTxSubmit(A,&N->Sends,Nbl);
+    if(status==NDIS_STATUS_PENDING)KeSetEvent(&N->Wake,0,FALSE);
+    return status;
+}
+VOID CywNetworkCancelSend(PRPI5CYW_ADAPTER A,PVOID CancelId)
+{
+    CYW_NETWORK *N=A->Network;if(!N)return;
+    CywTxCancel(&N->Sends,CancelId);KeSetEvent(&N->Wake,0,FALSE);
 }
 VOID CywNetworkSetFilter(PRPI5CYW_ADAPTER A,ULONG Filter)
 {

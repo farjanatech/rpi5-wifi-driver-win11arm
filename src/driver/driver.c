@@ -113,7 +113,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 8);
+    SET_DWORD(L"DiagVersion", 9);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -159,6 +159,14 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"Cmd53Timeouts", Adapter->Cmd53Timeouts);
     SET_DWORD(L"TxQueueHighWater", Adapter->TxQueueHighWater);
     SET_DWORD(L"TxQueueFull", Adapter->TxQueueFull);
+    SET_DWORD(L"TxNblAccepted", Adapter->TxNblAccepted);
+    SET_DWORD(L"TxNblCompleted", Adapter->TxNblCompleted);
+    SET_DWORD(L"TxCancelled", Adapter->TxCancelled);
+    SET_DWORD(L"TxExpired", Adapter->TxExpired);
+    SET_DWORD(L"TxCreditWaits", Adapter->TxCreditWaits);
+    SET_DWORD(L"TxCreditSequence", Adapter->TxCreditSequence);
+    SET_DWORD(L"TxCreditMaximum", Adapter->TxCreditMaximum);
+    SET_DWORD(L"TxFlowMask", Adapter->TxFlowMask);
     SET_DWORD(L"RxBatchYields", Adapter->RxBatchYields);
     {
         LARGE_INTEGER Now;
@@ -816,6 +824,7 @@ Rpi5CywRestart(
     return NDIS_STATUS_SUCCESS;
 }
 
+#include "../cyw43455/tx_dispatch.h"
 static VOID NTAPI
 Rpi5CywSendNetBufferLists(
     _In_ NDIS_HANDLE MiniportAdapterContext,
@@ -825,28 +834,8 @@ Rpi5CywSendNetBufferLists(
     )
 {
     PRPI5CYW_ADAPTER Adapter = (PRPI5CYW_ADAPTER)MiniportAdapterContext;
-    PNET_BUFFER_LIST Nbl;
-    ULONG CompleteFlags = 0;
-
     UNREFERENCED_PARAMETER(PortNumber);
-
-    if (NDIS_TEST_SEND_AT_DISPATCH_LEVEL(SendFlags))
-    {
-        CompleteFlags = NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL;
-    }
-
-    for (Nbl = NetBufferLists; Nbl != NULL; Nbl = NET_BUFFER_LIST_NEXT_NBL(Nbl))
-    {
-        NET_BUFFER_LIST_STATUS(Nbl) = CywNetworkSend(Adapter, Nbl);
-        if (NET_BUFFER_LIST_STATUS(Nbl) != NDIS_STATUS_SUCCESS)
-        {
-            Adapter->TxErrors++;
-        }
-    }
-
-    NdisMSendNetBufferListsComplete(Adapter->MiniportHandle,
-                                    NetBufferLists,
-                                    CompleteFlags);
+    CywDispatchSendChain(Adapter,NetBufferLists,SendFlags);
 }
 
 static VOID NTAPI
@@ -867,8 +856,7 @@ Rpi5CywCancelSend(
     _In_ PVOID CancelId
     )
 {
-    UNREFERENCED_PARAMETER(MiniportAdapterContext);
-    UNREFERENCED_PARAMETER(CancelId);
+    CywNetworkCancelSend((PRPI5CYW_ADAPTER)MiniportAdapterContext,CancelId);
 }
 
 static BOOLEAN NTAPI

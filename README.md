@@ -4,6 +4,29 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.9 candidate — pending sends and bounded backpressure
+
+The user's exp0.6.8 logs record 1274 transmit errors and exactly 1274 full-queue
+rejections, with the 64-frame queue reaching capacity and no CMD53 timeouts.
+This version adapts the ReactOS pending-send design: NBL ownership returns only
+after all its frames transfer, not immediately after admission to the queue.
+Previously accepted copied sends were legal NDIS behavior, but offered poor
+backpressure for this slow software transport; this is not a claim that early
+completion inherently violates NDIS.
+
+The same bounded 64-frame capacity remains; no unbounded memory queue. Firmware
+busy/credit exhaustion retains unsent work. A reused nonpaged staging buffer
+removes packet-time allocation. Four-frame transmit bursts run before/after
+receive polling, with cancellation, pause, stop/power-down and a 30-second
+request expiry. Cancellation can abort unsent frames, not retract a frame
+already handed to the chip. Completion means chip transfer, not an over-air ACK.
+
+Exact queue/dispatch code is shared with host lifecycle tests. Diagnostics retain
+partial output and put optional Windows statistics in a separate file. The
+firmware, country, UEFI/fan, bus speed and transfer format are unchanged. Hardware
+latency/throughput remains unvalidated; faster SDIO is deliberately a separate
+change. See docs/INTEGRATED-TESTING.md for physical checks and rollback.
+
 ### Integrated exp0.6.8 candidate — bounded polling and packet fairness
 
 Physical exp0.6.7 results on one Pi show BD accepted, WPA2 authentication,

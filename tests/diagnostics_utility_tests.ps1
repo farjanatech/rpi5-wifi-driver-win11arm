@@ -44,6 +44,19 @@ foreach ($requiredDiagnostic in @(
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) { throw 'One-click launcher is missing.' }
 
 . $scriptPath -LibraryOnly
+$capture = Invoke-Rpi5ReadOnlyCapture { 'route evidence'; 'DNS evidence'; throw 'optional statistics unavailable' }
+if ($capture.Text -notmatch 'route evidence' -or $capture.Text -notmatch 'DNS evidence' -or
+    $capture.Text -notmatch 'COLLECTION ERROR' -or $capture.Failure -ne 'optional statistics unavailable') {
+    throw 'Partial diagnostic evidence was discarded after a late failure.'
+}
+$capture = Invoke-Rpi5ReadOnlyCapture { 'success' }
+if ($capture.Text -notmatch 'success' -or $capture.Failure) { throw 'Successful capture failed.' }
+$capture = Invoke-Rpi5ReadOnlyCapture { throw 'early failure' }
+if ($capture.Failure -ne 'early failure') { throw 'Early capture failure was not recorded.' }
+$capture = Invoke-Rpi5ReadOnlyCapture { }
+if ($capture.Text -ne '' -or $capture.Failure) { throw 'Empty capture failed.' }
+if ($source -notmatch '17-optional-windows-statistics.txt') { throw 'Optional statistics not isolated.' }
+Write-Output 'Capture preserves partial evidence and handles empty/success/failure cases.'
 $oldUser = $env:USERNAME
 $oldComputer = $env:COMPUTERNAME
 $oldProfile = $env:USERPROFILE

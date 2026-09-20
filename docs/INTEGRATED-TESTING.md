@@ -1,4 +1,30 @@
-# exp0.6.8 latency candidate: physical test checklist
+# exp0.6.9 pending-send candidate: physical test checklist
+
+Install from a new extracted folder on the Pi only, then restart once. No UEFI
+replacement, firmware mixing, DNS changes or Windows reinstall. Connect using
+your real country (Enter confirms BD if that is still your location).
+
+First run the ping/DNS/HTTPS commands below with no browser traffic; then repeat
+while opening one ordinary website. Stop continuous ping with Ctrl+C and run
+Run-RPi5-WiFi-Diagnostics.cmd before rebooting. Send the ZIP plus ping summary.
+
+New DiagVersion=9 counters: TxNblAccepted, TxNblCompleted, TxCancelled, TxExpired,
+TxCreditWaits, TxCreditSequence, TxCreditMaximum and TxFlowMask. These supplement
+TxQueueFull, TxErrors, queue high-water and CMD53 waits/timeouts. Pending requests
+time out after 30 seconds; this is a bounded failure, not successful delivery.
+Completion after chip transfer does not mean the access point acknowledged it.
+
+16-ip-routing-dns.txt should now retain route/DNS evidence even if an optional
+query fails. Unavailable Windows statistics are reported separately in
+17-optional-windows-statistics.txt; no network configuration is changed.
+
+Only after saving the first diagnostics, optionally disable/re-enable just the
+CYW43455 adapter once and reconnect to check orderly pause/cancellation. Keep
+wired Ethernet for recovery. If it hangs, blue-screens, or worsens reliability,
+stop testing, retain logs and use Device Manager Roll Back Driver when available.
+No claims of a full-speed connection: the 1-bit 400 kHz transport is unchanged.
+
+## exp0.6.8 latency baseline and commands
 
 Install from a fresh extracted folder on the Pi, restart once, then run
 Connect-RPi5-WiFi.cmd and confirm BD if in Bangladesh. Keep the existing UEFI.
