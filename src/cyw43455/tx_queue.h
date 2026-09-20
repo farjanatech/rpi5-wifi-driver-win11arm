@@ -18,6 +18,9 @@ static NDIS_STATUS CywTxSubmit(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LI
 {
     PNET_BUFFER nb;ULONG frames=0,bytes=0,len;KIRQL irql;
     CYW_PENDING_SEND *item;NDIS_STATUS status;
+    KeAcquireSpinLock(&Q->Lock,&irql);status=Q->Gate;
+    KeReleaseSpinLock(&Q->Lock,irql);
+    if(status!=NDIS_STATUS_SUCCESS)return status;
     for(nb=NET_BUFFER_LIST_FIRST_NB(Nbl);nb;nb=NET_BUFFER_NEXT_NB(nb)) {
         len=NET_BUFFER_DATA_LENGTH(nb);
         if(len<14 || len>1514)return NDIS_STATUS_INVALID_LENGTH;
@@ -33,7 +36,7 @@ static NDIS_STATUS CywTxSubmit(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LI
             item=&Q->Entries[Q->Count++];RtlZeroMemory(item,sizeof(*item));
             item->Nbl=Nbl;item->Next=NET_BUFFER_LIST_FIRST_NB(Nbl);
             item->CancelId=NDIS_GET_NET_BUFFER_LIST_CANCEL_ID(Nbl);
-            item->Frames=frames;item->Bytes=bytes;item->Submitted=KeQueryInterruptTime();
+            item->Frames=item->HeldFrames=frames;item->Bytes=bytes;item->Submitted=KeQueryInterruptTime();
             Q->Frames+=frames;Q->Bytes+=bytes;Q->Outstanding++;
             if(Q->Frames>A->TxQueueHighWater)A->TxQueueHighWater=Q->Frames;
             A->TxNblAccepted++;status=NDIS_STATUS_PENDING;
@@ -51,7 +54,7 @@ static VOID CywTxCancel(CYW_TX_STATE *Q,PVOID CancelId)
 static PNET_BUFFER_LIST CywTxRemove(CYW_TX_STATE *Q,ULONG Index)
 {
     PNET_BUFFER_LIST nbl=Q->Entries[Index].Nbl;ULONG i;
-    Q->Frames-=Q->Entries[Index].Frames;Q->Bytes-=Q->Entries[Index].Bytes;
+    Q->Frames-=Q->Entries[Index].HeldFrames;Q->Bytes-=Q->Entries[Index].Bytes;
     for(i=Index+1;i<Q->Count;++i)Q->Entries[i-1]=Q->Entries[i];
     Q->Count--;RtlZeroMemory(&Q->Entries[Q->Count],sizeof(Q->Entries[0]));
     return nbl;
@@ -130,7 +133,10 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
         if(NT_SUCCESS(status)) {
             A->TxPackets++;(*Sent)++;
             Q->Entries[0].Next=NET_BUFFER_NEXT_NB(nb);
-            Q->Entries[0].Frames--;Q->Entries[0].Bytes-=len;Q->Frames--;Q->Bytes-=len;
+            /* NDIS owns the whole NB chain: already-transferred buffers are
+             * still retained until NBL completion, so do not release their
+             * admission budget early. */
+            Q->Entries[0].Frames--;
         } else if(completion==NDIS_STATUS_SUCCESS)completion=NDIS_STATUS_FAILURE;
         if(completion!=NDIS_STATUS_SUCCESS || !Q->Entries[0].Frames)nbl=CywTxRemove(Q,0);
         KeReleaseSpinLock(&Q->Lock,irql);

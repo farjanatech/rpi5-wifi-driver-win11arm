@@ -87,7 +87,7 @@ int main(void)
     CHECK(CywTxSubmit(&A,&Q,&nbl[0])==NDIS_STATUS_PENDING && !nbl[0].Completions);
     CHECK(Q.Frames==2 && Q.Bytes==180 && CywTxOutstanding(&Q)==1);
     CHECK(CywTxPump(&A,&Q,1,&sent)==0 && sent==1 && !nbl[0].Completions);
-    CHECK(Q.Frames==1 && Q.Bytes==80);
+    CHECK(Q.Frames==2 && Q.Bytes==180); /* Entire NB chain remains owned. */
     CHECK(CywTxPump(&A,&Q,4,&sent)==0 && sent==1 && nbl[0].Completions==1);
     CHECK(!Q.Outstanding && !Q.Count && !Q.Frames && !Q.Bytes && A.TxPackets==2);
     CHECK(A.TxNblAccepted==1 && A.TxNblCompleted==1 && nb[0].Next==&nb[1]);
