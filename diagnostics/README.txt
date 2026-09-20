@@ -1,4 +1,4 @@
-Raspberry Pi 5 Wi-Fi One-Click Diagnostics v0.3.0
+Raspberry Pi 5 Wi-Fi One-Click Diagnostics v0.5.0
 =================================================
 
 Run this only inside Windows 11 ARM64 on the Raspberry Pi 5 being tested.
@@ -18,6 +18,7 @@ It can be run before or after installing the experimental driver. It collects:
 - Windows, firmware, ARM64 and boot-security state;
 - ACPI RPI0011 Wi-Fi, RPI000F fan and RPI0010 temperature device state;
 - direct-SDIO probe stages, commands, responses and controller diagnostics;
+- fresh CMD53 chip-read results, bounded core inventory and restoration status;
 - each bounded CMD5 query and voltage-request attempt at 400, 200 and 100 kHz,
   including R4 validity, command-reset, raw response, interrupt, host-control,
   timeout, clock, power and CMD/data-line snapshots;
@@ -32,3 +33,4 @@ Privacy:
 
 This experimental probe does not yet provide working Wi-Fi. A successful CMD52
 result proves only basic host-to-CYW43455 SDIO command communication.
+Core inventory success does not prove RAM capacity or firmware startup.

@@ -7,7 +7,7 @@
 static ULONG Registers[64], Card[2][0x20000];
 static ULONG Fifo, FifoReads, ResetCount, CommandCount, Ticks, Command53Count;
 static ULONG Fault, Fail52At, Commands52, ReadbackMismatch, Command53Events;
-static ULONG FifoWrites, WriteWords[128], DiscoveryMode;
+static ULONG FifoWrites, WriteWords[128], DiscoveryMode, Fail53At;
 static const ULONG Erom[] = {
     0x4BF80001, 0x01080001, 0x18000005, 0x18100085,
     0x4BF82901, 0x01080001, 0x18002005, 0x18101085,
@@ -98,6 +98,8 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
         if (Fault == 10 || Fault == 11)
             Registers[SDHCI_INT_STATUS / 4] &= ~SDHCI_INT_XFER_COMPLETE;
         if (Fault == 6 && Command53Count == 2) Fifo ^= 0x10000;
+        if (Command53Count == Fail53At)
+            Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_DATA_CRC;
     }
     else if (Command == 52)
     {
@@ -134,7 +136,7 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     Adapter->RegisterBase = Registers; Adapter->RegisterLength = sizeof(Registers);
     Adapter->SdioFunctions = 3;
     Fifo = 0x15264345; FifoReads = ResetCount = CommandCount = Ticks = 0;
-    FifoWrites = DiscoveryMode = 0; memset(WriteWords, 0, sizeof(WriteWords));
+    FifoWrites = DiscoveryMode = Fail53At = 0; memset(WriteWords, 0, sizeof(WriteWords));
     Fault = Fail52At = Commands52 = ReadbackMismatch = Command53Count = 0;
     Command53Events = SDHCI_INT_CMD_COMPLETE | SDHCI_INT_BUFFER_READ_READY |
                       SDHCI_INT_XFER_COMPLETE;
@@ -159,7 +161,7 @@ int main(void)
 {
     RPI5CYW_ADAPTER Adapter;
     UCHAR Buffer[514];
-    ULONG Length, Mode, FailAt, Success52Count;
+    ULONG Length, Mode, FailAt, Success52Count, Success53Count, Byte;
     NTSTATUS Status;
     C_ASSERT(sizeof(ULONG) == 4);
     C_ASSERT(sizeof(NTSTATUS) == 4);
@@ -185,6 +187,8 @@ int main(void)
         CHECK(Adapter.LastArgument & 0x80000000UL);
         CHECK((Adapter.LastArgument & 511) == (Length & 511));
         CHECK(Registers[SDHCI_INT_STATUS / 4] == 0);
+        for (Byte = 0; Byte < Length; Byte++)
+            CHECK(((WriteWords[Byte / 4] >> ((Byte % 4) * 8)) & 0xFF) == 0xA5);
         if ((Length & 3) != 0)
             CHECK((WriteWords[FifoWrites - 1] >> ((Length & 3) * 8)) == 0);
     }
@@ -249,6 +253,14 @@ int main(void)
     CHECK(Adapter.Function1Ready && Adapter.ProbeRestoreStatus == 0);
     CheckRestored();
     Success52Count = Commands52;
+    Success53Count = Command53Count;
+    for (FailAt = 1; FailAt <= Success53Count; FailAt++)
+    {
+        Init(&Adapter); Fail53At = FailAt;
+        CHECK(Cyw43455Probe(&Adapter) == STATUS_IO_DEVICE_ERROR);
+        CHECK(!Adapter.CoreInventoryComplete && Adapter.Cmd53WriteCount == 0);
+        CheckRestored();
+    }
     /* Fault each individual CMD52, including every restoration command. */
     for (FailAt = 1; FailAt <= Success52Count; FailAt++)
     {
@@ -274,6 +286,10 @@ int main(void)
     CHECK(Cyw43455Probe(&Adapter) == 0);
     CHECK(Adapter.CoreInventoryComplete && Adapter.RamBankCount == 0);
     CHECK(Adapter.Cmd53WriteCount == 0); CheckRestored();
+    Init(&Adapter); Fifo = 0x15334345; /* untested chip revision */
+    CHECK(Cyw43455Probe(&Adapter) == STATUS_DEVICE_CONFIGURATION_ERROR);
+    CHECK(Adapter.Cmd53ReadCount == 16 && !Adapter.CoreInventoryComplete);
+    CheckRestored();
     if (Failures) { printf("%d failures\n", Failures); return 1; }
     puts("PASS: actual CMD52/CMD53 read/write + core probe, 512 lengths each, bounds, errors, timeouts, cleanup.");
     return 0;
