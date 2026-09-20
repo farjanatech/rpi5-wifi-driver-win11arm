@@ -72,10 +72,12 @@ jobs:
           if ($analysis.Count -ne 0) {
             throw "PSScriptAnalyzer reported $($analysis.Count) error(s)/warning(s)."
           }
-          .\tests\diagnostics_utility_tests.ps1 2>&1 |
+          # Each script gets a real process exit code. In-process scripts with
+          # no native calls leave LASTEXITCODE null/stale and can skip tests.
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\diagnostics_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\diagnostics-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          .\tests\installer_utility_tests.ps1 2>&1 |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\installer_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\installer-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
