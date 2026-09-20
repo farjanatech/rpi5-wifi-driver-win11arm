@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.3'
+$script:UtilityVersion = '0.6.4'
 
 function Get-Rpi5ProbeResult {
     param([AllowNull()]$Diagnostic, [string]$ServiceStatus, [datetime]$BootTime)
@@ -309,6 +309,8 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'NetworkPhase','NetworkStatus','FirmwareCommand','FirmwareError','FirmwareBytes',
                     'FirmwareTotalBytes','FirmwareUploadedBytes','RamTransferStatus','RamTransferStage',
                     'ConnectStep','CountryRequested','CountryApplied','CountryRevision',
+                    'CountryBefore','CountryBeforeRevision','CountrySetMode','CountryExplicitError',
+                    'ClmLoadStatus','ClmQueryStatus',
                     'RamTransferAddress','RamTransferLength','RamTransferWrite',
                     'RamSize','LinkEvent','LinkReason','TxPackets','RxPackets'
                 )

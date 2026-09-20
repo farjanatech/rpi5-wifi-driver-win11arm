@@ -10,28 +10,48 @@
 #define TRY(x) do {Status=(x);if(!NT_SUCCESS(Status))goto Exit;}while(0)
 struct _CYW_NETWORK { BOOLEAN Associated,Authorized; };
 static unsigned Failures,Calls,FailStep,WrongCountry,ShortReply,RadioUp,Joined;
+static unsigned AutoCalls,SetCalls,RejectExplicit,RejectAuto,ClmBad,ClmUnsupported,CountryReads;
+static ULONG ExplicitError;
+static NTSTATUS ExplicitStatus;
 static UCHAR Country[12];
 #define CHECK(x) do {if(!(x)){printf("FAIL line %d: %s\n",__LINE__,#x);++Failures;}}while(0)
 static VOID CywLink(PRPI5CYW_ADAPTER A,BOOLEAN Up) {(void)A;CHECK(!Up);}
 static NTSTATUS Call(PRPI5CYW_ADAPTER A,ULONG Command)
 {
-    ++Calls;CHECK(A->ConnectStep==Calls);A->FirmwareCommand=Command;A->FirmwareError=0;
-    if(Calls==FailStep){A->FirmwareError=0xfffffffe;return STATUS_UNSUCCESSFUL;}
+    ++Calls;A->FirmwareCommand=Command;A->FirmwareError=0;
+    if(A->ConnectStep==FailStep){A->FirmwareError=0xfffffffe;return STATUS_UNSUCCESSFUL;}
     return 0;
 }
 static NTSTATUS CywCmdInt(PRPI5CYW_ADAPTER A,ULONG Command,ULONG Value)
 {
     NTSTATUS s=Call(A,Command);(void)Value;if(!NT_SUCCESS(s))return s;
-    if(Command==2){CHECK(A->CountryApplied==0x4442 && A->CountryRevision==0);RadioUp=1;}
+    if(Command==2){CHECK(A->CountryApplied==0x4442 && A->CountryRevision<0x80000000UL);RadioUp=1;}
     return 0;
 }
 static NTSTATUS CywIovar(PRPI5CYW_ADAPTER A,const char *Name,BOOLEAN Set,PUCHAR Data,ULONG Length)
 {
     NTSTATUS s=Call(A,Set?263:262);if(!NT_SUCCESS(s))return s;
-    if(strcmp(Name,"country")==0) {
-        CHECK(Length==12);
-        if(Set){CHECK(Data[0]=='B' && Data[1]=='D' && CywLe32(Data+4)==0);memcpy(Country,Data,12);}
-        else {memcpy(Data,Country,12);if(WrongCountry)Data[8]='U';A->FirmwareReplyLength=ShortReply?10:12;}
+    if(strcmp(Name,"clmload_status")==0) {
+        CHECK(!Set && Length==4);
+        if(ClmUnsupported){A->FirmwareError=0xffffffe9;return STATUS_UNSUCCESSFUL;}
+        CywPut32(Data,ClmBad);A->FirmwareReplyLength=ShortReply==15?2:4;
+    } else if(strcmp(Name,"country")==0) {
+        if(Set){
+            ++SetCalls;CHECK(Data[0]=='B' && Data[1]=='D' && !Data[2] && !Data[3]);
+            if(Length==4){
+                ++AutoCalls;CHECK(RejectExplicit && ExplicitError==0xfffffffe);
+                if(RejectAuto){A->FirmwareError=0xfffffffe;return STATUS_UNSUCCESSFUL;}
+                CHECK(CywCountryRequest(Data,Country));CywPut32(Country+4,7);
+            } else {
+                CHECK(Length==12 && CywLe32(Data+4)==0);
+                if(RejectExplicit){A->FirmwareError=ExplicitError;return ExplicitStatus;}
+                memcpy(Country,Data,12);
+            }
+        } else {
+            ++CountryReads;CHECK(Length==12);memcpy(Data,Country,12);
+            if(WrongCountry && CountryReads>1)Data[8]='U';
+            A->FirmwareReplyLength=ShortReply==A->ConnectStep?10:12;
+        }
     } else CHECK(Set && strcmp(Name,"wpaie")==0 && Length==22);
     return 0;
 }
@@ -49,23 +69,48 @@ static void Init(PRPI5CYW_ADAPTER A,struct _CYW_NETWORK *N)
 {
     memset(A,0,sizeof(*A));memset(N,0,sizeof(*N));A->Network=N;
     Calls=FailStep=WrongCountry=ShortReply=RadioUp=Joined=0;memset(Country,0,sizeof(Country));
+    AutoCalls=SetCalls=RejectExplicit=RejectAuto=ClmBad=ClmUnsupported=CountryReads=0;
+    ExplicitError=0xfffffffe;
+    ExplicitStatus=STATUS_UNSUCCESSFUL;
 }
 int main(void)
 {
     RPI5CYW_ADAPTER a;struct _CYW_NETWORK n;CYW_CONNECT_REQUEST r={0};unsigned i;
     r.Version=1;r.Country[0]='B';r.Country[1]='D';r.SsidLength=4;memcpy(r.Ssid,"test",4);
     Init(&a,&n);CHECK(CywConnect(&a,&r)==0);
-    CHECK(Calls==13 && Joined && a.NetworkPhase==520 && a.CountryRequested==0x4442);
-    for(i=1;i<=13;++i) {
-        Init(&a,&n);FailStep=i;CHECK(CywConnect(&a,&r)==STATUS_UNSUCCESSFUL);
-        CHECK(Calls==i && a.ConnectStep==i && a.NetworkPhase==510 && !Joined);
-        CHECK(a.FirmwareError==0xfffffffe);if(i<=12)CHECK(!RadioUp);
+    CHECK(Calls==15 && Joined && a.NetworkPhase==520 && a.CountryRequested==0x4442 && a.CountrySetMode==2);
+    for(i=1;i<=16;++i) {
+        if(i==2)continue; /* BADARG here is the single intentional fallback. */
+        Init(&a,&n);FailStep=i;
+        if(i==16)RejectExplicit=1;
+        CHECK(CywConnect(&a,&r)==STATUS_UNSUCCESSFUL);
+        CHECK(a.ConnectStep==i && a.NetworkPhase==510 && !Joined);
+        CHECK(a.FirmwareError==0xfffffffe);if(i!=13)CHECK(!RadioUp);
     }
     Init(&a,&n);WrongCountry=1;CHECK(CywConnect(&a,&r)==STATUS_DEVICE_DATA_ERROR);
-    CHECK(Calls==3 && a.ConnectStep==3 && !RadioUp && !Joined);
-    Init(&a,&n);ShortReply=1;CHECK(CywConnect(&a,&r)==STATUS_DEVICE_DATA_ERROR);
-    CHECK(Calls==3 && !RadioUp && !Joined);
+    CHECK(a.ConnectStep==3 && !RadioUp && !Joined);
+    for(i=0;i<3;++i){
+        Init(&a,&n);ShortReply=i==0?3:(i==1?14:15);
+        CHECK(CywConnect(&a,&r)==STATUS_DEVICE_DATA_ERROR);CHECK(!RadioUp && !Joined);
+    }
+    Init(&a,&n);CHECK(CywCountryRequest(r.Country,Country));CywPut32(Country+4,7);
+    CHECK(CywConnect(&a,&r)==0 && Joined && !SetCalls && a.CountrySetMode==1 && a.CountryRevision==7);
+    Init(&a,&n);RejectExplicit=1;
+    CHECK(CywConnect(&a,&r)==0 && Joined && AutoCalls==1 && SetCalls==2);
+    CHECK(a.CountrySetMode==3 && a.CountryExplicitError==0xfffffffe && a.CountryRevision==7);
+    Init(&a,&n);RejectExplicit=RejectAuto=1;
+    CHECK(CywConnect(&a,&r)==STATUS_UNSUCCESSFUL && !RadioUp && !Joined && AutoCalls==1);
+    Init(&a,&n);RejectExplicit=WrongCountry=1;
+    CHECK(CywConnect(&a,&r)==STATUS_DEVICE_DATA_ERROR && !RadioUp && !Joined);
+    Init(&a,&n);RejectExplicit=1;ExplicitError=0xfffffff9;
+    CHECK(CywConnect(&a,&r)==STATUS_UNSUCCESSFUL && !AutoCalls && !RadioUp);
+    Init(&a,&n);RejectExplicit=1;ExplicitStatus=STATUS_IO_TIMEOUT;
+    CHECK(CywConnect(&a,&r)==STATUS_IO_TIMEOUT && !AutoCalls && !RadioUp);
+    Init(&a,&n);ClmBad=1;
+    CHECK(CywConnect(&a,&r)==STATUS_DEVICE_DATA_ERROR && !SetCalls && !RadioUp && a.ClmLoadStatus==1);
+    Init(&a,&n);ClmUnsupported=1;
+    CHECK(CywConnect(&a,&r)==0 && Joined && a.ClmLoadStatus==0xffffffff && a.ClmQueryStatus==STATUS_UNSUCCESSFUL);
     if(Failures)return 1;
-    puts("PASS: actual connection sequence, BD revision zero/readback, all 13 failures, no radio-up after country rejection");
+    puts("PASS: actual connection sequence, existing country reuse, same-country revision fallback, CLM checks, fail-closed readback");
     return 0;
 }

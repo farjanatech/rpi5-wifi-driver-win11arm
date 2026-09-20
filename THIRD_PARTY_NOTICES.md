@@ -50,6 +50,22 @@ own Broadcom/Cypress notices and are not included in the current driver package.
 
 The current direct-SDIO probe is not represented as a working Wi-Fi driver.
 
+## Country protocol compatibility references (exp0.6.4)
+
+The new connection policy is independently implemented. Linux v6.12 brcmfmac
+cfg80211.c documents reading the current country before setting it and the
+4345 ISO/revision-zero fallback (ISC license, Broadcom; license below).
+https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+
+The legacy four-byte country IOVAR wire format is also visible in the published
+Broadcom/Cypress wlm.c utility's country-selection routine, blob
+013f8af51faeb5dc31eb7c6133c5f9714f705c9a. No source from that utility is copied
+or distributed here; it is a protocol reference only.
+https://nest-open-source.googlesource.com/nest-learning-thermostat/6.1/cypress-utility/+/refs/heads/master/src/wl/exe/wlm.c
+
+This compatibility attempt is not a regulatory certification. No alternate
+country or arbitrary revision is selected when the requested locale is rejected.
+
 ## Linux brcmfmac register/clock-sequence reference
 
 Source: Linux v6.12, drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c

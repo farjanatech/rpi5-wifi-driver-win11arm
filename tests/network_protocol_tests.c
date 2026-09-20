@@ -13,6 +13,7 @@ int main(void)
     CHECK(memcmp(out,"BD\0\0\0\0\0\0BD\0\0",12)==0);
     CHECK(CywCountryMatches((const uint8_t*)"BD",out,12));
     for(i=0;i<12;++i)CHECK(!CywCountryMatches((const uint8_t*)"BD",out,i));
+    CHECK(!CywCountryMatches((const uint8_t*)"BD",out,13));
     out[8]='U';CHECK(!CywCountryMatches((const uint8_t*)"BD",out,12));out[8]='B';
     CywPut32(out+4,0xffffffff);CHECK(!CywCountryMatches((const uint8_t*)"BD",out,12));
     CHECK(!CywCountryRequest((const uint8_t*)"bd",out));

@@ -1,4 +1,38 @@
-# exp0.6.3 live-progress candidate: physical test checklist
+# exp0.6.4 country compatibility candidate: physical test checklist
+
+exp0.6.3 physically completed all 609,309 upload/readback bytes and failed at
+country-set for BD with BADARG (-2). exp0.6.4 changes only country connection
+handling, diagnostics and country-prompt convenience; it is not proven working.
+
+Connection order: radio DOWN; check clmload_status; read existing country;
+reuse an exact full match, otherwise request ISO/revision 0. Only BADARG on
+that explicit request permits one four-byte ISO-only country IOVAR request.
+That asks the firmware for its default revision for the same ISO country,
+not another country. Require a 12-byte readback with matching abbreviation
+and locale and a nonnegative revision before proceeding to authentication.
+Short/mismatched readback, transport errors and rejected fallback stop setup.
+This intentionally does not accept undocumented alias mappings or guesses.
+
+ConnectStep additions: 14 country-initial-read, 15 regulatory-data-status,
+16 country-auto-revision. Existing steps 1-13 and live status ABI are preserved.
+Registry telemetry: CountryBefore (packed ISO bytes), CountryBeforeRevision,
+CountrySetMode (0 none, 1 reused, 2 explicit revision 0, 3 firmware-selected),
+CountryExplicitError (first explicit rejection), ClmLoadStatus and ClmQueryStatus.
+ClmLoadStatus 0xffffffff means unavailable, not successful; query status -23
+firmware unsupported is the only optional case. Nonzero CLM load status fails.
+The collected driver-registry file contains these fields after the request.
+
+The connection utility saves only ConfirmedCountry under
+HKCU\Software\Farjanatech\RPi5WiFi after a request is submitted. Pressing Enter
+confirms that saved country is still your actual location, or type a new one.
+It does not save credentials, automatically guess USA, or detect location.
+
+On the Pi: install, restart once, run Connect, confirm BD, and enter the WPA2/AES
+SSID/password. Check the displayed verified country, authenticated link, DHCP,
+gateway, DNS and real traffic separately. On failure collect diagnostics before
+rebooting; no UEFI update or Windows reflash is needed to test this candidate.
+
+## Retained exp0.6.3 startup progress behavior
 
 This is a diagnostic/utility update, not a claimed fix for a stalled transfer.
 The proven 64-byte transfer method, clock and country-setting policy are unchanged.

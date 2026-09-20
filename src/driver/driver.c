@@ -127,6 +127,12 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"CountryRequested", Adapter->CountryRequested);
     SET_DWORD(L"CountryApplied", Adapter->CountryApplied);
     SET_DWORD(L"CountryRevision", Adapter->CountryRevision);
+    SET_DWORD(L"CountryBefore", Adapter->CountryBefore);
+    SET_DWORD(L"CountryBeforeRevision", Adapter->CountryBeforeRevision);
+    SET_DWORD(L"CountrySetMode", Adapter->CountrySetMode);
+    SET_DWORD(L"CountryExplicitError", Adapter->CountryExplicitError);
+    SET_DWORD(L"ClmLoadStatus", Adapter->ClmLoadStatus);
+    SET_DWORD(L"ClmQueryStatus", Adapter->ClmQueryStatus);
     SET_DWORD(L"RamTransferAddress", Adapter->RamTransferAddress);
     SET_DWORD(L"RamTransferLength", Adapter->RamTransferLength);
     SET_DWORD(L"RamTransferWrite", Adapter->RamTransferWrite);
@@ -494,7 +500,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00060003;
+            Data.Ulong = 0x00060004;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

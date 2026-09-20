@@ -17,6 +17,14 @@ if ($message -notmatch 'Connection setup/runtime' -or $message -notmatch 'countr
     throw 'Connection failure is mislabelled or lacks exact setting/error.'
 }
 if ((Get-Rpi5ConnectStepName 9) -ne 'sup_wpa') { throw 'Connection step mapping wrong.' }
+if ((Get-Rpi5ConnectStepName 16) -ne 'country-auto-revision') { throw 'Country fallback not identified.' }
+if ((Resolve-Rpi5Country 'bd' '') -ne 'BD' -or (Resolve-Rpi5Country '' 'BD') -ne 'BD' -or
+    (Resolve-Rpi5Country 'GB' 'BD') -ne 'GB') { throw 'Country confirmation/resolution failed.' }
+foreach ($pair in @(@('',''), @('','invalid'), @('B','BD'), @('BD;','BD'))) {
+    $rejected = $false
+    try { [void](Resolve-Rpi5Country $pair[0] $pair[1]) } catch { $rejected = $true }
+    if (-not $rejected) { throw 'Invalid/unknown country was silently replaced.' }
+}
 if ((Get-Rpi5DriverFailure ([byte[]]::new(32))) -notmatch 'Firmware startup') { throw 'Old status ABI broken.' }
 $progress = [byte[]]::new(96)
 [BitConverter]::GetBytes([uint32]3).CopyTo($progress, 0)

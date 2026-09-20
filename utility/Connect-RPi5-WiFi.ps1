@@ -8,6 +8,13 @@ function Test-Rpi5ConnectionInput {
     return $Country -cmatch '^[A-Z]{2}$' -and
         [Text.Encoding]::UTF8.GetByteCount($Ssid) -in 1..32
 }
+function Resolve-Rpi5Country {
+    param([string]$InputCountry, [string]$SavedCountry)
+    $choice = $InputCountry.Trim().ToUpperInvariant()
+    if (-not $choice -and $SavedCountry -cmatch '^[A-Z]{2}$') { $choice = $SavedCountry }
+    if ($choice -cnotmatch '^[A-Z]{2}$') { throw 'Enter the two-letter country where the Pi is physically located.' }
+    return $choice
+}
 function Get-Rpi5ConnectStepName {
     param([uint32]$Step)
     switch ($Step) {
@@ -15,6 +22,7 @@ function Get-Rpi5ConnectStepName {
         4 { 'infrastructure' } 5 { 'authentication-mode' } 6 { 'AES-cipher' }
         7 { 'WPA2-mode' } 8 { 'mfp' } 9 { 'sup_wpa' } 10 { 'wpaie' }
         11 { 'PMK' } 12 { 'radio-up' } 13 { 'join-SSID' }
+        14 { 'country-initial-read' } 15 { 'regulatory-data-status' } 16 { 'country-auto-revision' }
         default { 'not-recorded' }
     }
 }
@@ -61,7 +69,8 @@ function Get-Rpi5StartupDecision {
     if ($ElapsedSeconds -ge 1800) { return 'wait-limit' }
     return 'wait'
 }
-# Deliberately no transcript, saved password, command-line credential or profile.
+# Deliberately no transcript, saved password, command-line credential or network profile.
+# Only a user-confirmed country abbreviation can be remembered.
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -147,7 +156,16 @@ if ($Disconnect) {
     }
     Write-Output 'Experimental WPA2-Personal / AES only. Keep your working Ethernet connection available.'
     Write-Output 'Use the country where the Pi is physically located. No UEFI or boot settings are changed.'
-    $country = (Read-Host 'Two-letter country code, e.g. BD').Trim().ToUpperInvariant()
+    $countryKey = 'HKCU:\Software\Farjanatech\RPi5WiFi'
+    $savedCountry = ''
+    try {
+        $savedCountry = Get-ItemPropertyValue -LiteralPath $countryKey -Name ConfirmedCountry -ErrorAction Stop
+    } catch { $savedCountry = '' }
+    if ($savedCountry -cnotmatch '^[A-Z]{2}$') { $savedCountry = '' }
+    $countryPrompt = if ($savedCountry) {
+        "Country where this Pi is physically located [Enter confirms $savedCountry, or type another]"
+    } else { 'Two-letter country code, e.g. BD (no automatic USA fallback)' }
+    $country = Resolve-Rpi5Country (Read-Host $countryPrompt) $savedCountry
     $ssid = Read-Host 'Exact Wi-Fi network name (SSID)'
     if (-not (Test-Rpi5ConnectionInput $country $ssid)) { throw 'Invalid country or SSID length (1-32 UTF-8 bytes).' }
     $secure = Read-Host 'WPA2 password (8-63 printable ASCII characters)' -AsSecureString
@@ -172,6 +190,10 @@ if ($Disconnect) {
         [Text.Encoding]::ASCII.GetBytes($country).CopyTo($request, 8)
         $ssidBytes.CopyTo($request, 12); $pmk.CopyTo($request, 44)
         [void][Rpi5WifiControl]::Call(0x12A000, $request)
+        try {
+            if (-not (Test-Path -LiteralPath $countryKey)) { [void](New-Item -Path $countryKey -Force) }
+            [void](New-ItemProperty -LiteralPath $countryKey -Name ConfirmedCountry -Value $country -PropertyType String -Force)
+        } catch { Write-Warning 'Could not remember the country; the connection request was still submitted.' }
         Write-Output 'Connection requested. Success requires authenticated link AND an IP address.'
     } finally {
         foreach ($buffer in @($passwordBytes, $pmk, $request)) {
@@ -193,6 +215,13 @@ for ($attempt = 0; $attempt -lt $limit; $attempt++) {
     $reason = [BitConverter]::ToUInt32($state, 24)
     Write-Output ('Phase={0} Status=0x{1:X8} AuthenticatedLink={2} Event={3} Reason={4}' -f $phase, $errorCode, $connected, $eventType, $reason)
     if ($errorCode -ne 0) { Write-Output (Get-Rpi5DriverFailure $state) }
+    if ([BitConverter]::ToUInt32($state, 0) -ge 2 -and $state.Length -ge 48) {
+        $applied = [BitConverter]::ToUInt32($state, 40)
+        if ($applied -ne 0) {
+            $appliedText = [string][char]($applied -band 255) + [char](($applied -shr 8) -band 255)
+            Write-Output ('Verified country={0} revision={1}' -f $appliedText, [BitConverter]::ToUInt32($state, 44))
+        }
+    }
     if ($connected -or $errorCode -ne 0) { break }
     if ($attempt + 1 -lt $limit) { Start-Sleep -Seconds 2 }
 }

@@ -4,6 +4,27 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.4 candidate — country compatibility
+
+Physical exp0.6.3 diagnostics confirmed full firmware upload/readback, then
+failure specifically at country-set (BD, firmware BADARG -2). This candidate
+reads the existing country before changing it, reuses a complete exact match,
+and tries the same-country four-byte legacy request once only when explicit
+revision zero is rejected with BADARG. The firmware chooses its default revision;
+a full matching country/revision readback is still required before radio-up.
+It never substitutes USA, another country, or brute-forces regulatory revisions.
+
+The loaded CLM status is checked before country setup. A reported CLM error or
+malformed reply prevents connection; only a specifically unsupported status
+query is optional. New saved diagnostics record the initial country/revision,
+selection path, explicit rejection and CLM query/result. The utility remembers
+only the user-confirmed country in HKCU and offers it for confirmation next time;
+it never saves SSIDs, passwords or PMKs and does not infer physical location.
+
+UEFI/fan, chip firmware, NVRAM, SDIO clock and upload/readback implementation are
+unchanged. This is a targeted compatibility candidate, not a hardware-validated
+working Wi-Fi release. Keep exp0.6.3 available for rollback.
+
 ### Integrated exp0.6.3 candidate — live firmware progress
 
 exp0.6.2's repeated phase-420 utility timeouts did not show whether the firmware
