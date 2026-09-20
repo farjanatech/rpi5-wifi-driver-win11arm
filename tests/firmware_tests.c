@@ -13,7 +13,9 @@ typedef const wchar_t *PCWSTR;
 #define STATUS_CANCELLED ((NTSTATUS)0xc0000120L)
 static size_t TestCompare(const void *a,const void *b,size_t n) {return memcmp(a,b,n)==0?n:0;}
 #define RtlCompareMemory TestCompare
+#ifndef min
 #define min(a,b) ((a)<(b)?(a):(b))
+#endif
 static unsigned Allocations,Outstanding,FailAlloc;
 static void *TestAlloc(int flags,size_t n,unsigned long tag)
 {void *p;(void)flags;(void)tag;if(++Allocations==FailAlloc)return NULL;p=calloc(1,n);if(p)++Outstanding;return p;}

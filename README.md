@@ -26,8 +26,10 @@ Limitations: WPA2/AES only (no WPA3 or enterprise), no scanning UI or saved
 reconnect profile; locally administered MAC changes on initialization;
 conservative 1-bit 400kHz polling, not a performance release. Power transitions
 are handled but need hardware validation; avoid sleep/hibernate in the first test.
-Recovery: Device Manager -> exact CYW43455 adapter -> Roll Back Driver, or
-reinstall the previous exp0.5 package. Do not remove unrelated network drivers.
+Recovery: Device Manager -> exact CYW43455 adapter -> Roll Back Driver if
+available. Otherwise disable only that adapter and collect diagnostics over
+wired Ethernet. PnPUtil does not force-downgrade a higher-ranked installed driver.
+Do not remove unrelated network drivers.
 
 Sources and firmware hashes/licenses are recorded in `THIRD_PARTY_NOTICES.md`
 and `scripts/fetch-firmware.ps1`. No UEFI, BCD, disk or Windows-image changes.

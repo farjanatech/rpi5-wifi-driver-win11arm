@@ -64,6 +64,16 @@ if ($Disconnect) {
     [void][Rpi5WifiControl]::Call(0x12A008, $null)
     Write-Output 'Disconnect requested.'
 } elseif (-not $StatusOnly) {
+    for ($readyAttempt = 0; $readyAttempt -lt 60; $readyAttempt++) {
+        $readyState = [Rpi5WifiControl]::Call(0x126004, $null)
+        $readyPhase = [BitConverter]::ToUInt32($readyState, 4)
+        $readyError = [BitConverter]::ToUInt32($readyState, 8)
+        if ($readyError -ne 0) { throw ('Firmware startup failed: phase {0}, status 0x{1:X8}. Run diagnostics.' -f $readyPhase, $readyError) }
+        if ($readyPhase -ge 500) { break }
+        Write-Output "Firmware initialization: phase $readyPhase. Waiting before requesting credentials..."
+        Start-Sleep -Seconds 3
+    }
+    if ($readyPhase -lt 500) { throw 'Firmware did not become ready within three minutes. Run diagnostics.' }
     Write-Output 'Experimental WPA2-Personal / AES only. Keep your working Ethernet connection available.'
     Write-Output 'Use the country where the Pi is physically located. No UEFI or boot settings are changed.'
     $country = (Read-Host 'Two-letter country code, e.g. BD').Trim().ToUpperInvariant()
@@ -107,7 +117,9 @@ for ($attempt = 0; $attempt -lt $limit; $attempt++) {
     $phase = [BitConverter]::ToUInt32($state, 4)
     $errorCode = [BitConverter]::ToUInt32($state, 8)
     $connected = [BitConverter]::ToUInt32($state, 28) -eq 1
-    Write-Output ('Phase={0} Status=0x{1:X8} AuthenticatedLink={2}' -f $phase, $errorCode, $connected)
+    $eventType = [BitConverter]::ToUInt32($state, 20)
+    $reason = [BitConverter]::ToUInt32($state, 24)
+    Write-Output ('Phase={0} Status=0x{1:X8} AuthenticatedLink={2} Event={3} Reason={4}' -f $phase, $errorCode, $connected, $eventType, $reason)
     if ($connected -or $errorCode -ne 0) { break }
     if ($attempt + 1 -lt $limit) { Start-Sleep -Seconds 2 }
 }
