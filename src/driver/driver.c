@@ -7,6 +7,8 @@ static NDIS_HANDLE gRpi5CywDriverHandle;
 static const NDIS_OID gRpi5CywSupportedOids[] =
 {
     OID_GEN_SUPPORTED_LIST,
+    OID_PNP_QUERY_POWER,
+    OID_PNP_SET_POWER,
     OID_GEN_HARDWARE_STATUS,
     OID_GEN_MEDIA_SUPPORTED,
     OID_GEN_MEDIA_IN_USE,
@@ -366,6 +368,10 @@ Rpi5CywMapResources(
         {
             Adapter->RegisterPhysical = Descriptor[Index].u.Memory.Start;
             Adapter->RegisterLength = Descriptor[Index].u.Memory.Length;
+            if (Adapter->RegisterPhysical.HighPart != 0x10 ||
+                Adapter->RegisterPhysical.LowPart != 0x01100000 ||
+                Adapter->RegisterLength < 0x100 || Adapter->RegisterLength > 0x1000)
+                return NDIS_STATUS_RESOURCES;
             Status = NdisMMapIoSpace(&Adapter->RegisterBase,
                                      Adapter->MiniportHandle,
                                      Adapter->RegisterPhysical,
@@ -428,6 +434,9 @@ Rpi5CywQueryInformation(
         case OID_GEN_HARDWARE_STATUS:
             Data.HardwareStatus = NdisHardwareStatusReady;
             return Rpi5CywCopyQuery(OidRequest, &Data.HardwareStatus, sizeof(Data.HardwareStatus));
+
+        case OID_PNP_QUERY_POWER:
+            return NDIS_STATUS_SUCCESS;
 
         case OID_GEN_MEDIA_SUPPORTED:
         case OID_GEN_MEDIA_IN_USE:
@@ -543,6 +552,29 @@ Rpi5CywQueryInformation(
     }
 }
 
+typedef struct _CYW_POWER_WORK {
+    PRPI5CYW_ADAPTER Adapter;
+    PNDIS_OID_REQUEST Request;
+    NDIS_DEVICE_POWER_STATE State;
+} CYW_POWER_WORK;
+
+static VOID CywPowerWork(PVOID Context, NDIS_HANDLE WorkItem)
+{
+    CYW_POWER_WORK *Work = Context;
+    PRPI5CYW_ADAPTER Adapter = Work->Adapter;
+    PNDIS_OID_REQUEST Request = Work->Request;
+    NDIS_HANDLE Miniport = Adapter->MiniportHandle;
+    NTSTATUS Status = CywNetworkPower(Adapter, Work->State == NdisDeviceStateD0);
+    Adapter->NetworkStatus = Status;
+    Rpi5CywWriteDiagnostics(Adapter, 120, Status);
+    Request->DATA.SET_INFORMATION.BytesRead = sizeof(NDIS_DEVICE_POWER_STATE);
+    ExFreePoolWithTag(Work, RPI5CYW_TAG);
+    NdisFreeIoWorkItem(WorkItem);
+    /* A failed resume is reported through disconnected media + diagnostics,
+     * not by blocking the system's power transition. */
+    NdisMOidRequestComplete(Miniport, Request, NDIS_STATUS_SUCCESS);
+}
+
 static NDIS_STATUS
 Rpi5CywSetInformation(
     _Inout_ PRPI5CYW_ADAPTER Adapter,
@@ -558,6 +590,23 @@ Rpi5CywSetInformation(
 
     switch (Oid)
     {
+        case OID_PNP_SET_POWER:
+        {
+            CYW_POWER_WORK *Work;
+            NDIS_HANDLE Item;
+            NDIS_DEVICE_POWER_STATE State;
+            if (BufferLength != sizeof(State)) return NDIS_STATUS_INVALID_LENGTH;
+            RtlCopyMemory(&State, Buffer, sizeof(State));
+            if (State < NdisDeviceStateD0 || State > NdisDeviceStateD3)
+                return NDIS_STATUS_INVALID_DATA;
+            Work = ExAllocatePool2(POOL_FLAG_NON_PAGED, sizeof(*Work), RPI5CYW_TAG);
+            if (!Work) return NDIS_STATUS_RESOURCES;
+            Item = NdisAllocateIoWorkItem(Adapter->MiniportHandle);
+            if (!Item) { ExFreePoolWithTag(Work, RPI5CYW_TAG); return NDIS_STATUS_RESOURCES; }
+            Work->Adapter = Adapter; Work->Request = OidRequest; Work->State = State;
+            NdisQueueIoWorkItem(Item, CywPowerWork, Work);
+            return NDIS_STATUS_PENDING;
+        }
         case OID_GEN_CURRENT_PACKET_FILTER:
             if (BufferLength < sizeof(ULONG))
             {
@@ -622,6 +671,7 @@ Rpi5CywInitializeEx(
 
     RtlZeroMemory(Adapter, sizeof(*Adapter));
     Adapter->MiniportHandle = MiniportAdapterHandle;
+    Adapter->NdisPaused = TRUE;
     Adapter->Lookahead = RPI5CYW_MTU;
     Adapter->LinkSpeed = NDIS_LINK_SPEED_UNKNOWN;
     Adapter->MediaConnectState = MediaConnectStateDisconnected;
@@ -847,8 +897,8 @@ Rpi5CywDevicePnPEventNotify(
     _In_ PNET_DEVICE_PNP_EVENT NetDevicePnPEvent
     )
 {
-    UNREFERENCED_PARAMETER(MiniportAdapterContext);
-    UNREFERENCED_PARAMETER(NetDevicePnPEvent);
+    if (NetDevicePnPEvent->DevicePnPEvent == NdisDevicePnPEventSurpriseRemoved)
+        CywNetworkShutdown((PRPI5CYW_ADAPTER)MiniportAdapterContext);
 }
 
 static VOID NTAPI
@@ -857,7 +907,7 @@ Rpi5CywShutdown(
     _In_ NDIS_SHUTDOWN_ACTION ShutdownAction
     )
 {
-    UNREFERENCED_PARAMETER(MiniportAdapterContext);
+    CywNetworkShutdown((PRPI5CYW_ADAPTER)MiniportAdapterContext);
     UNREFERENCED_PARAMETER(ShutdownAction);
 }
 

@@ -20,7 +20,8 @@ struct _CYW_NETWORK {
     KEVENT Wake, PauseAck, ThreadStarted;
     PVOID Thread;
     volatile LONG Stop, Paused;
-    BOOLEAN Ready, Associated, Authorized, RxPending, Published;
+    volatile BOOLEAN Ready, Associated, Authorized, Published;
+    BOOLEAN RxPending, Powered;
     ULONG Request, Head, Tail, Count;
     CYW_CONNECT_REQUEST Connect;
     CYW_TX Queue[CYW_QUEUE];
@@ -33,6 +34,8 @@ static KSPIN_LOCK ControlLock;
 static PRPI5CYW_ADAPTER ControlAdapter;
 static NDIS_HANDLE ControlHandle;
 static PDEVICE_OBJECT ControlDevice;
+BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A)
+{return A->IoStopped || (A->Network && A->Network->Stop);}
 
 static VOID CywLink(PRPI5CYW_ADAPTER A, BOOLEAN Up)
 {
@@ -248,6 +251,7 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
     A->Network->Associated=A->Network->Authorized=FALSE;CywLink(A,FALSE);
     A->NetworkPhase=510;
     TRY(CywCmdInt(A,3,0));
+    A->Network->Associated=A->Network->Authorized=FALSE;
     country[0]=country[8]=R->Country[0];country[1]=country[9]=R->Country[1];
     CywPut32(country+4,0xffffffff);
     TRY(CywIovar(A,"country",TRUE,country,sizeof(country)));
@@ -265,7 +269,7 @@ Exit: RtlSecureZeroMemory(pmk,sizeof(pmk));RtlSecureZeroMemory(ssid,sizeof(ssid)
 static VOID CywWorker(PVOID Context)
 {
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
-    CYW_CONNECT_REQUEST request;CYW_TX tx;
+    CYW_CONNECT_REQUEST request;CYW_TX tx={0};
     KIRQL irql;ULONG op,channel,off,len,i;BOOLEAN haveTx;
     LARGE_INTEGER wait;NTSTATUS Status;
     N->Thread=PsGetCurrentThread();ObReferenceObject(N->Thread);
@@ -322,6 +326,7 @@ Failed:
     A->NetworkStatus=Status;N->Ready=FALSE;
     N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
     Rpi5CywWriteDiagnostics(A,120,Status);
+    CywFirmwareStop(A);
 Exit:
     RtlSecureZeroMemory(&request,sizeof(request));
     N->Ready=FALSE;KeSetEvent(&N->PauseAck,0,FALSE);
@@ -333,7 +338,7 @@ NTSTATUS CywNetworkInitialize(PRPI5CYW_ADAPTER A)
     OBJECT_ATTRIBUTES Attr;KIRQL irql;HANDLE threadHandle;
     N=ExAllocatePool2(POOL_FLAG_NON_PAGED,sizeof(*N),RPI5CYW_TAG);
     if(!N)return STATUS_INSUFFICIENT_RESOURCES;
-    A->Network=N;N->Adapter=A;N->TxMax=1;N->Paused=1;
+    A->Network=N;N->Adapter=A;N->TxMax=1;N->Paused=1;N->Powered=TRUE;
     KeInitializeSpinLock(&N->Lock);KeInitializeEvent(&N->Wake,SynchronizationEvent,FALSE);
     KeInitializeEvent(&N->PauseAck,NotificationEvent,TRUE);
     KeInitializeEvent(&N->ThreadStarted,NotificationEvent,FALSE);
@@ -369,7 +374,7 @@ VOID CywNetworkStop(PRPI5CYW_ADAPTER A)
         KeWaitForSingleObject(N->Thread,Executive,KernelMode,FALSE,NULL);
         ObDereferenceObject(N->Thread);
     }
-    CywFirmwareStop(A);
+    if(N->Powered)CywFirmwareStop(A);
     if(N->RxPool)NdisFreeNetBufferListPool(N->RxPool);
     if(N->Rx)ExFreePoolWithTag(N->Rx,RPI5CYW_TAG);
     if(N->Tx) {RtlSecureZeroMemory(N->Tx,CYW_CONTROL_CAPACITY);ExFreePoolWithTag(N->Tx,RPI5CYW_TAG);}
@@ -378,10 +383,50 @@ VOID CywNetworkStop(PRPI5CYW_ADAPTER A)
 VOID CywNetworkPause(PRPI5CYW_ADAPTER A,BOOLEAN Paused)
 {
     CYW_NETWORK *N=A->Network;
+    A->NdisPaused=Paused;
     if(!N)return;
     if(Paused)KeClearEvent(&N->PauseAck);
     InterlockedExchange(&N->Paused,Paused);N->Published=TRUE;KeSetEvent(&N->Wake,0,FALSE);
     if(Paused && N->Ready)KeWaitForSingleObject(&N->PauseAck,Executive,KernelMode,FALSE,NULL);
+}
+/* Called on an NDIS work item. Keep the network allocation alive in D3 so
+ * concurrent rejected sends never race freed memory. No SDIO access in D3. */
+NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER A,BOOLEAN On)
+{
+    CYW_NETWORK *N=A->Network;KIRQL irql;OBJECT_ATTRIBUTES attr;
+    HANDLE handle;NTSTATUS status;
+    if(!N)return STATUS_DEVICE_NOT_READY;
+    if(!On) {
+        N->Ready=FALSE;InterlockedExchange(&N->Stop,1);KeSetEvent(&N->Wake,0,FALSE);
+        if(N->Thread) {
+            KeWaitForSingleObject(N->Thread,Executive,KernelMode,FALSE,NULL);
+            ObDereferenceObject(N->Thread);N->Thread=NULL;
+        }
+        if(N->Powered)CywFirmwareStop(A);
+        N->Powered=FALSE;A->IoStopped=1;
+        N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
+        KeAcquireSpinLock(&N->Lock,&irql);N->Head=N->Tail=N->Count=N->Request=0;
+        RtlSecureZeroMemory(&N->Connect,sizeof(N->Connect));KeReleaseSpinLock(&N->Lock,irql);
+        return STATUS_SUCCESS;
+    }
+    if(N->Thread)return STATUS_SUCCESS;
+    A->IoStopped=0;N->Stop=0;N->Ready=FALSE;N->Powered=TRUE;
+    N->Paused=(LONG)A->NdisPaused;N->TxSeq=0;N->TxMax=1;N->TxFlow=0;N->RxPending=FALSE;
+    status=Rpi5CywDirectSdioProbe(A);
+    if(!NT_SUCCESS(status))return status;
+    KeClearEvent(&N->ThreadStarted);
+    InitializeObjectAttributes(&attr,NULL,OBJ_KERNEL_HANDLE,NULL,NULL);
+    status=PsCreateSystemThread(&handle,THREAD_ALL_ACCESS,&attr,NULL,NULL,CywWorker,A);
+    if(NT_SUCCESS(status)) {
+        KeWaitForSingleObject(&N->ThreadStarted,Executive,KernelMode,FALSE,NULL);ZwClose(handle);
+    }
+    return status;
+}
+VOID CywNetworkShutdown(PRPI5CYW_ADAPTER A)
+{
+    InterlockedExchange(&A->IoStopped,1);
+    if(A->Network)InterlockedExchange(&A->Network->Stop,1);
+    /* Shutdown may run at HIGH_LEVEL: no waiting, allocation, or SDIO calls. */
 }
 NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER A,PNET_BUFFER_LIST Nbl)
 {

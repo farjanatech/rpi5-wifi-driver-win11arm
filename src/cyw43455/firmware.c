@@ -79,6 +79,7 @@ static NTSTATUS CywRam(PRPI5CYW_ADAPTER A, ULONG Address, PUCHAR Data,
         (Address>=A->RamBase && Address-A->RamBase<=A->RamSize &&
          Length<=A->RamSize-(Address-A->RamBase)))) return STATUS_INVALID_PARAMETER;
     while(Length) {
+        if(CywNetworkCancelled(A))return STATUS_CANCELLED;
         n=0x8000-(Address&0x7fff); if(n>512)n=512; if(n>Length)n=Length;
         Status=CywWindow(A,Address); if(!NT_SUCCESS(Status)) return Status;
         Status=Write ? SdioCmd53Write(A,1,Address&0x7fff,Data,n) :
@@ -116,6 +117,7 @@ static NTSTATUS CywClock(PRPI5CYW_ADAPTER A, UCHAR Request, UCHAR Mask)
     Status=SdioCmd52Write(A,1,0x1000e,Request,0x3f);
     if(!NT_SUCCESS(Status))return Status;
     for(i=0;i<1000;++i) {
+        if(CywNetworkCancelled(A))return STATUS_CANCELLED;
         Status=SdioCmd52Read(A,1,0x1000e,&v); if(!NT_SUCCESS(Status))return Status;
         if((v&Mask)==Mask)return STATUS_SUCCESS;
         SdioDelayMilliseconds(1);
@@ -127,6 +129,7 @@ static NTSTATUS CywEnable(PRPI5CYW_ADAPTER A, UCHAR Bits)
     UCHAR v; ULONG i; NTSTATUS Status;
     TRY(SdioCmd52Read(A,0,2,&v)); TRY(SdioCmd52Write(A,0,2,(UCHAR)(v|Bits),0xfe));
     for(i=0;i<1000;++i) {
+        if(CywNetworkCancelled(A))return STATUS_CANCELLED;
         TRY(SdioCmd52Read(A,0,3,&v)); if((v&Bits)==Bits)return STATUS_SUCCESS;
         SdioDelayMilliseconds(1);
     }
@@ -205,6 +208,7 @@ Exit:
 VOID CywFirmwareStop(PRPI5CYW_ADAPTER A)
 {
     UCHAR v;
+    if(A->IoStopped)return;
     /* No host disk/boot/UEFI changes. Stop this chip only, best effort. */
     if(A->NetworkPhase>=410) {
         (void)CywBpWrite(A,A->SdioCoreBase+0x24,0);

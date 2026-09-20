@@ -10,6 +10,7 @@ typedef const wchar_t *PCWSTR;
 #define STATUS_DEVICE_NOT_READY ((NTSTATUS)0xc00000a3L)
 #define STATUS_INVALID_IMAGE_FORMAT ((NTSTATUS)0xc000007bL)
 #define STATUS_INSUFFICIENT_RESOURCES ((NTSTATUS)0xc000009aL)
+#define STATUS_CANCELLED ((NTSTATUS)0xc0000120L)
 static size_t TestCompare(const void *a,const void *b,size_t n) {return memcmp(a,b,n)==0?n:0;}
 #define RtlCompareMemory TestCompare
 static unsigned Allocations,Outstanding,FailAlloc;
@@ -23,6 +24,7 @@ static unsigned Failures,Calls,FailCall,Corrupt,Started,ClockNever,ReadyNever,Ba
 static ULONG Window,Bank,Ioctl,Reset;
 static UCHAR Card[0x10020],Ram[0xc8000],Vector[4];
 int TestIrql;
+BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A) {return A->IoStopped!=0;}
 #define CHECK(x) do {if(!(x)){printf("FAIL line %d %s\n",__LINE__,#x);++Failures;}}while(0)
 static NTSTATUS Tick(void) {return ++Calls==FailCall?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;}
 void KeStallExecutionProcessor(ULONG u) {(void)u;}

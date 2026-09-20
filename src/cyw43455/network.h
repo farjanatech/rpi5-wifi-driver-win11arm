@@ -7,10 +7,13 @@ typedef struct _CYW_NETWORK CYW_NETWORK;
 NTSTATUS CywNetworkInitialize(PRPI5CYW_ADAPTER Adapter);
 VOID CywNetworkStop(PRPI5CYW_ADAPTER Adapter);
 VOID CywNetworkPause(PRPI5CYW_ADAPTER Adapter, BOOLEAN Paused);
+NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER Adapter, BOOLEAN On);
+VOID CywNetworkShutdown(PRPI5CYW_ADAPTER Adapter);
 NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER Adapter, PNET_BUFFER_LIST Nbl);
 NTSTATUS CywControlRegister(NDIS_HANDLE DriverHandle);
 VOID CywControlDeregister(VOID);
 #endif
+BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER Adapter);
 NTSTATUS CywBpRead(PRPI5CYW_ADAPTER Adapter, ULONG Address, PULONG Value);
 NTSTATUS CywBpWrite(PRPI5CYW_ADAPTER Adapter, ULONG Address, ULONG Value);
 NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER Adapter);

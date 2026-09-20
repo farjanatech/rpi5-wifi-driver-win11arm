@@ -4,6 +4,36 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6 candidate — not yet hardware validated
+
+Driver 0.5 has now passed core discovery on the user's Pi 5: chip 0x4345 rev 6,
+11 cores, 8 CR4 banks and successful restoration. The current source builds on
+that result with firmware upload/readback, measured CR4 RAM size, F2 FIFO,
+SDPCM/BCDC control, WPA2-Personal AES firmware supplicant and Ethernet TX/RX.
+
+**This is an experimental connection candidate, not a claim of working Wi-Fi.**
+Host simulations and a successful ARM64 build cannot validate a physical radio.
+Keep UEFI source `bda4c47`, the working fan and wired Ethernet unchanged.
+
+After installing the test package **on the Pi only**, restart and run
+`Connect-RPi5-WiFi.cmd`. Supply the actual country, SSID and WPA2 password.
+The utility sends a derived PMK over an administrator-only control device;
+it does not save credentials. Windows sees Ethernet, not the native Wi-Fi list.
+Verify authenticated link, DHCP address, gateway reachability, DNS and real
+traffic separately. Use the included diagnostics if any stage fails.
+
+Limitations: WPA2/AES only (no WPA3 or enterprise), no scanning UI or saved
+reconnect profile; locally administered MAC changes on initialization;
+conservative 1-bit 400kHz polling, not a performance release. Power transitions
+are handled but need hardware validation; avoid sleep/hibernate in the first test.
+Recovery: Device Manager -> exact CYW43455 adapter -> Roll Back Driver, or
+reinstall the previous exp0.5 package. Do not remove unrelated network drivers.
+
+Sources and firmware hashes/licenses are recorded in `THIRD_PARTY_NOTICES.md`
+and `scripts/fetch-firmware.ps1`. No UEFI, BCD, disk or Windows-image changes.
+
+### Historical probe milestones (0.1–0.5)
+
 **Milestone 1: direct-SDIO hardware bring-up behind an NDIS Ethernet adapter**
 
 The current branch binds an NDIS 6.30 Ethernet miniport to the dedicated
@@ -57,7 +87,7 @@ Windows 11 ARM64
     |
     +-- NDIS 6.30 Ethernet miniport
     |
-    +-- CYW43455 firmware/control layer (not implemented yet)
+    +-- CYW43455 firmware/control layer (integrated experimental candidate)
     |       +-- BCDC / SDPCM / chip backplane
     |
     +-- direct SDIO2 host transport
@@ -68,7 +98,7 @@ Windows 11 ARM64
 ## Repository layout
 
 - `src/driver/` - Windows kernel driver entry/PnP scaffolding.
-- `src/sdio/` - Windows SD bus transport.
+- `src/sdio/` - direct SDHCI PIO transport (no Microsoft SD bus dependency).
 - `src/cyw43455/` - CYW43455-specific chip/firmware protocol code.
 - `package/` - driver INF/package files.
 - `docs/` - architecture, build and bring-up notes.
@@ -79,9 +109,9 @@ The first development branch is `bringup/cyw43455-sdio-arm64`.
 
 ## Status
 
-This repository is experimental. The current artifact is a hardware probe, not
-a functional network driver. Install it only on the matching Raspberry Pi 5
-test system with kernel debugging and recovery access available.
+This repository is experimental. The integrated candidate remains unvalidated
+on hardware; earlier releases are probes. Install only on the matching Pi 5
+test system with recovery access available. Never install on the development PC.
 
 ## License
 

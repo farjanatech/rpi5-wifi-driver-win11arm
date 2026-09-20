@@ -160,12 +160,31 @@ static void CheckRestored(void)
 int main(void)
 {
     RPI5CYW_ADAPTER Adapter;
-    UCHAR Buffer[514];
+    UCHAR Buffer[514], FifoBuffer[1024];
     ULONG Length, Mode, FailAt, Success52Count, Success53Count, Byte;
     NTSTATUS Status;
     C_ASSERT(sizeof(ULONG) == 4);
     C_ASSERT(sizeof(NTSTATUS) == 4);
     RunEromTests();
+    Init(&Adapter); memset(FifoBuffer,0,sizeof(FifoBuffer));
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,sizeof(FifoBuffer),FALSE)==0);
+    CHECK(Command53Count==2 && FifoReads==256);
+    CHECK(((Adapter.LastArgument>>28)&7)==2);
+    CHECK((Adapter.LastArgument&0x04000000)==0); /* fixed FIFO address */
+    CHECK(((Adapter.LastArgument>>9)&0x1ffff)==0x8000);
+    Init(&Adapter);Fail53At=2;
+    CHECK(!NT_SUCCESS(SdioFifoTransfer(&Adapter,FifoBuffer,sizeof(FifoBuffer),FALSE)));
+    CHECK(Command53Count==2);
+    Init(&Adapter);
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,512,TRUE)==0);
+    CHECK(FifoWrites==128 && ((Adapter.LastArgument>>28)&7)==2);
+    Init(&Adapter);
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,3,FALSE)==STATUS_INVALID_PARAMETER);
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,65540,FALSE)==STATUS_INVALID_PARAMETER);
+    CHECK(CommandCount==0);
+    Init(&Adapter);Adapter.IoStopped=1;
+    CHECK(!NT_SUCCESS(SdioCmd53Read(&Adapter,1,0x8000,Buffer,4)));
+    CHECK(CommandCount==0 && FifoReads==0 && FifoWrites==0);
     for (Length = 1; Length <= 512; Length++)
     {
         Init(&Adapter); memset(Buffer, 0xAA, sizeof(Buffer));

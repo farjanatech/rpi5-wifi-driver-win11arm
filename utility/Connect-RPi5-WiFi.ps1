@@ -8,12 +8,6 @@ function Test-Rpi5ConnectionInput {
     return $Country -cmatch '^[A-Z]{2}$' -and
         [Text.Encoding]::UTF8.GetByteCount($Ssid) -in 1..32
 }
-if ($LibraryOnly) { return }
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = [Security.Principal.WindowsPrincipal]::new($identity)
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run this utility as Administrator on the Raspberry Pi, not the build PC.'
-}
 # Deliberately no transcript, saved password, command-line credential or profile.
 Add-Type -TypeDefinition @'
 using System;
@@ -21,6 +15,26 @@ using System.Runtime.InteropServices;
 using System.ComponentModel;
 using Microsoft.Win32.SafeHandles;
 public static class Rpi5WifiControl {
+    [DllImport("bcrypt.dll", CharSet=CharSet.Unicode)]
+    static extern int BCryptOpenAlgorithmProvider(out IntPtr handle, string algorithm, string implementation, uint flags);
+    [DllImport("bcrypt.dll")]
+    static extern int BCryptDeriveKeyPBKDF2(IntPtr handle, byte[] password, uint passwordSize,
+        byte[] salt, uint saltSize, ulong iterations, byte[] output, uint outputSize, uint flags);
+    [DllImport("bcrypt.dll")]
+    static extern int BCryptCloseAlgorithmProvider(IntPtr handle, uint flags);
+    public static byte[] Derive(byte[] password, byte[] ssid) {
+        IntPtr algorithm;
+        if(BCryptOpenAlgorithmProvider(out algorithm,"SHA1",null,8)!=0)
+            throw new System.Security.Cryptography.CryptographicException("Cannot open WPA2 HMAC-SHA1 provider.");
+        byte[] key=new byte[32];
+        try {
+            if(BCryptDeriveKeyPBKDF2(algorithm,password,(uint)password.Length,ssid,(uint)ssid.Length,4096,key,32,0)!=0) {
+                Array.Clear(key,0,key.Length);
+                throw new System.Security.Cryptography.CryptographicException("WPA2 key derivation failed.");
+            }
+            return key;
+        } finally { BCryptCloseAlgorithmProvider(algorithm,0); }
+    }
     [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
     static extern SafeFileHandle CreateFile(string name, uint access, uint share,
         IntPtr security, uint creation, uint flags, IntPtr template);
@@ -39,6 +53,12 @@ public static class Rpi5WifiControl {
     }
 }
 '@
+if ($LibraryOnly) { return }
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = [Security.Principal.WindowsPrincipal]::new($identity)
+if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    throw 'Run this utility as Administrator on the Raspberry Pi, not the build PC.'
+}
 
 if ($Disconnect) {
     [void][Rpi5WifiControl]::Call(0x12A008, $null)
@@ -51,7 +71,7 @@ if ($Disconnect) {
     if (-not (Test-Rpi5ConnectionInput $country $ssid)) { throw 'Invalid country or SSID length (1-32 UTF-8 bytes).' }
     $secure = Read-Host 'WPA2 password (8-63 printable ASCII characters)' -AsSecureString
     $pointer = [IntPtr]::Zero
-    $passwordBytes = $null; $pmk = $null; $request = $null; $derive = $null
+    $passwordBytes = $null; $pmk = $null; $request = $null
     try {
         if ($secure.Length -lt 8 -or $secure.Length -gt 63) { throw 'Password must be 8-63 characters.' }
         $pointer = [Runtime.InteropServices.Marshal]::SecureStringToGlobalAllocUnicode($secure)
@@ -62,8 +82,9 @@ if ($Disconnect) {
             $passwordBytes[$i] = [byte]$character
         }
         $ssidBytes = [Text.Encoding]::UTF8.GetBytes($ssid)
-        $derive = [Security.Cryptography.Rfc2898DeriveBytes]::new($passwordBytes, $ssidBytes, 4096)
-        $pmk = $derive.GetBytes(32)
+        # Windows CNG allows SSIDs shorter than eight bytes; .NET Framework's
+        # Rfc2898DeriveBytes constructor rejects those otherwise-valid salts.
+        $pmk = [Rpi5WifiControl]::Derive($passwordBytes, $ssidBytes)
         $request = [byte[]]::new(76)
         [BitConverter]::GetBytes([uint32]1).CopyTo($request, 0)
         [BitConverter]::GetBytes([uint32]$ssidBytes.Length).CopyTo($request, 4)
@@ -72,7 +93,6 @@ if ($Disconnect) {
         [void][Rpi5WifiControl]::Call(0x12A000, $request)
         Write-Host 'Connection requested. Success requires authenticated link AND an IP address.'
     } finally {
-        if ($derive) { $derive.Dispose() }
         foreach ($buffer in @($passwordBytes, $pmk, $request)) {
             if ($null -ne $buffer) { [Array]::Clear($buffer, 0, $buffer.Length) }
         }

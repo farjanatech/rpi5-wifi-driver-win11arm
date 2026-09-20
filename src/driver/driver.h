@@ -143,6 +143,8 @@ typedef struct _RPI5CYW_ADAPTER
     NTSTATUS Cmd53ResetStatus;
     NTSTATUS ProbeRestoreStatus;
     struct _CYW_NETWORK *Network;
+    ULONG NdisPaused;
+    volatile long IoStopped;
     ULONG NetworkPhase;
     NTSTATUS NetworkStatus;
     ULONG FirmwareError;

@@ -9,6 +9,7 @@ SdioRead8(
     _In_ ULONG Offset
     )
 {
+    if (Adapter->IoStopped) return 0xFF;
     return READ_REGISTER_UCHAR((PUCHAR)Adapter->RegisterBase + Offset);
 }
 
@@ -18,6 +19,7 @@ SdioRead16(
     _In_ ULONG Offset
     )
 {
+    if (Adapter->IoStopped) return 0xFFFF;
     return READ_REGISTER_USHORT((PUSHORT)((PUCHAR)Adapter->RegisterBase + Offset));
 }
 
@@ -27,6 +29,7 @@ SdioRead32(
     _In_ ULONG Offset
     )
 {
+    if (Adapter->IoStopped) return 0xFFFFFFFF;
     return READ_REGISTER_ULONG((PULONG)((PUCHAR)Adapter->RegisterBase + Offset));
 }
 
@@ -37,7 +40,7 @@ SdioWrite8(
     _In_ UCHAR Value
     )
 {
-    WRITE_REGISTER_UCHAR((PUCHAR)Adapter->RegisterBase + Offset, Value);
+    if (!Adapter->IoStopped) WRITE_REGISTER_UCHAR((PUCHAR)Adapter->RegisterBase + Offset, Value);
 }
 
 static __forceinline VOID
@@ -47,7 +50,7 @@ SdioWrite16(
     _In_ USHORT Value
     )
 {
-    WRITE_REGISTER_USHORT((PUSHORT)((PUCHAR)Adapter->RegisterBase + Offset), Value);
+    if (!Adapter->IoStopped) WRITE_REGISTER_USHORT((PUSHORT)((PUCHAR)Adapter->RegisterBase + Offset), Value);
 }
 
 static __forceinline VOID
@@ -57,7 +60,7 @@ SdioWrite32(
     _In_ ULONG Value
     )
 {
-    WRITE_REGISTER_ULONG((PULONG)((PUCHAR)Adapter->RegisterBase + Offset), Value);
+    if (!Adapter->IoStopped) WRITE_REGISTER_ULONG((PULONG)((PUCHAR)Adapter->RegisterBase + Offset), Value);
 }
 
 VOID
@@ -91,6 +94,7 @@ SdioResetHost(
     SdioWrite8(Adapter, SDHCI_SOFTWARE_RESET, ResetMask);
     for (Timeout = 0; Timeout < 1000; Timeout++)
     {
+        if (Adapter->IoStopped) return STATUS_INVALID_DEVICE_STATE;
         if ((SdioRead8(Adapter, SDHCI_SOFTWARE_RESET) & ResetMask) == 0)
         {
             return STATUS_SUCCESS;
@@ -247,6 +251,7 @@ SdioWaitInhibitClear(
 
     for (Timeout = 0; Timeout < 10000; Timeout++)
     {
+        if (Adapter->IoStopped) return STATUS_INVALID_DEVICE_STATE;
         if ((SdioRead32(Adapter, SDHCI_PRESENT_STATE) & Mask) == 0)
         {
             return STATUS_SUCCESS;
