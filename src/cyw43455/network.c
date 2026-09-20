@@ -17,8 +17,8 @@ typedef struct _CYW_TX { ULONG Length; UCHAR Data[1514]; } CYW_TX;
 struct _CYW_NETWORK {
     PRPI5CYW_ADAPTER Adapter;
     KSPIN_LOCK Lock;
-    KEVENT Wake, PauseAck;
-    HANDLE Thread;
+    KEVENT Wake, PauseAck, ThreadStarted;
+    PVOID Thread;
     volatile LONG Stop, Paused;
     BOOLEAN Ready, Associated, Authorized, RxPending, Published;
     ULONG Request, Head, Tail, Count;
@@ -98,7 +98,7 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     MmBuildMdlForNonPagedPool(Mdl);
     Nbl=NdisAllocateNetBufferAndNetBufferList(N->RxPool,0,0,Mdl,0,(ULONG)len);
     if(Nbl) {
-        NET_BUFFER_LIST_SOURCE_HANDLE(Nbl)=A->MiniportHandle;
+        Nbl->SourceHandle=A->MiniportHandle;
         NdisMIndicateReceiveNetBufferLists(A->MiniportHandle,Nbl,0,1,NDIS_RECEIVE_FLAGS_RESOURCES);
         NdisFreeNetBufferList(Nbl);A->RxPackets++;
     } else A->RxNoBuffer++;
@@ -268,6 +268,8 @@ static VOID CywWorker(PVOID Context)
     CYW_CONNECT_REQUEST request;CYW_TX tx;
     KIRQL irql;ULONG op,channel,off,len,i;BOOLEAN haveTx;
     LARGE_INTEGER wait;NTSTATUS Status;
+    N->Thread=PsGetCurrentThread();ObReferenceObject(N->Thread);
+    KeSetEvent(&N->ThreadStarted,0,FALSE);
     wait.QuadPart=-100000; /* 10 ms polling, no DISPATCH_LEVEL busy wait */
     /* Firmware upload/readback can take tens of seconds at the conservative
      * clock. Never block MiniportInitializeEx on that work. */
@@ -328,12 +330,13 @@ Exit:
 NTSTATUS CywNetworkInitialize(PRPI5CYW_ADAPTER A)
 {
     CYW_NETWORK *N;NET_BUFFER_LIST_POOL_PARAMETERS Pool;NTSTATUS Status;
-    OBJECT_ATTRIBUTES Attr;KIRQL irql;
+    OBJECT_ATTRIBUTES Attr;KIRQL irql;HANDLE threadHandle;
     N=ExAllocatePool2(POOL_FLAG_NON_PAGED,sizeof(*N),RPI5CYW_TAG);
     if(!N)return STATUS_INSUFFICIENT_RESOURCES;
     A->Network=N;N->Adapter=A;N->TxMax=1;N->Paused=1;
     KeInitializeSpinLock(&N->Lock);KeInitializeEvent(&N->Wake,SynchronizationEvent,FALSE);
     KeInitializeEvent(&N->PauseAck,NotificationEvent,TRUE);
+    KeInitializeEvent(&N->ThreadStarted,NotificationEvent,FALSE);
     N->Rx=ExAllocatePool2(POOL_FLAG_NON_PAGED,CYW_WIRE_CAPACITY,RPI5CYW_TAG);
     N->Tx=ExAllocatePool2(POOL_FLAG_NON_PAGED,CYW_CONTROL_CAPACITY,RPI5CYW_TAG);
     if(!N->Rx || !N->Tx) {Status=STATUS_INSUFFICIENT_RESOURCES;goto Exit;}
@@ -344,7 +347,9 @@ NTSTATUS CywNetworkInitialize(PRPI5CYW_ADAPTER A)
     N->RxPool=NdisAllocateNetBufferListPool(A->MiniportHandle,&Pool);
     if(!N->RxPool) {Status=STATUS_INSUFFICIENT_RESOURCES;goto Exit;}
     InitializeObjectAttributes(&Attr,NULL,OBJ_KERNEL_HANDLE,NULL,NULL);
-    TRY(PsCreateSystemThread(&N->Thread,THREAD_ALL_ACCESS,&Attr,NULL,NULL,CywWorker,A));
+    TRY(PsCreateSystemThread(&threadHandle,THREAD_ALL_ACCESS,&Attr,NULL,NULL,CywWorker,A));
+    KeWaitForSingleObject(&N->ThreadStarted,Executive,KernelMode,FALSE,NULL);
+    ZwClose(threadHandle);
     KeAcquireSpinLock(&ControlLock,&irql);
     if(ControlAdapter)Status=STATUS_DEVICE_BUSY;else ControlAdapter=A;
     KeReleaseSpinLock(&ControlLock,irql);
@@ -360,7 +365,10 @@ VOID CywNetworkStop(PRPI5CYW_ADAPTER A)
     KeAcquireSpinLock(&ControlLock,&irql);if(ControlAdapter==A)ControlAdapter=NULL;
     KeReleaseSpinLock(&ControlLock,irql);
     InterlockedExchange(&N->Stop,1);KeSetEvent(&N->Wake,0,FALSE);
-    if(N->Thread) {ZwWaitForSingleObject(N->Thread,FALSE,NULL);ZwClose(N->Thread);}
+    if(N->Thread) {
+        KeWaitForSingleObject(N->Thread,Executive,KernelMode,FALSE,NULL);
+        ObDereferenceObject(N->Thread);
+    }
     CywFirmwareStop(A);
     if(N->RxPool)NdisFreeNetBufferListPool(N->RxPool);
     if(N->Rx)ExFreePoolWithTag(N->Rx,RPI5CYW_TAG);

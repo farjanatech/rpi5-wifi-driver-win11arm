@@ -10,6 +10,7 @@
 #define TRY(x) do { Status=(x); if(!NT_SUCCESS(Status)) goto Exit; } while(0)
 #define FW_DIR L"\\SystemRoot\\System32\\drivers\\rpi5cyw\\"
 
+#ifndef RPI5CYW_FIRMWARE_TEST
 NTSTATUS CywReadFirmwareFile(PCWSTR Name, PUCHAR *Data, PULONG Size, ULONG Limit)
 {
     UNICODE_STRING Path;
@@ -41,6 +42,7 @@ NTSTATUS CywReadFirmwareFile(PCWSTR Name, PUCHAR *Data, PULONG Size, ULONG Limit
     if(!NT_SUCCESS(Status) && *Data) {ExFreePoolWithTag(*Data,RPI5CYW_TAG);*Data=NULL;}
     return Status;
 }
+#endif
 
 static NTSTATUS CywWindow(PRPI5CYW_ADAPTER A, ULONG Address)
 {

@@ -1,9 +1,17 @@
 #pragma once
 /* Wire-format validation, independent of the kernel and radio. Broadcom
  * SDPCM/BCDC definitions: Linux v6.12 brcmfmac (ISC); notices retained. */
+#if defined(NDIS_MINIPORT_DRIVER) && !defined(RPI5CYW_HOST_TEST)
+/* The WDK already supplies size_t and memory primitives. Pulling user-mode
+ * vcruntime headers into the kernel build conflicts with the WDK CRT. */
+typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
+typedef unsigned int uint32_t;
+#else
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#endif
 
 #define CYW_WIRE_CAPACITY 65536u
 #define CYW_CONTROL_CAPACITY 8192u
