@@ -52,6 +52,13 @@ The current direct-SDIO probe is not represented as a working Wi-Fi driver.
 
 ## Country protocol compatibility references (exp0.6.4)
 
+exp0.6.5 additionally references Linux v6.12 brcmfmac/bcdc.c and fwil.c for
+buffer metadata versus received control payload and IOVAR value-copy semantics.
+The bounded parser and host integration tests are maintained here; no Linux
+kernel build or runtime code is loaded on the development PC.
+https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/broadcom/brcm80211/brcmfmac/bcdc.c
+https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil.c
+
 The new connection policy is independently implemented. Linux v6.12 brcmfmac
 cfg80211.c documents reading the current country before setting it and the
 4345 ISO/revision-zero fallback (ISC license, Broadcom; license below).

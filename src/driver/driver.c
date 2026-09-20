@@ -119,6 +119,11 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
     SET_DWORD(L"FirmwareError", Adapter->FirmwareError);
     SET_DWORD(L"FirmwareBytes", Adapter->FirmwareBytes);
+    SET_DWORD(L"FirmwareReplyLength", Adapter->FirmwareReplyLength);
+    SET_DWORD(L"FirmwareReplyDeclaredLength", Adapter->FirmwareReplyDeclaredLength);
+    SET_DWORD(L"FirmwareReplyPayloadLength", Adapter->FirmwareReplyPayloadLength);
+    SET_DWORD(L"FirmwareRequestCapacity", Adapter->FirmwareRequestCapacity);
+    SET_DWORD(L"FirmwareValueLength", Adapter->FirmwareValueLength);
     SET_DWORD(L"FirmwareTotalBytes", Adapter->FirmwareTotalBytes);
     SET_DWORD(L"FirmwareUploadedBytes", Adapter->FirmwareUploadedBytes);
     SET_DWORD(L"RamTransferStatus", Adapter->RamTransferStatus);
@@ -500,7 +505,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00060004;
+            Data.Ulong = 0x00060005;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

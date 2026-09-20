@@ -1,4 +1,32 @@
-# exp0.6.4 country compatibility candidate: physical test checklist
+# exp0.6.5 firmware reply decoding: physical test checklist
+
+exp0.6.4's post-restart log had ClmQueryStatus=0, FirmwareError=0,
+ClmLoadStatus=0xffffffff and step 15 / STATUS_DEVICE_DATA_ERROR. This identifies
+the exact-length check before decoding, not a confirmed CLM database failure.
+The raw length was not saved and cannot be inferred exactly from that report.
+
+exp0.6.5 separates BCDC header length metadata from the actual payload inside
+the validated SDPCM frame. Copies are bounded by received bytes and allocated
+capacity. The IOVAR layer requires at least the complete requested value,
+copies only that value, then normalizes FirmwareReplyLength to its size.
+It never fills in a missing status/country using zeros to claim success.
+The transport functions were moved unchanged in structure to internal control.h
+so tests exercise the same implementation rather than mocking its length output.
+
+New registry/collector fields: FirmwareReplyDeclaredLength (full raw BCDC length
+word), FirmwareReplyPayloadLength (actual bytes after BCDC header),
+FirmwareRequestCapacity (command buffer size), FirmwareValueLength (IOVAR value
+size), FirmwareReplyLength (normalized value length on successful IOVAR GET;
+otherwise actual copied bytes, bounded by capacity). These describe the last
+command; later commands overwrite them. Status-only queries do not perform IO.
+Saved snapshots after connection failure preserve the failing command fields.
+
+The country checks below still require a complete 4-byte CLM status and 12-byte
+country value. Nonzero CLM status, wrong country, negative revision, truncated
+reply or rejected firmware command still stop connection before radio-up.
+No UEFI change, firmware speed change or networking success is claimed.
+
+## Retained exp0.6.4 country policy
 
 exp0.6.3 physically completed all 609,309 upload/readback bytes and failed at
 country-set for BD with BADARG (-2). exp0.6.4 changes only country connection

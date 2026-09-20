@@ -4,6 +4,23 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.5 candidate — firmware reply-length decoding
+
+exp0.6.4 stopped at the new CLM status check after the query itself succeeded.
+The check confused transport-buffer length with the requested four-byte value.
+exp0.6.5 bounds decoding by actual SDPCM reply bytes and caller capacity, then
+copies only a complete requested IOVAR value. Extra buffer space is accepted;
+short values, malformed framing and firmware errors are still rejected.
+Country readback benefits from the same fix without relaxing country policy.
+
+The actual control/IOVAR code now shares a host harness with the actual
+connection sequence. Regression cases cover full-buffer/padded replies, echoed
+buffer metadata, truncation, mismatched replies, allocation failures and a real
+nonzero CLM status. Diagnostics retain separate raw and decoded length fields.
+The precise raw length in the exp0.6.4 Pi report was not recorded, so these are
+protocol regression cases, not a captured-packet replay or hardware validation.
+UEFI, firmware upload, fan and country-selection rules are unchanged.
+
 ### Integrated exp0.6.4 candidate — country compatibility
 
 Physical exp0.6.3 diagnostics confirmed full firmware upload/readback, then

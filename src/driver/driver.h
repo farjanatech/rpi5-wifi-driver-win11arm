@@ -149,6 +149,10 @@ typedef struct _RPI5CYW_ADAPTER
     NTSTATUS NetworkStatus;
     ULONG FirmwareError;
     ULONG FirmwareReplyLength;
+    ULONG FirmwareReplyDeclaredLength;
+    ULONG FirmwareReplyPayloadLength;
+    ULONG FirmwareRequestCapacity;
+    ULONG FirmwareValueLength;
     ULONG FirmwareCommand;
     ULONG FirmwareBytes;
     ULONG FirmwareTotalBytes;

@@ -86,7 +86,12 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.4 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
+Driver exp0.6.5 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
+This release fixes IOVAR reply-length handling: a complete requested value may
+arrive inside a larger transport buffer. Short/malformed replies still fail.
+Raw buffer and decoded value lengths are saved separately in diagnostics.
+Actual transport plus connection integration tests cover that boundary.
+The exp0.6.4 country policy below is retained unchanged.
 This update reuses a matching existing country and, only after revision-zero
 BADARG, tries the same country's firmware-selected revision once. A complete
 matching readback is required before radio-up. It checks loaded CLM status and
@@ -96,8 +101,8 @@ The live upload/readback byte counters and transfer method are unchanged.
 The utility no longer stops a progressing upload after three minutes. It reports
 120 seconds without observed progress or a 30-minute observation limit without
 stopping/resetting the driver. Collect diagnostics before rebooting on either.
-exp0.6.3 physically passed firmware upload/readback and initialization, but
-country-set for BD failed. This candidate is not yet physically validated.
+exp0.6.4 physically completed firmware startup but stopped at the CLM reply
+length check before country selection. This candidate is not physically validated.
 It uploads firmware, checks RAM readback, uses SDPCM/BCDC and a polled packet path.
 It DOES NOT prove successful Wi-Fi until tested physically on the Pi.
 Run Connect-RPi5-WiFi.cmd as administrator AFTER installation and restart.

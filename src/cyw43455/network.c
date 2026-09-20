@@ -166,62 +166,7 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULO
     if(NT_SUCCESS(Status))N->TxSeq++;
     return Status;
 }
-NTSTATUS CywFirmwareCommand(PRPI5CYW_ADAPTER A, ULONG Command, BOOLEAN Set, PUCHAR Data, ULONG Length)
-{
-    CYW_NETWORK *N=A->Network;
-    PUCHAR message;
-    ULONG channel,off,len,flags,id,copy;
-    ULONGLONG until;
-    NTSTATUS Status=STATUS_IO_TIMEOUT;
-    if(Length>CYW_CONTROL_CAPACITY-28 || (Length && !Data))return STATUS_INVALID_PARAMETER;
-    message=ExAllocatePool2(POOL_FLAG_NON_PAGED,Length+16,RPI5CYW_TAG);
-    if(!message)return STATUS_INSUFFICIENT_RESOURCES;
-    id=++N->RequestId;CywPut32(message,Command);CywPut32(message+4,Length);
-    /* BCDC control flags have NO protocol-version bits: bit 1 means SET. */
-    CywPut32(message+8,(id<<16)|(Set?2:0));
-    if(Length)RtlCopyMemory(message+16,Data,Length);
-    A->FirmwareCommand=Command;A->FirmwareError=0;A->FirmwareReplyLength=0;
-    until=KeQueryInterruptTime()+50000000ULL;
-    while(!CywTxCredit(N->TxSeq,N->TxMax,0) && KeQueryInterruptTime()<until && !N->Stop) {
-        Status=CywPoll(A,&channel,&off,&len);
-        if(!NT_SUCCESS(Status) && Status!=STATUS_NO_MORE_ENTRIES)goto Exit;
-        SdioDelayMilliseconds(1);
-    }
-    TRY(CywSendFrame(A,0,message,Length+16));
-    while(KeQueryInterruptTime()<until && !N->Stop) {
-        Status=CywPoll(A,&channel,&off,&len);
-        if(Status==STATUS_NO_MORE_ENTRIES) {SdioDelayMilliseconds(2);continue;}
-        if(!NT_SUCCESS(Status))goto Exit;
-        if(channel!=0)continue;
-        if(len-off<16) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
-        flags=CywLe32(N->Rx+off+8);
-        if((flags>>16)!=id || CywLe32(N->Rx+off)!=Command)continue;
-        if(flags&1) {A->FirmwareError=CywLe32(N->Rx+off+12);Status=STATUS_UNSUCCESSFUL;goto Exit;}
-        copy=CywLe32(N->Rx+off+4)&0xffff;
-        if(!Set) {
-            if(copy>len-off-16 || copy>Length) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
-            RtlZeroMemory(Data,Length);RtlCopyMemory(Data,N->Rx+off+16,copy);
-            A->FirmwareReplyLength=copy;
-        }
-        Status=STATUS_SUCCESS;goto Exit;
-    }
-    Status=N->Stop?STATUS_CANCELLED:STATUS_IO_TIMEOUT;
-Exit:
-    RtlSecureZeroMemory(message,Length+16);ExFreePoolWithTag(message,RPI5CYW_TAG);
-    return Status;
-}
-NTSTATUS CywIovar(PRPI5CYW_ADAPTER A,const char *Name,BOOLEAN Set,PUCHAR Data,ULONG Length)
-{
-    ULONG n=0,total; PUCHAR b; NTSTATUS Status;
-    while(n<64 && Name[n])++n;
-    if(!n || n==64 || Length>CYW_CONTROL_CAPACITY-128)return STATUS_INVALID_PARAMETER;
-    ++n;total=n+Length;b=ExAllocatePool2(POOL_FLAG_NON_PAGED,total,RPI5CYW_TAG);
-    if(!b)return STATUS_INSUFFICIENT_RESOURCES;
-    RtlCopyMemory(b,Name,n);if(Set && Length)RtlCopyMemory(b+n,Data,Length);
-    Status=CywFirmwareCommand(A,Set?263:262,Set,b,total);
-    if(!Set && NT_SUCCESS(Status))RtlCopyMemory(Data,b,Length);
-    RtlSecureZeroMemory(b,total);ExFreePoolWithTag(b,RPI5CYW_TAG);return Status;
-}
+#include "control.h"
 static NTSTATUS CywInt(PRPI5CYW_ADAPTER A,const char *Name,ULONG Value)
 {UCHAR b[4];CywPut32(b,Value);return CywIovar(A,Name,TRUE,b,4);}
 static NTSTATUS CywCmdInt(PRPI5CYW_ADAPTER A,ULONG Command,ULONG Value)
