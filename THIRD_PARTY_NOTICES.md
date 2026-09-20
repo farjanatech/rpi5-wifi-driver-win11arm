@@ -26,6 +26,13 @@ F1 window, ALP clock sequence, and 4345 chip identifier. The Windows PIO and
 bounded startup/restore implementation is maintained in this repository.
 
 Copyright (c) 2010 Broadcom Corporation
+Copyright (c) 2014 Broadcom Corporation
+
+Driver 0.5 also references Linux v6.12 brcmfmac/chip.c EROM descriptor fields,
+ARM CR4 capability register, and 4345 RAM-base mapping, plus
+include/linux/bcma/bcma.h core IDs and the chipcommon.h EROM-pointer offset.
+Its bounded parser and read-only discovery are not a complete Linux chip attach
+port: CPU/core reset and RAM-bank writes are deliberately not performed.
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above

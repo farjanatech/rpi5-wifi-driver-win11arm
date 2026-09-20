@@ -86,10 +86,14 @@ The driver remains disconnected until the CYW43455 firmware/SDPCM/BCDC and
 association datapath are completed. A successful CMD52 diagnostic is a hardware
 protocol milestone, NOT a claim that Wi-Fi is working.
 
-Driver exp0.4 adds F1/ALP initialization and 16 matching chip-ID reads. It restores
-temporary card settings and never writes chip firmware/RAM. Physical testing is
-required. Expected: ProbePhase=250, Cmd53ReadCount=16, ChipId=0x4345, LastStatus=0,
-ProbeRestoreStatus=0. If restoration fails, power-cycle the Pi before retesting.
+Driver exp0.5 adds bounded core-table discovery after the 16 chip-ID reads.
+It restores temporary card settings and never writes chip firmware/RAM. Expected:
+ProbePhase=350, CoreInventoryComplete=1, Cmd53WriteCount=0, LastStatus=0 and
+ProbeRestoreStatus=0. Physical testing of the new stage is required.
+RamBase is reference-derived; RamBankCount is conditional on CR4 already being
+clocked and out of reset. RAM capacity and firmware startup are NOT validated.
+The new CMD53 write helper is host-simulated only and has no startup caller.
+If restoration fails, power-cycle the Pi before retesting.
 Keep UEFI exp.0.3 (source bda4c47); this package contains NO UEFI update.
 
 Use only with the matching UEFI build that exposes ACPI\\RPI0011 and leaves

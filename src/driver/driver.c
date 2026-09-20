@@ -81,7 +81,7 @@ Rpi5CywWriteDiagnostics(
 
     Adapter->DiagStage = Stage;
     Adapter->ProbeStatus = Status;
-    if ((Stage >= 20 && Stage <= 90) || (Stage >= 200 && Stage <= 260))
+    if ((Stage >= 20 && Stage <= 90) || (Stage >= 200 && Stage <= 350))
         Adapter->ProbePhase = Stage;
 
     RtlInitUnicodeString(&KeyName, L"\\Registry\\Machine\\SOFTWARE\\Rpi5CywDirectDiag");
@@ -110,7 +110,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 4);
+    SET_DWORD(L"DiagVersion", 5);
     {
         LARGE_INTEGER Now;
         KeQuerySystemTime(&Now);
@@ -222,6 +222,21 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"ChipId", Adapter->ChipId);
     SET_DWORD(L"ChipRevision", Adapter->ChipRevision);
     SET_DWORD(L"Cmd53ReadCount", Adapter->Cmd53ReadCount);
+    SET_DWORD(L"Cmd53WriteCount", Adapter->Cmd53WriteCount);
+    SET_DWORD(L"EromAddress", Adapter->EromAddress);
+    SET_DWORD(L"EromWords", Adapter->EromWords);
+    SET_DWORD(L"CoreCount", Adapter->CoreCount);
+    SET_DWORD(L"ChipCommonBase", Adapter->ChipCommonBase);
+    SET_DWORD(L"SdioCoreBase", Adapter->SdioCoreBase);
+    SET_DWORD(L"D11CoreBase", Adapter->D11CoreBase);
+    SET_DWORD(L"Cr4CoreBase", Adapter->Cr4CoreBase);
+    SET_DWORD(L"Cr4WrapperBase", Adapter->Cr4WrapperBase);
+    SET_DWORD(L"Cr4Capabilities", Adapter->Cr4Capabilities);
+    SET_DWORD(L"Cr4IoControl", Adapter->Cr4IoControl);
+    SET_DWORD(L"Cr4ResetControl", Adapter->Cr4ResetControl);
+    SET_DWORD(L"RamBankCount", Adapter->RamBankCount);
+    SET_DWORD(L"RamBase", Adapter->RamBase);
+    SET_DWORD(L"CoreInventoryComplete", Adapter->CoreInventoryComplete);
     SET_DWORD(L"Cmd53BytesTransferred", Adapter->Cmd53BytesTransferred);
     SET_DWORD(L"Cmd53ResetStatus", Adapter->Cmd53ResetStatus);
     SET_DWORD(L"ProbeRestoreStatus", Adapter->ProbeRestoreStatus);

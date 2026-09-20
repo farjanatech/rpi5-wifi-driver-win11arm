@@ -47,6 +47,7 @@
 #define SDHCI_INT_CMD_COMPLETE        0x00000001UL
 #define SDHCI_INT_XFER_COMPLETE       0x00000002UL
 #define SDHCI_INT_BUFFER_READ_READY   0x00000020UL
+#define SDHCI_INT_BUFFER_WRITE_READY  0x00000010UL
 #define SDHCI_INT_DATA_ERROR_MASK     0x00700000UL
 #define SDHCI_INT_ERROR               0x00008000UL
 #define SDHCI_INT_CMD_TIMEOUT         0x00010000UL
@@ -102,4 +103,7 @@ NTSTATUS SdioCmd52Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
                         ULONG Address, UCHAR Value, UCHAR VerifyMask);
 NTSTATUS SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
                        ULONG Address, PUCHAR Buffer, ULONG Length);
+/* Startup does not call this until chip RAM/core state is hardware-validated. */
+NTSTATUS SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
+                        ULONG Address, PUCHAR Buffer, ULONG Length);
 VOID SdioDelayMilliseconds(ULONG Milliseconds);

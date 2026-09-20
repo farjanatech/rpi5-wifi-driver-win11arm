@@ -7,12 +7,26 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.4.0'
+$script:InstallerVersion = '0.5.0'
 $script:RequiredUefiRevision = 'bda4c47'
 
 function Test-Rpi5PnpSuccess {
     param([int]$Code)
     return $Code -in @(0, 3010)
+}
+
+function Test-Rpi5DeviceEnabled {
+    param([AllowNull()]$ProblemCode)
+    # Unknown is not success. Do not trust localized pnputil text or exit 50.
+    return $null -ne $ProblemCode -and "$ProblemCode" -eq '0'
+}
+
+function Get-Rpi5ProblemCode {
+    param([Parameter(Mandatory=$true)][string]$InstanceId)
+    $entity = Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
+        Where-Object { $_.PNPDeviceID -eq $InstanceId } | Select-Object -First 1
+    if ($entity) { return $entity.ConfigManagerErrorCode }
+    return $null
 }
 
 function Test-Rpi5Administrator {
@@ -196,10 +210,23 @@ function Invoke-Rpi5DriverInstall {
         if (-not (Test-Rpi5PnpSuccess $installCode)) { throw "PnPUtil rejected the driver package with exit code $installCode." }
         $rebootRequired = $installCode -eq 3010
         # Enable only this verified ACPI device; never restart other adapters.
-        & pnputil.exe /enable-device $device.InstanceId | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
-        $enableCode = $LASTEXITCODE
-        if (-not (Test-Rpi5PnpSuccess $enableCode)) { throw "Device enable failed with exit code $enableCode." }
-        $rebootRequired = $rebootRequired -or $enableCode -eq 3010
+        $problemCode = Get-Rpi5ProblemCode -InstanceId $device.InstanceId
+        if (Test-Rpi5DeviceEnabled $problemCode) {
+            Write-InstallMessage 'Target adapter is already enabled and reports no PnP problem; skipping enable command.'
+        } elseif ("$problemCode" -eq '22') {
+            & pnputil.exe /enable-device $device.InstanceId | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
+            $enableCode = $LASTEXITCODE
+            $problemCode = Get-Rpi5ProblemCode -InstanceId $device.InstanceId
+            if (-not (Test-Rpi5PnpSuccess $enableCode) -and
+                -not (Test-Rpi5DeviceEnabled $problemCode)) {
+                throw "Device enable failed with exit code $enableCode; current problem code=$problemCode."
+            }
+            $rebootRequired = $rebootRequired -or $enableCode -eq 3010
+        } else {
+            # Do not force-enable a device with an unrelated/unknown problem.
+            # Preserve the completed installation and collect diagnostic evidence.
+            Write-InstallMessage "Target PnP problem code=$problemCode; enable was not attempted. Check diagnostics after restart."
+        }
         & pnputil.exe /scan-devices | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
         if ($LASTEXITCODE -ne 0) { throw "PnP device rescan failed with exit code $LASTEXITCODE." }
         Write-InstallMessage 'Driver package installation and PnP rescan completed.'

@@ -34,6 +34,10 @@ foreach ($required in @(
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) { throw 'One-click installer launcher is missing.' }
 
 . $scriptPath -LibraryOnly
+foreach ($unknownOrError in @($null, '', 'unknown', 22, 10, 28, 50, 56)) {
+    if (Test-Rpi5DeviceEnabled $unknownOrError) { throw 'Unknown/problem device classified as enabled.' }
+}
+if (-not (Test-Rpi5DeviceEnabled 0)) { throw 'Healthy device was not recognized.' }
 if (-not (Test-Rpi5PnpSuccess 0) -or -not (Test-Rpi5PnpSuccess 3010) -or
     (Test-Rpi5PnpSuccess 5)) { throw 'PnP exit code classification failed.' }
 if ($source -notmatch [regex]::Escape('pnputil.exe /enable-device $device.InstanceId')) {

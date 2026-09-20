@@ -76,3 +76,15 @@ $good.ProbeRestoreStatus = 0
 $good.Cmd53ReadCount = 15
 if ((Get-Rpi5ProbeResult $good 'Running' $boot) -like 'PASS:*') { throw 'Incomplete reads accepted.' }
 Write-Output 'Freshness and CMD53 summary tests passed.'
+$inventory = [pscustomobject]@{
+    SnapshotTimeUtc=$boot.AddMinutes(1).ToFileTimeUtc(); ProbePhase=350
+    LastStatus=0; ProbeRestoreStatus=0; Cmd53ReadCount=38; ChipId=0x4345
+    CoreInventoryComplete=1; Cmd53WriteCount=0
+}
+if ((Get-Rpi5ProbeResult $inventory 'Running' $boot) -notlike 'PASS:*core inventory*') { throw 'Core inventory rejected.' }
+$inventory.Cmd53WriteCount = 1
+if ((Get-Rpi5ProbeResult $inventory 'Running' $boot) -like 'PASS:*') { throw 'Unexpected writes accepted.' }
+$inventory.Cmd53WriteCount = 0
+$inventory.CoreInventoryComplete = 0
+if ((Get-Rpi5ProbeResult $inventory 'Running' $boot) -like 'PASS:*') { throw 'Incomplete inventory accepted.' }
+Write-Output 'Core inventory diagnostics tests passed.'

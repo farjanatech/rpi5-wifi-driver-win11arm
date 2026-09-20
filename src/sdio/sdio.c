@@ -213,6 +213,7 @@ SdioInitializeHost(
                 SDHCI_INT_CMD_COMPLETE |
                 SDHCI_INT_XFER_COMPLETE |
                 SDHCI_INT_BUFFER_READ_READY |
+                SDHCI_INT_BUFFER_WRITE_READY |
                 SDHCI_INT_DATA_ERROR_MASK |
                 SDHCI_INT_ERROR |
                 SDHCI_INT_CMD_ERROR_MASK);
@@ -551,31 +552,32 @@ SdioCmd52Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
         STATUS_SUCCESS : STATUS_DEVICE_DATA_ERROR;
 }
 
-/* PASSIVE_LEVEL, serialized startup only. No DMA, IRQ callbacks or RAM writes.
+/* PASSIVE_LEVEL, serialized access only. No DMA or IRQ callbacks.
  * Keep data-ready and transfer-complete latched until their phase consumes
  * them: the command-only path clears all status and cannot be reused here.
  */
-NTSTATUS
-SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
-              PUCHAR Buffer, ULONG Length)
+static NTSTATUS
+SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
+                  PUCHAR Buffer, ULONG Length, BOOLEAN Write)
 {
     ULONG InterruptStatus = 0, Response, Offset, Word, Byte, Poll;
     NTSTATUS Status;
     const ULONG Errors = SDHCI_INT_ERROR | SDHCI_INT_CMD_ERROR_MASK |
                          SDHCI_INT_DATA_ERROR_MASK;
     const ULONG Events[3] = { SDHCI_INT_CMD_COMPLETE,
-        SDHCI_INT_BUFFER_READ_READY, SDHCI_INT_XFER_COMPLETE };
+        Write ? SDHCI_INT_BUFFER_WRITE_READY : SDHCI_INT_BUFFER_READ_READY,
+        SDHCI_INT_XFER_COMPLETE };
     ULONG Phase;
 
     if (Adapter == NULL || Adapter->RegisterBase == NULL || Buffer == NULL ||
         !SdioIsValidByteRead(Function, Address, Length))
         return STATUS_INVALID_PARAMETER;
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) return STATUS_INVALID_DEVICE_STATE;
-    RtlZeroMemory(Buffer, Length);
+    if (!Write) RtlZeroMemory(Buffer, Length);
     Adapter->Cmd53BytesTransferred = 0;
     Adapter->Cmd53ResetStatus = STATUS_SUCCESS;
     Adapter->LastCommand = SDCMD_IO_RW_EXTENDED;
-    Adapter->LastArgument = SdioBuildCmd53Argument(FALSE, Function, FALSE,
+    Adapter->LastArgument = SdioBuildCmd53Argument(Write, Function, FALSE,
                                                   TRUE, Address, Length);
     Adapter->LastResponse = 0;
     Adapter->LastInterruptStatus = 0;
@@ -586,7 +588,7 @@ SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
     SdioWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
     SdioWrite16(Adapter, SDHCI_BLOCK_SIZE, (USHORT)Length);
     SdioWrite16(Adapter, SDHCI_BLOCK_COUNT, 1);
-    SdioWrite16(Adapter, SDHCI_TRANSFER_MODE, SDHCI_TRNS_READ);
+    SdioWrite16(Adapter, SDHCI_TRANSFER_MODE, (USHORT)(Write ? 0 : SDHCI_TRNS_READ));
     SdioWrite32(Adapter, SDHCI_ARGUMENT, Adapter->LastArgument);
     KeMemoryBarrier();
     SdioWrite16(Adapter, SDHCI_COMMAND, SDHCI_MAKE_CMD(SDCMD_IO_RW_EXTENDED,
@@ -627,22 +629,47 @@ SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
         {
             for (Offset = 0; Offset < Length; Offset += 4)
             {
-                Word = SdioRead32(Adapter, SDHCI_BUFFER);
-                for (Byte = 0; Byte < 4 && Offset + Byte < Length; Byte++)
-                    Buffer[Offset + Byte] = (UCHAR)(Word >> (Byte * 8));
+                if (Write)
+                {
+                    Word = 0;
+                    for (Byte = 0; Byte < 4 && Offset + Byte < Length; Byte++)
+                        Word |= (ULONG)Buffer[Offset + Byte] << (Byte * 8);
+                    SdioWrite32(Adapter, SDHCI_BUFFER, Word);
+                }
+                else
+                {
+                    Word = SdioRead32(Adapter, SDHCI_BUFFER);
+                    for (Byte = 0; Byte < 4 && Offset + Byte < Length; Byte++)
+                        Buffer[Offset + Byte] = (UCHAR)(Word >> (Byte * 8));
+                }
             }
             Adapter->Cmd53BytesTransferred = Length;
         }
     }
-    Adapter->Cmd53ReadCount++;
+    if (Write) Adapter->Cmd53WriteCount++;
+    else Adapter->Cmd53ReadCount++;
     return STATUS_SUCCESS;
 
 Failed:
     Adapter->Cmd53ResetStatus = SdioResetHost(Adapter,
                                              SDHCI_RESET_CMD | SDHCI_RESET_DATA);
     SdioWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_ALL_MASK);
-    RtlZeroMemory(Buffer, Length);
+    if (!Write) RtlZeroMemory(Buffer, Length);
     return Status;
+}
+
+NTSTATUS
+SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
+              PUCHAR Buffer, ULONG Length)
+{
+    return SdioCmd53Transfer(Adapter, Function, Address, Buffer, Length, FALSE);
+}
+
+NTSTATUS
+SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
+               PUCHAR Buffer, ULONG Length)
+{
+    return SdioCmd53Transfer(Adapter, Function, Address, Buffer, Length, TRUE);
 }
 
 NTSTATUS

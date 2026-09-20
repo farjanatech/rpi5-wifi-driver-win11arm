@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.4.0'
+$script:UtilityVersion = '0.5.0'
 
 function Get-Rpi5ProbeResult {
     param([AllowNull()]$Diagnostic, [string]$ServiceStatus, [datetime]$BootTime)
@@ -27,6 +27,13 @@ function Get-Rpi5ProbeResult {
     $restored = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'ProbeRestoreStatus' -Default $null)
     $reads = Get-Rpi5PropertyValue $Diagnostic 'Cmd53ReadCount' -Default 0
     $chip = Get-Rpi5PropertyValue $Diagnostic 'ChipId' -Default 0
+    $inventory = Get-Rpi5PropertyValue $Diagnostic 'CoreInventoryComplete' -Default 0
+    $writes = Get-Rpi5PropertyValue $Diagnostic 'Cmd53WriteCount' -Default -1
+    if ($phase -eq 350 -and $status -eq '0x00000000' -and
+        $restored -eq '0x00000000' -and $reads -gt 16 -and $chip -eq 0x4345 -and
+        $inventory -eq 1 -and $writes -eq 0) {
+        return 'PASS: core inventory and restoration completed. RAM size, firmware upload and Wi-Fi are NOT validated.'
+    }
     if ($phase -eq 250 -and $status -eq '0x00000000' -and
         $restored -eq '0x00000000' -and $reads -eq 16 -and $chip -eq 0x4345) {
         return 'PASS: 16 matching CMD53 chip-ID reads and restoration completed. This is not working Wi-Fi.'
@@ -289,7 +296,10 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'CccrRevision','IoEnable','IoReady','F1InterfaceCode','F2InterfaceCode',
                     'DiagVersion','ProbePhase','Function1Ready','ChipClockCsr','ChipIdRaw',
                     'ChipId','ChipRevision','Cmd53ReadCount','Cmd53BytesTransferred',
-                    'Cmd53ResetStatus','ProbeRestoreStatus'
+                    'Cmd53ResetStatus','ProbeRestoreStatus','Cmd53WriteCount',
+                    'EromAddress','EromWords','CoreCount','ChipCommonBase','SdioCoreBase',
+                    'D11CoreBase','Cr4CoreBase','Cr4WrapperBase','Cr4Capabilities',
+                    'Cr4IoControl','Cr4ResetControl','RamBankCount','RamBase','CoreInventoryComplete'
                 )
                 foreach ($name in $names) {
                     $value = Get-Rpi5PropertyValue -Object $diag -Name $name

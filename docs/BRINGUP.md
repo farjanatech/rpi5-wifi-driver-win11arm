@@ -29,7 +29,7 @@ Current implementation status:
 - [ ] Configure and enable function 1/function 2.
 - [x] Implement a bounded byte-mode PIO CMD53 read helper (1..512 bytes).
 - [x] Add function-1 enable, ALP clock and 16 ChipCommon ID reads, with restoration.
-- [ ] Validate the new CMD53 path on the Raspberry Pi (host simulation is not hardware proof).
+- [x] Validate 16 four-byte CMD53 chip-ID reads on the Raspberry Pi (2026-09-20).
 - [ ] Validate the above on Raspberry Pi 5 hardware.
 - [ ] Validate repeated CMD53 reads/writes against known-safe CYW43455 registers/RAM.
 - [ ] Register and acknowledge card interrupts.
@@ -92,3 +92,19 @@ IoEnable/IoReady/ChipClockCsr record observations during the probe, not post-res
 card state. No card IRQs, core resets, firmware/RAM writes or network connection
 are attempted. F1, clock control and window registers are restored best-effort;
 power-cycle the Pi if restoration fails. Diagnostics record any cleanup failure.
+
+## Driver 0.5 preflight (not firmware loading)
+
+300: bounded EROM discovery (512 words / current 4-KiB page maximum); 310:
+CR4 wrapper state and conditional RAM-bank capabilities; 350: core inventory
+complete. Phase 260 still means cleanup failed after otherwise successful work.
+Unknown chips/revisions, duplicate required cores, malformed/out-of-range
+descriptors, truncated tables and transport errors stop discovery and trigger
+restoration. Supported target is the physically observed 0x4345 revision 6.
+
+The write primitive has simulation tests but NO automatic hardware caller.
+The next hardware result must establish the actual core layout and reset state
+before implementing CPU halt, bank-size selection, controlled RAM writes,
+verified firmware/NVRAM upload and startup. Nothing in 0.5 can upload firmware.
+RAM base is reference-derived, RAM capacity is not yet determined. A successful
+core inventory must never be used as approval to upload arbitrary bytes.
