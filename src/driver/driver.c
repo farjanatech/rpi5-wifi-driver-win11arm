@@ -229,7 +229,7 @@ Rpi5CywWriteDiagnostics(
         ULONG Words = Adapter->EromWords > 512 ? 512 : Adapter->EromWords;
         RtlInitUnicodeString(&ValueName, L"EromTrace");
         (VOID)ZwSetValueKey(KeyHandle, &ValueName, 0, REG_BINARY,
-                           Adapter->EromTrace, Words * sizeof(ULONG));
+                           Adapter->EromTrace, (ULONG)(Words * sizeof(ULONG)));
     }
     SET_DWORD(L"CoreCount", Adapter->CoreCount);
     SET_DWORD(L"ChipCommonBase", Adapter->ChipCommonBase);
