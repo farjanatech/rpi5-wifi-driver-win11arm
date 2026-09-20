@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.5.0'
+$script:UtilityVersion = '0.6.0'
 
 function Get-Rpi5ProbeResult {
     param([AllowNull()]$Diagnostic, [string]$ServiceStatus, [datetime]$BootTime)
@@ -23,6 +23,11 @@ function Get-Rpi5ProbeResult {
         return 'Saved results predate this boot or have no timestamp; rerun with the updated driver.'
     }
     $phase = Get-Rpi5PropertyValue $Diagnostic 'ProbePhase' -Default 0
+    $networkPhase = Get-Rpi5PropertyValue $Diagnostic 'NetworkPhase' -Default 0
+    if ($networkPhase -ge 400) {
+        $networkStatus = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'NetworkStatus')
+        return "Integrated candidate: NetworkPhase=$networkPhase status=$networkStatus. Authenticated link, IP address and traffic still require separate confirmation."
+    }
     $status = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'LastStatus' -Default $null)
     $restored = ConvertTo-Rpi5Hex32 (Get-Rpi5PropertyValue $Diagnostic 'ProbeRestoreStatus' -Default $null)
     $reads = Get-Rpi5PropertyValue $Diagnostic 'Cmd53ReadCount' -Default 0
@@ -238,7 +243,7 @@ function Invoke-Rpi5WiFiDiagnostic {
             "Cmd5SuccessAttempt=$cmd5SuccessAttempt"
             "Result=$probeResult"
             ''
-            'The probe intentionally remains media-disconnected and does not provide working Wi-Fi.'
+            'Probe-only releases remain disconnected. Integrated candidates need authenticated link, IP and traffic validation.'
         ) -join [Environment]::NewLine
         Protect-Rpi5DiagnosticText -Text $summary |
             Set-Content -LiteralPath (Join-Path $work '00-SUMMARY.txt') -Encoding UTF8
@@ -299,7 +304,9 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'Cmd53ResetStatus','ProbeRestoreStatus','Cmd53WriteCount',
                     'EromAddress','EromWords','CoreCount','ChipCommonBase','SdioCoreBase',
                     'D11CoreBase','Cr4CoreBase','Cr4WrapperBase','Cr4Capabilities',
-                    'Cr4IoControl','Cr4ResetControl','RamBankCount','RamBase','CoreInventoryComplete'
+                    'Cr4IoControl','Cr4ResetControl','RamBankCount','RamBase','CoreInventoryComplete',
+                    'NetworkPhase','NetworkStatus','FirmwareCommand','FirmwareError','FirmwareBytes',
+                    'RamSize','LinkEvent','LinkReason','TxPackets','RxPackets'
                 )
                 foreach ($name in $names) {
                     $value = Get-Rpi5PropertyValue -Object $diag -Name $name

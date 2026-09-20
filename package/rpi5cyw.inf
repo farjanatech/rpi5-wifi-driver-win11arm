@@ -6,13 +6,14 @@ Signature   = "$Windows NT$"
 Class       = Net
 ClassGuid   = {4D36E972-E325-11CE-BFC1-08002BE10318}
 Provider    = %ProviderName%
-DriverVer   = 09/20/2026,0.5.0.0
+DriverVer   = 09/20/2026,0.6.0.0
 CatalogFile = rpi5cyw.cat
 PnpLockdown = 1
 
 [DestinationDirs]
 DefaultDestDir = 12
 Driver_CopyFiles = 12
+Firmware_CopyFiles = 12,rpi5cyw
 
 [Manufacturer]
 %ProviderName% = Models,NTARM64
@@ -27,7 +28,7 @@ BusType            = 0
 *MediaType         = 0
 *PhysicalMediaType = 14
 AddReg             = Device_AddReg
-CopyFiles          = Driver_CopyFiles
+CopyFiles          = Driver_CopyFiles,Firmware_CopyFiles
 
 [Device_Install.ndi.NT.Services]
 AddService = rpi5cyw, 0x00000002, Service_Install
@@ -39,6 +40,11 @@ HKR,Ndi\Interfaces,LowerRange,0,"ethernet"
 
 [Driver_CopyFiles]
 rpi5cyw.sys
+
+[Firmware_CopyFiles]
+cyfmac43455-sdio.bin
+cyfmac43455-sdio.clm_blob
+brcmfmac43455-sdio.txt
 
 [Service_Install]
 DisplayName    = %ServiceDesc%
@@ -53,6 +59,9 @@ LoadOrderGroup = NDIS
 
 [SourceDisksFiles]
 rpi5cyw.sys = 1
+cyfmac43455-sdio.bin = 1
+cyfmac43455-sdio.clm_blob = 1
+brcmfmac43455-sdio.txt = 1
 
 [Strings]
 ProviderName = "farjanatech"

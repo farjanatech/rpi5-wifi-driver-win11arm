@@ -1,5 +1,6 @@
 #include "driver.h"
 #include "../sdio/sdio.h"
+#include "../cyw43455/network.h"
 
 static NDIS_HANDLE gRpi5CywDriverHandle;
 
@@ -110,7 +111,17 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 5);
+    SET_DWORD(L"DiagVersion", 6);
+    SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
+    SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
+    SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
+    SET_DWORD(L"FirmwareError", Adapter->FirmwareError);
+    SET_DWORD(L"FirmwareBytes", Adapter->FirmwareBytes);
+    SET_DWORD(L"RamSize", Adapter->RamSize);
+    SET_DWORD(L"LinkEvent", Adapter->LinkEvent);
+    SET_DWORD(L"LinkReason", Adapter->LinkReason);
+    SET_DWORD(L"TxPackets", Adapter->TxPackets);
+    SET_DWORD(L"RxPackets", Adapter->RxPackets);
     {
         LARGE_INTEGER Now;
         KeQuerySystemTime(&Now);
@@ -428,9 +439,12 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.PhysicalMedium, sizeof(Data.PhysicalMedium));
 
         case OID_GEN_MAXIMUM_LOOKAHEAD:
-        case OID_GEN_CURRENT_LOOKAHEAD:
         case OID_GEN_MAXIMUM_FRAME_SIZE:
             Data.Ulong = RPI5CYW_MTU;
+            return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
+
+        case OID_GEN_CURRENT_LOOKAHEAD:
+            Data.Ulong = Adapter->Lookahead;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_MAXIMUM_TOTAL_SIZE:
@@ -456,9 +470,12 @@ Rpi5CywQueryInformation(
         }
 
         case OID_GEN_DRIVER_VERSION:
-        case OID_GEN_VENDOR_DRIVER_VERSION:
             Data.Ushort = RPI5CYW_DRIVER_VERSION;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
+
+        case OID_GEN_VENDOR_DRIVER_VERSION:
+            Data.Ulong = 0x00060000;
+            return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:
             Data.Ulong = Adapter->PacketFilter;
@@ -547,6 +564,8 @@ Rpi5CywSetInformation(
                 OidRequest->DATA.SET_INFORMATION.BytesNeeded = sizeof(ULONG);
                 return NDIS_STATUS_INVALID_LENGTH;
             }
+            if ((*(PULONG)Buffer & ~RPI5CYW_SUPPORTED_FILTERS) != 0)
+                return NDIS_STATUS_NOT_SUPPORTED;
             Adapter->PacketFilter = *(PULONG)Buffer;
             OidRequest->DATA.SET_INFORMATION.BytesRead = sizeof(ULONG);
             return NDIS_STATUS_SUCCESS;
@@ -585,8 +604,7 @@ Rpi5CywInitializeEx(
     _In_ PNDIS_MINIPORT_INIT_PARAMETERS MiniportInitParameters
     )
 {
-    static const UCHAR FallbackMac[ETH_LENGTH_OF_ADDRESS] =
-        { 0x02, 0x52, 0x50, 0x49, 0x35, 0x01 };
+    UUID MacSeed;
     PRPI5CYW_ADAPTER Adapter;
     NDIS_STATUS Status;
     NTSTATUS ProbeStatus;
@@ -608,8 +626,15 @@ Rpi5CywInitializeEx(
     Adapter->LinkSpeed = NDIS_LINK_SPEED_UNKNOWN;
     Adapter->MediaConnectState = MediaConnectStateDisconnected;
     Adapter->MediaDuplexState = MediaDuplexStateUnknown;
-    RtlCopyMemory(Adapter->PermanentMacAddress, FallbackMac, sizeof(FallbackMac));
-    RtlCopyMemory(Adapter->CurrentMacAddress, FallbackMac, sizeof(FallbackMac));
+    ProbeStatus = ExUuidCreate(&MacSeed);
+    if (!NT_SUCCESS(ProbeStatus))
+    {
+        ExFreePoolWithTag(Adapter, RPI5CYW_TAG);
+        return NDIS_STATUS_RESOURCES;
+    }
+    RtlCopyMemory(Adapter->PermanentMacAddress, &MacSeed, ETH_LENGTH_OF_ADDRESS);
+    Adapter->PermanentMacAddress[0] = (Adapter->PermanentMacAddress[0] & 0xFC) | 2;
+    RtlCopyMemory(Adapter->CurrentMacAddress, Adapter->PermanentMacAddress, ETH_LENGTH_OF_ADDRESS);
 
     Status = Rpi5CywSetRegistrationAttributes(Adapter);
     if (Status != NDIS_STATUS_SUCCESS)
@@ -642,16 +667,20 @@ Rpi5CywInitializeEx(
     Adapter->ProbeStatus = ProbeStatus;
     Rpi5CywWriteDiagnostics(Adapter, 100, ProbeStatus);
 
-    /*
-     * Keep the NDIS device Started even when direct SDIO probing fails. This is
-     * intentional: Windows then exposes a disconnected Ethernet adapter and the
-     * registry snapshot tells us exactly which real SD command failed. A probe
-     * milestone is never reported as working Wi-Fi.
-     */
+    if (NT_SUCCESS(ProbeStatus)) ProbeStatus = CywNetworkInitialize(Adapter);
+    Adapter->NetworkStatus = ProbeStatus;
+    if (!NT_SUCCESS(ProbeStatus))
+    {
+        Rpi5CywWriteDiagnostics(Adapter, 120, ProbeStatus);
+        Rpi5CywUnmapResources(Adapter);
+        ExFreePoolWithTag(Adapter, RPI5CYW_TAG);
+        return NDIS_STATUS_FAILURE;
+    }
     Status = Rpi5CywSetGeneralAttributes(Adapter);
     if (Status != NDIS_STATUS_SUCCESS)
     {
         Rpi5CywWriteDiagnostics(Adapter, 110, (NTSTATUS)Status);
+        CywNetworkStop(Adapter);
         Rpi5CywUnmapResources(Adapter);
         ExFreePoolWithTag(Adapter, RPI5CYW_TAG);
         return Status;
@@ -675,6 +704,7 @@ Rpi5CywHaltEx(
         return;
     }
 
+    CywNetworkStop(Adapter);
     Rpi5CywUnmapResources(Adapter);
     ExFreePoolWithTag(Adapter, RPI5CYW_TAG);
 }
@@ -685,8 +715,8 @@ Rpi5CywPause(
     _In_ PNDIS_MINIPORT_PAUSE_PARAMETERS PauseParameters
     )
 {
-    UNREFERENCED_PARAMETER(MiniportAdapterContext);
     UNREFERENCED_PARAMETER(PauseParameters);
+    CywNetworkPause((PRPI5CYW_ADAPTER)MiniportAdapterContext, TRUE);
     return NDIS_STATUS_SUCCESS;
 }
 
@@ -696,8 +726,8 @@ Rpi5CywRestart(
     _In_ PNDIS_MINIPORT_RESTART_PARAMETERS RestartParameters
     )
 {
-    UNREFERENCED_PARAMETER(MiniportAdapterContext);
     UNREFERENCED_PARAMETER(RestartParameters);
+    CywNetworkPause((PRPI5CYW_ADAPTER)MiniportAdapterContext, FALSE);
     return NDIS_STATUS_SUCCESS;
 }
 
@@ -722,8 +752,8 @@ Rpi5CywSendNetBufferLists(
 
     for (Nbl = NetBufferLists; Nbl != NULL; Nbl = NET_BUFFER_LIST_NEXT_NBL(Nbl))
     {
-        NET_BUFFER_LIST_STATUS(Nbl) = NDIS_STATUS_MEDIA_DISCONNECTED;
-        if (Adapter != NULL)
+        NET_BUFFER_LIST_STATUS(Nbl) = CywNetworkSend(Adapter, Nbl);
+        if (NET_BUFFER_LIST_STATUS(Nbl) != NDIS_STATUS_SUCCESS)
         {
             Adapter->TxErrors++;
         }
@@ -837,6 +867,7 @@ Rpi5CywUnload(
     )
 {
     UNREFERENCED_PARAMETER(DriverObject);
+    CywControlDeregister();
 
     if (gRpi5CywDriverHandle != NULL)
     {
@@ -882,5 +913,14 @@ DriverEntry(
                                          NULL,
                                          &Characteristics,
                                          &gRpi5CywDriverHandle);
+    if (Status == NDIS_STATUS_SUCCESS)
+    {
+        Status = (NDIS_STATUS)CywControlRegister(gRpi5CywDriverHandle);
+        if (Status != NDIS_STATUS_SUCCESS)
+        {
+            NdisMDeregisterMiniportDriver(gRpi5CywDriverHandle);
+            gRpi5CywDriverHandle = NULL;
+        }
+    }
     return (NTSTATUS)Status;
 }

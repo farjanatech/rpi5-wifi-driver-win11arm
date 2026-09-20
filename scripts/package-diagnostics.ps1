@@ -18,7 +18,7 @@ Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $stag
 repository=$env:GITHUB_REPOSITORY
 commit=$env:GITHUB_SHA
 workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
-utility_version=0.5.0
+utility_version=0.6.0
 matching_acpi_id=ACPI\RPI0011
 "@ | Set-Content -LiteralPath (Join-Path $stage 'SOURCE_REVISION.txt') -Encoding UTF8
 

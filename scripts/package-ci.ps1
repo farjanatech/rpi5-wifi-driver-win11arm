@@ -37,6 +37,9 @@ Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE') -Force
 Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.md') (Join-Path $stage 'THIRD_PARTY_NOTICES.md') -Force
 Copy-Item (Join-Path $root 'diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1') (Join-Path $stage 'Collect-RPi5-WiFi-Diagnostics.ps1') -Force
 Copy-Item (Join-Path $root 'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd') (Join-Path $stage 'Run-RPi5-WiFi-Diagnostics.cmd') -Force
+& (Join-Path $PSScriptRoot 'fetch-firmware.ps1') -Destination $stage
+Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.ps1') $stage
+Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.cmd') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -82,18 +85,18 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-The driver remains disconnected until the CYW43455 firmware/SDPCM/BCDC and
-association datapath are completed. A successful CMD52 diagnostic is a hardware
-protocol milestone, NOT a claim that Wi-Fi is working.
-
-Driver exp0.5 adds bounded core-table discovery after the 16 chip-ID reads.
-It restores temporary card settings and never writes chip firmware/RAM. Expected:
-ProbePhase=350, CoreInventoryComplete=1, Cmd53WriteCount=0, LastStatus=0 and
-ProbeRestoreStatus=0. Physical testing of the new stage is required.
-RamBase is reference-derived; RamBankCount is conditional on CR4 already being
-clocked and out of reset. RAM capacity and firmware startup are NOT validated.
-The new CMD53 write helper is host-simulated only and has no startup caller.
-If restoration fails, power-cycle the Pi before retesting.
+Driver exp0.6 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
+It uploads firmware, checks RAM readback, uses SDPCM/BCDC and a polled packet path.
+It DOES NOT prove successful Wi-Fi until tested physically on the Pi.
+Run Connect-RPi5-WiFi.cmd as administrator AFTER installation and restart.
+Enter your actual country, exact SSID and WPA2 password. No saved credentials.
+NetworkPhase: 400 files, 410 CR4/RAM, 420 upload/readback, 430 CPU start,
+440 F2 ready, 500 firmware configured/radio down, 520 joining, 600 authenticated.
+Use diagnostics if any step fails. Do not replace UEFI or reinstall Windows.
+First candidate limitations: WPA2-Personal/AES only, no WPA3/enterprise,
+no scanning UI, no saved reconnect profile, conservative 1-bit/400kHz PIO,
+no performance claim. Use Ethernet for recovery and do not use sleep/hibernate.
+MAC is locally administered and regenerated on adapter initialization.
 Keep UEFI exp.0.3 (source bda4c47); this package contains NO UEFI update.
 
 Use only with the matching UEFI build that exposes ACPI\\RPI0011 and leaves

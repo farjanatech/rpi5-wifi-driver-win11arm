@@ -58,6 +58,8 @@
     <ClCompile Include="src\driver\driver.c" />
     <ClCompile Include="src\sdio\sdio.c" />
     <ClCompile Include="src\cyw43455\chip.c" />
+    <ClCompile Include="src\cyw43455\firmware.c" />
+    <ClCompile Include="src\cyw43455\network.c" />
   </ItemGroup>
 
   <ItemGroup>

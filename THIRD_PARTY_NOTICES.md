@@ -1,5 +1,31 @@
 # Third-party notices
 
+## Integrated candidate 0.6 references and redistributed firmware
+
+`src/cyw43455/firmware.c` and `network.c` adapt sequences and wire formats from
+Ahmed ARIF's `cyw43455/chip.c`, `fwil.c` and `cyw43455.h` at ReactOS revision
+`9bb45e56ca5e456bfe40357a161b6ea60af0356e`.
+Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>, GPL-2.0-or-later.
+The Windows direct-host, Ethernet lifecycle and utility integration is maintained
+here under GPL-3.0-or-later. `cyw43455sdio` is a GPL-3.0-or-later reference only;
+its SD-bus companion driver is not copied or installed.
+
+BCDC control flags, CR4 sizing and SDPCM formats also reference Linux v6.12
+brcmfmac `bcdc.c`, `chip.c`, `sdio.c` and `sdio.h` under the ISC notice below.
+
+CI redistributes unmodified Cypress firmware, CLM and Raspberry Pi 5 board
+configuration from RPi-Distro/firmware-nonfree at
+`c91cd2804cf7463aab913e7247c176049f16bbd6`. Exact paths and SHA-256 are pinned
+in `scripts/fetch-firmware.ps1`. The complete upstream `debian/copyright`
+is shipped as `FIRMWARE-COPYRIGHT.txt`. These files have their own licenses,
+are for Cypress hardware, and are not relicensed under this project's GPL.
+The firmware's standard image is renamed but its bytes are not modified.
+The runtime sets a locally administered MAC before enabling the radio; the
+upstream board calibration and regulatory blob are preserved.
+
+The historical sections below describe the probe releases, not a hardware
+validation claim for the integrated candidate.
+
 ## ReactOS / Ahmed Arif driver sources
 
 This project uses the following source tree as a technical and architectural

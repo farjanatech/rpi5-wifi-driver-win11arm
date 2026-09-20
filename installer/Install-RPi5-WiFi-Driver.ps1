@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.5.0'
+$script:InstallerVersion = '0.6.0'
 $script:RequiredUefiRevision = 'bda4c47'
 
 function Test-Rpi5PnpSuccess {
@@ -18,7 +18,7 @@ function Test-Rpi5PnpSuccess {
 function Test-Rpi5DeviceEnabled {
     param([AllowNull()]$ProblemCode)
     # Unknown is not success. Do not trust localized pnputil text or exit 50.
-    return $null -ne $ProblemCode -and "$ProblemCode" -eq '0'
+    return $null -ne $ProblemCode -and "$ProblemCode" -in @('0', 'CM_PROB_NONE')
 }
 
 function Get-Rpi5ProblemCode {
@@ -134,7 +134,7 @@ function Invoke-Rpi5DriverInstall {
     try {
         Write-InstallMessage "RPi5 direct-SDIO driver one-click installer v$script:InstallerVersion"
         Write-InstallMessage 'This installer will not change UEFI, Secure Boot, Test Signing or BCD.'
-        Write-InstallMessage 'Experimental chip/data-transfer probe only: this version does not connect to Wi-Fi.'
+        Write-InstallMessage 'Experimental integrated WPA2/AES candidate. Physical Wi-Fi operation is not yet validated. UEFI is unchanged.'
 
         if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.InteropServices.Architecture]::Arm64) {
             throw 'This package can only be installed on Windows ARM64 running on Raspberry Pi 5.'
@@ -213,7 +213,7 @@ function Invoke-Rpi5DriverInstall {
         $problemCode = Get-Rpi5ProblemCode -InstanceId $device.InstanceId
         if (Test-Rpi5DeviceEnabled $problemCode) {
             Write-InstallMessage 'Target adapter is already enabled and reports no PnP problem; skipping enable command.'
-        } elseif ("$problemCode" -eq '22') {
+        } elseif ("$problemCode" -in @('22', 'CM_PROB_DISABLED')) {
             & pnputil.exe /enable-device $device.InstanceId | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
             $enableCode = $LASTEXITCODE
             $problemCode = Get-Rpi5ProblemCode -InstanceId $device.InstanceId

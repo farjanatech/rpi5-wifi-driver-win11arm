@@ -107,3 +107,5 @@ NTSTATUS SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
 NTSTATUS SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
                         ULONG Address, PUCHAR Buffer, ULONG Length);
 VOID SdioDelayMilliseconds(ULONG Milliseconds);
+NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
+                          ULONG Length, BOOLEAN Write);

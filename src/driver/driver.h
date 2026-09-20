@@ -142,6 +142,15 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG Cmd53BytesTransferred;
     NTSTATUS Cmd53ResetStatus;
     NTSTATUS ProbeRestoreStatus;
+    struct _CYW_NETWORK *Network;
+    ULONG NetworkPhase;
+    NTSTATUS NetworkStatus;
+    ULONG FirmwareError;
+    ULONG FirmwareCommand;
+    ULONG FirmwareBytes;
+    ULONG RamSize;
+    ULONG LinkEvent;
+    ULONG LinkReason;
 } RPI5CYW_ADAPTER, *PRPI5CYW_ADAPTER;
 
 DRIVER_INITIALIZE DriverEntry;

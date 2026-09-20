@@ -558,7 +558,7 @@ SdioCmd52Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
  */
 static NTSTATUS
 SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
-                  PUCHAR Buffer, ULONG Length, BOOLEAN Write)
+                  PUCHAR Buffer, ULONG Length, BOOLEAN Write, BOOLEAN Increment)
 {
     ULONG InterruptStatus = 0, Response, Offset, Word, Byte, Poll;
     NTSTATUS Status;
@@ -570,7 +570,8 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
     ULONG Phase;
 
     if (Adapter == NULL || Adapter->RegisterBase == NULL || Buffer == NULL ||
-        !SdioIsValidByteRead(Function, Address, Length))
+        Function > 7 || Address > 0x1FFFF || Length == 0 || Length > 512 ||
+        (Increment && !SdioIsValidByteRead(Function, Address, Length)))
         return STATUS_INVALID_PARAMETER;
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) return STATUS_INVALID_DEVICE_STATE;
     if (!Write) RtlZeroMemory(Buffer, Length);
@@ -578,7 +579,7 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
     Adapter->Cmd53ResetStatus = STATUS_SUCCESS;
     Adapter->LastCommand = SDCMD_IO_RW_EXTENDED;
     Adapter->LastArgument = SdioBuildCmd53Argument(Write, Function, FALSE,
-                                                  TRUE, Address, Length);
+                                                  Increment, Address, Length);
     Adapter->LastResponse = 0;
     Adapter->LastInterruptStatus = 0;
     Status = SdioWaitInhibitClear(Adapter,
@@ -662,14 +663,35 @@ NTSTATUS
 SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
               PUCHAR Buffer, ULONG Length)
 {
-    return SdioCmd53Transfer(Adapter, Function, Address, Buffer, Length, FALSE);
+    return SdioCmd53Transfer(Adapter, Function, Address, Buffer, Length, FALSE, TRUE);
 }
 
 NTSTATUS
 SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
                PUCHAR Buffer, ULONG Length)
 {
-    return SdioCmd53Transfer(Adapter, Function, Address, Buffer, Length, TRUE);
+    return SdioCmd53Transfer(Adapter, Function, Address, Buffer, Length, TRUE, TRUE);
+}
+
+/* F2 is a FIFO, not incrementing backplane memory. Byte-mode chunks keep the
+ * proven single-buffer PIO engine; no untested DMA/multiblock engine is used. */
+NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
+                          ULONG Length, BOOLEAN Write)
+{
+    ULONG Done = 0, Chunk;
+    NTSTATUS Status;
+    if (Buffer == NULL || Length == 0 || Length > 65536 || (Length & 3))
+        return STATUS_INVALID_PARAMETER;
+    while (Done < Length)
+    {
+        Chunk = Length - Done;
+        if (Chunk > 512) Chunk = 512;
+        Status = SdioCmd53Transfer(Adapter, 2, 0x8000, Buffer + Done,
+                                   Chunk, Write, FALSE);
+        if (!NT_SUCCESS(Status)) return Status;
+        Done += Chunk;
+    }
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS
