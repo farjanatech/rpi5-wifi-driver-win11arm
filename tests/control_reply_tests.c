@@ -28,7 +28,7 @@ static void *TestAlloc(int flags,size_t n,ULONG tag)
 static void TestFree(void *p,ULONG tag){(void)tag;if(p){--Outstanding;free(p);}}
 #define ExAllocatePool2 TestAlloc
 #define ExFreePoolWithTag TestFree
-static ULONGLONG KeQueryInterruptTime(void){Clock+=1000000;return Clock;}
+ULONGLONG KeQueryInterruptTime(void){Clock+=1000000;return Clock;}
 static void SdioDelayMilliseconds(ULONG n){(void)n;}
 static VOID CywLink(PRPI5CYW_ADAPTER A,BOOLEAN up){(void)A;CHECK(!up);}
 static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG length)
