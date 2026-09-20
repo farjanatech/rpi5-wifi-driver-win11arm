@@ -14,6 +14,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.ComponentModel;
 using Microsoft.Win32.SafeHandles;
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
 public static class Rpi5WifiControl {
     [DllImport("bcrypt.dll", CharSet=CharSet.Unicode)]
     static extern int BCryptOpenAlgorithmProvider(out IntPtr handle, string algorithm, string implementation, uint flags);
@@ -57,7 +58,11 @@ if ($LibraryOnly) { return }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run this utility as Administrator on the Raspberry Pi, not the build PC.'
+    $launchArguments = @('-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath))
+    if ($StatusOnly) { $launchArguments += '-StatusOnly' }
+    if ($Disconnect) { $launchArguments += '-Disconnect' }
+    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launchArguments
+    return
 }
 
 if ($Disconnect) {
