@@ -126,6 +126,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG Cmd53WriteCount;
     ULONG EromAddress;
     ULONG EromWords;
+    ULONG EromTrace[512];
     ULONG CoreCount;
     ULONG ChipCommonBase;
     ULONG SdioCoreBase;

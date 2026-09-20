@@ -225,6 +225,12 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"Cmd53WriteCount", Adapter->Cmd53WriteCount);
     SET_DWORD(L"EromAddress", Adapter->EromAddress);
     SET_DWORD(L"EromWords", Adapter->EromWords);
+    {
+        ULONG Words = Adapter->EromWords > 512 ? 512 : Adapter->EromWords;
+        RtlInitUnicodeString(&ValueName, L"EromTrace");
+        (VOID)ZwSetValueKey(KeyHandle, &ValueName, 0, REG_BINARY,
+                           Adapter->EromTrace, Words * sizeof(ULONG));
+    }
     SET_DWORD(L"CoreCount", Adapter->CoreCount);
     SET_DWORD(L"ChipCommonBase", Adapter->ChipCommonBase);
     SET_DWORD(L"SdioCoreBase", Adapter->SdioCoreBase);

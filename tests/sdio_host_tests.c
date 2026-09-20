@@ -248,6 +248,8 @@ int main(void)
     CHECK(Adapter.ChipId == 0x4345 && Adapter.ChipRevision == 6);
     CHECK(Adapter.Cmd53ReadCount > 16 && Adapter.ProbePhase == 350);
     CHECK(Adapter.CoreInventoryComplete && Adapter.CoreCount == 4);
+    CHECK(Adapter.EromWords == sizeof(Erom) / sizeof(Erom[0]));
+    CHECK(memcmp(Adapter.EromTrace, Erom, sizeof(Erom)) == 0);
     CHECK(Adapter.Cr4CoreBase == 0x18004000 && Adapter.RamBankCount == 5);
     CHECK(Adapter.RamBase == 0x198000 && Adapter.Cmd53WriteCount == 0);
     CHECK(Adapter.Function1Ready && Adapter.ProbeRestoreStatus == 0);

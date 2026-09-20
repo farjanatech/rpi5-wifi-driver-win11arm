@@ -48,6 +48,8 @@ static NTSTATUS CywNextEromWord(PVOID Context, PULONG Word)
     if (Reader->Remaining == 0) return STATUS_DEVICE_DATA_ERROR;
     Reader->Remaining--;
     Status = CywReadBackplane32(Reader, Reader->Address, Word);
+    if (NT_SUCCESS(Status) && Reader->Adapter->EromWords < 512)
+        Reader->Adapter->EromTrace[Reader->Adapter->EromWords] = *Word;
     Reader->Address += 4;
     Reader->Adapter->EromWords++;
     return Status;
@@ -75,12 +77,12 @@ static NTSTATUS CywDiscoverCores(PRPI5CYW_ADAPTER Adapter)
     if (Reader.Remaining > 512) Reader.Remaining = 512;
     Status = CywParseErom(CywNextEromWord, &Reader, &Map);
     Adapter->CoreCount = Map.Count;
-    if (!NT_SUCCESS(Status)) return Status;
     Adapter->ChipCommonBase = Map.ChipCommon;
     Adapter->SdioCoreBase = Map.Sdio;
     Adapter->D11CoreBase = Map.D11;
     Adapter->Cr4CoreBase = Map.Cr4;
     Adapter->Cr4WrapperBase = Map.Cr4Wrapper;
+    if (!NT_SUCCESS(Status)) return Status;
     Rpi5CywWriteDiagnostics(Adapter, 310, STATUS_SUCCESS);
     Status = CywReadBackplane32(&Reader, Map.Cr4Wrapper + 0x408,
                                 &Adapter->Cr4IoControl);
