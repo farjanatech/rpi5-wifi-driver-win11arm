@@ -200,7 +200,7 @@ static VOID CywWorker(PVOID Context)
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
     CYW_CONNECT_REQUEST request;CYW_TX tx={0};
     KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0;BOOLEAN haveTx;
-    ULONGLONG nextSnapshot=0;
+    ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
     N->Thread=PsGetCurrentThread();ObReferenceObject(N->Thread);
     KeSetEvent(&N->ThreadStarted,0,FALSE);
@@ -232,11 +232,13 @@ static VOID CywWorker(PVOID Context)
             }
             A->NetworkStatus=Status;Rpi5CywWriteDiagnostics(A,120,Status);
         }
-        for(i=0;i<32 && !N->Stop && !N->Paused;++i) {
+        rxStart=KeQueryInterruptTime();
+        for(i=0;CywReceiveBudget(i,KeQueryInterruptTime()-rxStart) && !N->Stop && !N->Paused;++i) {
             Status=CywPoll(A,&channel,&off,&len);
             if(Status==STATUS_NO_MORE_ENTRIES)break;
             if(!NT_SUCCESS(Status))goto Failed;
         }
+        if(i && !CywReceiveBudget(i,KeQueryInterruptTime()-rxStart))A->RxBatchYields++;
         if(A->NetworkPhase!=lastPhase || KeQueryInterruptTime()>=nextSnapshot) {
             Rpi5CywWriteDiagnostics(A,120,A->NetworkStatus);
             lastPhase=A->NetworkPhase;nextSnapshot=KeQueryInterruptTime()+300000000ULL;
@@ -253,7 +255,7 @@ static VOID CywWorker(PVOID Context)
             data[0]=0x20;RtlCopyMemory(data+4,tx.Data,tx.Length);
             Status=CywSendFrame(A,2,data,tx.Length+4);ExFreePoolWithTag(data,RPI5CYW_TAG);
             if(NT_SUCCESS(Status))A->TxPackets++;else {A->TxErrors++;goto Failed;}
-        } else KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);
+        } else if(!i) KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);
     }
     goto Exit;
 Failed:
@@ -375,6 +377,7 @@ NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER A,PNET_BUFFER_LIST Nbl)
     if(!count)return NDIS_STATUS_INVALID_LENGTH;
     KeAcquireSpinLock(&N->Lock,&irql);tail=N->Tail;
     if(N->Paused || !N->Ready || N->Count>CYW_QUEUE-count) {
+        if(N->Count>CYW_QUEUE-count)A->TxQueueFull++;
         KeReleaseSpinLock(&N->Lock,irql);return NDIS_STATUS_RESOURCES;
     }
     /* A copied queue owns the frame before completion; no NBL is retained. */
@@ -385,7 +388,9 @@ NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER A,PNET_BUFFER_LIST Nbl)
         if(data!=N->Queue[N->Tail].Data)RtlCopyMemory(N->Queue[N->Tail].Data,data,len);
         N->Queue[N->Tail].Length=len;N->Tail=(N->Tail+1)%CYW_QUEUE;
     }
-    N->Count+=count;KeReleaseSpinLock(&N->Lock,irql);
+    N->Count+=count;
+    if(N->Count>A->TxQueueHighWater)A->TxQueueHighWater=N->Count;
+    KeReleaseSpinLock(&N->Lock,irql);
     KeSetEvent(&N->Wake,0,FALSE);return NDIS_STATUS_SUCCESS;
 }
 VOID CywNetworkSetFilter(PRPI5CYW_ADAPTER A,ULONG Filter)

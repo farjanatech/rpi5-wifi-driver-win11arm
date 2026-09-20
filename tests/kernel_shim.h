@@ -40,6 +40,7 @@ typedef NTSTATUS DRIVER_INITIALIZE(void);
 extern int TestIrql;
 #define KeGetCurrentIrql() TestIrql
 void KeStallExecutionProcessor(ULONG Microseconds);
+ULONG64 KeQueryInterruptTime(void);
 NTSTATUS KeDelayExecutionThread(int Mode, BOOLEAN Alertable, LARGE_INTEGER *Delay);
 UCHAR READ_REGISTER_UCHAR(PUCHAR Address);
 USHORT READ_REGISTER_USHORT(PUSHORT Address);

@@ -78,6 +78,8 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG64 TxErrors;
     ULONG64 RxErrors;
     ULONG64 RxNoBuffer;
+    ULONG Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts;
+    ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
 
     ULONG DiagStage;
     NTSTATUS ProbeStatus;

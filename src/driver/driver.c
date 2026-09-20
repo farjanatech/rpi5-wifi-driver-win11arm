@@ -113,7 +113,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 7);
+    SET_DWORD(L"DiagVersion", 8);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -151,6 +151,15 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"LinkReason", Adapter->LinkReason);
     SET_DWORD(L"TxPackets", Adapter->TxPackets);
     SET_DWORD(L"RxPackets", Adapter->RxPackets);
+    SET_DWORD(L"TxErrors", Adapter->TxErrors);
+    SET_DWORD(L"RxErrors", Adapter->RxErrors);
+    SET_DWORD(L"RxNoBuffer", Adapter->RxNoBuffer);
+    SET_DWORD(L"Cmd53FastPolls", Adapter->Cmd53FastPolls);
+    SET_DWORD(L"Cmd53WaitSleeps", Adapter->Cmd53WaitSleeps);
+    SET_DWORD(L"Cmd53Timeouts", Adapter->Cmd53Timeouts);
+    SET_DWORD(L"TxQueueHighWater", Adapter->TxQueueHighWater);
+    SET_DWORD(L"TxQueueFull", Adapter->TxQueueFull);
+    SET_DWORD(L"RxBatchYields", Adapter->RxBatchYields);
     {
         LARGE_INTEGER Now;
         KeQuerySystemTime(&Now);

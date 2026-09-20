@@ -572,7 +572,8 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
     const ULONG Events[3] = { SDHCI_INT_CMD_COMPLETE,
         Write ? SDHCI_INT_BUFFER_WRITE_READY : SDHCI_INT_BUFFER_READ_READY,
         SDHCI_INT_XFER_COMPLETE };
-    ULONG Phase;
+    ULONG Phase, FastPolls = 0;
+    ULONG64 Deadline;
 
     if (Adapter == NULL || Adapter->RegisterBase == NULL || Buffer == NULL ||
         Function > 7 || Address > 0x1FFFF || Length == 0 || Length > 512 ||
@@ -603,8 +604,14 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
 
     for (Phase = 0; Phase < 3; Phase++)
     {
-        for (Poll = 0; Poll < 250; Poll++)
+        /* Real elapsed-time deadline: 250 one-ms sleeps can take much longer
+         * than 250 ms under scheduler load. F2 gets at most 40 us TOTAL of
+         * short polling per transaction, then yields. F1 startup is unchanged
+         * except for the bounded elapsed-time timeout. No clock/bus changes. */
+        Deadline = KeQueryInterruptTime() + 2500000ULL;
+        for (Poll = 0; Poll < 254; Poll++)
         {
+            if (Adapter->IoStopped) { Status = STATUS_INVALID_DEVICE_STATE; goto Failed; }
             InterruptStatus = SdioRead32(Adapter, SDHCI_INT_STATUS);
             Adapter->LastInterruptStatus = InterruptStatus;
             if ((InterruptStatus & Errors) != 0)
@@ -613,10 +620,22 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
                 goto Failed;
             }
             if ((InterruptStatus & Events[Phase]) != 0) break;
-            SdioDelayMilliseconds(1);
+            if (KeQueryInterruptTime() >= Deadline) break;
+            if (Function == 2 && FastPolls < 4)
+            {
+                KeStallExecutionProcessor(10);
+                FastPolls++;
+                Adapter->Cmd53FastPolls++;
+            }
+            else
+            {
+                Adapter->Cmd53WaitSleeps++;
+                SdioDelayMilliseconds(1);
+            }
         }
-        if (Poll == 250)
+        if ((InterruptStatus & Events[Phase]) == 0)
         {
+            Adapter->Cmd53Timeouts++;
             Status = STATUS_IO_TIMEOUT;
             goto Failed;
         }

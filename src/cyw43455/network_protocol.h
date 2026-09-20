@@ -15,6 +15,9 @@ typedef unsigned int uint32_t;
 
 #define CYW_WIRE_CAPACITY 65536u
 #define CYW_CONTROL_CAPACITY 8192u
+/* Bound receive work between send opportunities; not a packet-drop limit. */
+static __inline int CywReceiveBudget(uint32_t frames, unsigned long long elapsed100ns)
+{ return frames < 4 && elapsed100ns < 20000ULL; }
 static __inline uint16_t CywLe16(const uint8_t *p)
 { return (uint16_t)(p[0] | (uint16_t)p[1] << 8); }
 static __inline uint32_t CywLe32(const uint8_t *p)

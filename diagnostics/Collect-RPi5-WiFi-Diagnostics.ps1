@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.7'
+$script:UtilityVersion = '0.6.8'
 
 function Get-Rpi5ProbeResult {
     param([AllowNull()]$Diagnostic, [string]$ServiceStatus, [datetime]$BootTime)
@@ -381,6 +381,27 @@ function Invoke-Rpi5WiFiDiagnostic {
             Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue |
                 Where-Object { $_.PnPDeviceID -match 'RPI0011' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' } |
                 Format-List Name,InterfaceDescription,Status,LinkSpeed,MediaConnectionState,DriverInformation,DriverFileName,PnPDeviceID
+        }
+        Write-Capture '16-ip-routing-dns.txt' {
+            # Read-only snapshots, no DNS changes, DHCP renew or external probes.
+            # Capture all IPv4 routes to expose competing default interfaces.
+            Get-NetRoute -AddressFamily IPv4 -ErrorAction Stop |
+                Sort-Object InterfaceIndex,DestinationPrefix |
+                Format-Table InterfaceIndex,DestinationPrefix,NextHop,RouteMetric,State -AutoSize
+            $wifiAdapters = @(Get-NetAdapter -IncludeHidden -ErrorAction Stop |
+                Where-Object { $_.PnPDeviceID -match 'RPI0011' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' })
+            foreach ($wifiAdapter in $wifiAdapters) {
+                $index = $wifiAdapter.ifIndex
+                Get-NetIPInterface -InterfaceIndex $index -ErrorAction Stop |
+                    Format-List InterfaceAlias,InterfaceIndex,AddressFamily,ConnectionState,Dhcp,NlMtu,InterfaceMetric
+                Get-NetIPAddress -InterfaceIndex $index -ErrorAction Stop |
+                    Format-List IPAddress,PrefixLength,AddressFamily,AddressState,PrefixOrigin,SuffixOrigin
+                Get-DnsClientServerAddress -InterfaceIndex $index -ErrorAction Stop |
+                    Format-List InterfaceIndex,AddressFamily,ServerAddresses
+                Get-NetNeighbor -InterfaceIndex $index -ErrorAction Stop |
+                    Format-Table IPAddress,LinkLayerAddress,State -AutoSize
+                Get-NetAdapterStatistics -Name $wifiAdapter.Name -ErrorAction Stop | Format-List *
+            }
         }
         Write-Capture '10-package-signatures-and-hashes.txt' {
             $packageRoot = Split-Path -Parent $PSCommandPath

@@ -4,6 +4,26 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.8 candidate — bounded polling and packet fairness
+
+Physical exp0.6.7 results on one Pi show BD accepted, WPA2 authentication,
+DHCP, public-IP ping, DNS replies and an HTTPS HEAD response. They also show
+high latency and intermittent DNS timeouts; reliable browsing is not established.
+
+This candidate gives F2 CMD53 completions a maximum 40 microseconds of short
+polling per transaction before yielding, and bounds each phase by an elapsed
+250 ms deadline. The receive worker services send work after at most four
+frames or 2 ms (a frame already in progress completes first), instead of 32
+frames, and does not take an idle sleep immediately after received traffic.
+Counters expose scheduler sleeps, timeouts, queue pressure and RX batch yields.
+The collector now saves routes, actual gateway addresses, interface metrics,
+DNS addresses and neighbor state, without changing settings or external probes.
+
+Firmware/CLM/NVRAM, country checks, UEFI/fan, 1-bit 400 kHz bus and PIO frame
+format remain unchanged. No speed guarantee: this build needs physical A/B
+testing against exp0.6.7. Keep that package for rollback. Host simulation is
+not a hardware benchmark. See docs/INTEGRATED-TESTING.md.
+
 ### Integrated exp0.6.7 candidate — user-requested ReactOS firmware pair
 
 Package the CYW43455 .bin and .clm_blob from ahmedarif193/reactos revision

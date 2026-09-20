@@ -48,6 +48,9 @@ int main(void)
     CHECK(!CywEthernetBody(b,1519,&offset,&payload));
     CHECK(!CywEthernetBody(b,17,&offset,&payload));
     b[3]=255;CHECK(!CywEthernetBody(b,64,&offset,&payload));
+    CHECK(CywReceiveBudget(0,0));CHECK(CywReceiveBudget(3,19999));
+    CHECK(!CywReceiveBudget(4,0));CHECK(!CywReceiveBudget(0,20000));
+    CHECK(!CywReceiveBudget(0,~0ULL));
     CHECK(CywTxCredit(255,0,0));CHECK(!CywTxCredit(0,255,0));
     CHECK(!CywTxCredit(1,1,0));CHECK(!CywTxCredit(1,2,1));
     CHECK(CywAcceptEthernet(mac,mac,1,NULL,0));

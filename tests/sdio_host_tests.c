@@ -8,6 +8,9 @@ static ULONG Registers[64], Card[2][0x20000];
 static ULONG Fifo, FifoReads, ResetCount, CommandCount, Ticks, Command53Count;
 static ULONG Fault, Fail52At, Commands52, ReadbackMismatch, Command53Events;
 static ULONG FifoWrites, WriteWords[128], DiscoveryMode, Fail53At;
+static ULONG64 SimTime, ReadyAt;
+static ULONG SleepUs, SleepCount, StallUs, StopOnSleep;
+static PRPI5CYW_ADAPTER ActiveAdapter;
 static const ULONG Erom[] = {
     0x4BF80001, 0x01080001, 0x18000005, 0x18100085,
     0x4BF82901, 0x01080001, 0x18002005, 0x18101085,
@@ -24,6 +27,11 @@ UCHAR READ_REGISTER_UCHAR(PUCHAR Address) { return *Address; }
 USHORT READ_REGISTER_USHORT(PUSHORT Address) { return *Address; }
 ULONG READ_REGISTER_ULONG(PULONG Address)
 {
+    if (Offset(Address) == SDHCI_INT_STATUS && ReadyAt && SimTime >= ReadyAt)
+    {
+        *Address |= Command53Events;
+        ReadyAt = 0;
+    }
     if (Offset(Address) == SDHCI_BUFFER)
     {
         FifoReads++;
@@ -91,6 +99,7 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
             Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_BUFFER_WRITE_READY;
         }
         if (Fault == 1 || Fault == 7) Registers[SDHCI_INT_STATUS / 4] = 0;
+        if (ReadyAt) Registers[SDHCI_INT_STATUS / 4] = 0;
         if (Fault == 2) Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_DATA_CRC;
         if (Fault == 3) Response = 0x200;
         if (Fault == 4) Registers[SDHCI_INT_STATUS / 4] = SDHCI_INT_CMD_COMPLETE;
@@ -128,9 +137,16 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
 Complete:
     Registers[SDHCI_RESPONSE0 / 4] = Response;
 }
-void KeStallExecutionProcessor(ULONG Microseconds) { (void)Microseconds; Ticks++; }
+ULONG64 KeQueryInterruptTime(void) { return SimTime; }
+void KeStallExecutionProcessor(ULONG Microseconds)
+{ SimTime+=(ULONG64)Microseconds*10; StallUs+=Microseconds; Ticks++; }
 NTSTATUS KeDelayExecutionThread(int Mode, BOOLEAN Alertable, LARGE_INTEGER *Delay)
-{ (void)Mode; (void)Alertable; (void)Delay; Ticks++; return 0; }
+{
+    (void)Mode; (void)Alertable; (void)Delay;
+    SimTime+=(ULONG64)SleepUs*10; SleepCount++; Ticks++;
+    if(StopOnSleep)ActiveAdapter->IoStopped=1;
+    return 0;
+}
 void Rpi5CywWriteDiagnostics(PRPI5CYW_ADAPTER Adapter, ULONG Stage, NTSTATUS Status)
 {
     Adapter->ProbePhase = Stage; Adapter->ProbeStatus = Status;
@@ -149,6 +165,8 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     Command53Events = SDHCI_INT_CMD_COMPLETE | SDHCI_INT_BUFFER_READ_READY |
                       SDHCI_INT_XFER_COMPLETE;
     TestIrql = 0;
+    SimTime=ReadyAt=0;SleepUs=1000;SleepCount=StallUs=StopOnSleep=0;
+    ActiveAdapter=Adapter;
     Card[1][CYW_F1_WINDOW_LOW] = 0x80;
     Card[1][CYW_F1_WINDOW_LOW + 1] = 0x12;
     Card[1][CYW_F1_WINDOW_LOW + 2] = 0x18;
@@ -174,6 +192,24 @@ int main(void)
     C_ASSERT(sizeof(ULONG) == 4);
     C_ASSERT(sizeof(NTSTATUS) == 4);
     RunEromTests();
+    /* Actual F2 completion polling: immediate, short-ready, slow scheduler,
+     * timeout and cancellation. No MMIO or driver loaded on this host. */
+    Init(&Adapter);
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,64,FALSE)==0);
+    CHECK(SleepCount==0 && StallUs==0);
+    Init(&Adapter);ReadyAt=200;
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,64,FALSE)==0);
+    CHECK(SleepCount==0 && StallUs==20 && Adapter.Cmd53FastPolls==2);
+    Init(&Adapter);ReadyAt=10000;
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,64,FALSE)==0);
+    CHECK(SleepCount==1 && StallUs==40 && Adapter.Cmd53WaitSleeps==1);
+    Init(&Adapter);Fault=1;SleepUs=16000;
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,64,FALSE)==STATUS_IO_TIMEOUT);
+    CHECK(SleepCount==16 && StallUs==40 && Adapter.Cmd53Timeouts==1);
+    CHECK(SimTime<2700000 && ResetCount==1);
+    Init(&Adapter);Fault=1;StopOnSleep=1;
+    CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,64,FALSE)==STATUS_INVALID_DEVICE_STATE);
+    CHECK(SleepCount==1 && FifoReads==0);
     Init(&Adapter); Fault=14; memset(Buffer,0xA5,sizeof(Buffer));
     CHECK(SdioCmd53Write(&Adapter,1,0x8000,Buffer,512)==STATUS_IO_DEVICE_ERROR);
     CHECK(Adapter.LastArgument==0x95000000UL && Adapter.LastResponse==0x1100);

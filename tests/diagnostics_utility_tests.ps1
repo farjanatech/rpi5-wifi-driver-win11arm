@@ -20,7 +20,9 @@ $forbidden = @(
     '(?i)\b(?:Set|New|Remove)-ItemProperty\b',
     '(?i)\b(?:Disable|Enable|Remove)-PnpDevice\b',
     '(?i)\b(?:Restart|Stop)-Computer\b',
-    '(?i)\bshutdown(?:\.exe)?\b'
+    '(?i)\bshutdown(?:\.exe)?\b',
+    '(?i)\b(?:Set|New|Remove)-(?:NetRoute|NetIPAddress|NetIPInterface|DnsClientServerAddress)\b',
+    '(?i)\bipconfig(?:\.exe)?\s+/(?:renew|release|flushdns)'
 )
 foreach ($pattern in $forbidden) {
     if ($source -match $pattern) { throw "Forbidden state-changing operation found: $pattern" }
@@ -31,7 +33,9 @@ if ($source -notmatch 'Compress-Archive') { throw 'ZIP creation is missing.' }
 foreach ($requiredDiagnostic in @(
     'Cmd5AttemptCount','Cmd5ValidAttempt','Cmd5SuccessAttempt','ResponseValid',
     'PresentStateBefore','ClockControlAfter','PowerControlAfter','HostControl2After',
-    'TimeoutControlAfter','CmdLineBefore','Get-Rpi5DeviceByAcpiId'
+    'TimeoutControlAfter','CmdLineBefore','Get-Rpi5DeviceByAcpiId',
+    '16-ip-routing-dns.txt','Get-NetRoute','NextHop','InterfaceMetric',
+    'Get-NetIPAddress','Get-DnsClientServerAddress','Get-NetNeighbor','Get-NetAdapterStatistics'
 )) {
     if ($source -notmatch [regex]::Escape($requiredDiagnostic)) {
         throw "Expected CMD5 retry diagnostic is missing: $requiredDiagnostic"

@@ -1,4 +1,40 @@
-# exp0.6.7 ReactOS firmware pair: physical test checklist
+# exp0.6.8 latency candidate: physical test checklist
+
+Install from a fresh extracted folder on the Pi, restart once, then run
+Connect-RPi5-WiFi.cmd and confirm BD if in Bangladesh. Keep the existing UEFI.
+Do not mix packages, change DNS, disable IPv6, or reinstall Windows.
+
+Once authenticated, disconnect wired Ethernet for comparable tests. Run:
+
+```powershell
+ping.exe -n 20 192.168.0.1
+ping.exe -n 10 1.1.1.1
+nslookup.exe example.com 192.168.0.1
+nslookup.exe example.com 1.1.1.1
+curl.exe -4 -I --connect-timeout 15 --max-time 45 https://example.com
+```
+
+The gateway above is the one confirmed in this user's diagnostics; substitute
+your actual gateway elsewhere. Save these outputs/screenshots and run
+Run-RPi5-WiFi-Diagnostics.cmd after the tests, before restarting. New counters
+are cumulative, not timings: Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts,
+TxQueueHighWater, TxQueueFull, RxBatchYields, plus TxErrors/RxErrors/RxNoBuffer.
+16-ip-routing-dns.txt records configuration and routes but does not probe the
+internet. It contains local network addresses; review before sharing publicly.
+
+Compare latency/loss and website loading with exp0.6.7 under the same conditions.
+If it regresses, keep diagnostics and roll back only the Wi-Fi driver using
+Device Manager's Roll Back Driver if available. This is not a validated speed fix.
+The known 1-bit/400 kHz PIO throughput ceiling remains. No radio/clock increase.
+
+Engineering basis: Microsoft's [KeStallExecutionProcessor guidance](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kestallexecutionprocessor)
+recommends minimizing busy waits, typically below 50 us. This candidate caps
+the entire F2 transaction's explicit short-poll stalls at 40 us, not an
+unbounded spin loop. The 2 ms RX budget uses interrupt-time clock granularity;
+the four-frame cap still applies if that clock has not advanced. These are
+code-level latency contributors, not proof of the cause of every DNS timeout.
+
+## Historical exp0.6.7 ReactOS firmware pair checklist
 
 Install exp0.6.7 from a fresh extracted folder on the Pi only; restart once.
 The pinned ReactOS 43455 pair is firmware 7.45.229 (631467 bytes) and CLM 7163
