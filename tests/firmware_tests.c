@@ -101,6 +101,9 @@ int main(void)
     RPI5CYW_ADAPTER a;unsigned count,i;
     Init(&a);CHECK(CywFirmwareStart(&a)==0);CHECK(a.NetworkPhase==440 && a.RamSize==0xc8000);
     CHECK(Started && a.FirmwareBytes==6147 && Outstanding==0);count=Calls;
+    CHECK(CywLe32(Ram+sizeof(Ram)-4)==0xfffc0003);
+    CywFirmwareStop(&a);CHECK((Card[2]&6)==0 && Ioctl==0x21 && D11Reset==1);
+    Init(&a);Card[2]=6;Card[4]=7;CHECK(CywFirmwareStart(&a)==0);CHECK(a.NetworkPhase==440);
     for(i=1;i<=count;++i) {Init(&a);FailCall=i;CHECK(!NT_SUCCESS(CywFirmwareStart(&a)));CHECK(Outstanding==0);}
     for(i=1;i<=3;++i) {Init(&a);FailAlloc=i;CHECK(!NT_SUCCESS(CywFirmwareStart(&a)));CHECK(Outstanding==0 && Calls==0);}
     Init(&a);Corrupt=1;CHECK(CywFirmwareStart(&a)==STATUS_DEVICE_DATA_ERROR);CHECK(!Started);

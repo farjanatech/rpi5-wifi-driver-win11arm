@@ -171,6 +171,12 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     nv=ExAllocatePool2(POOL_FLAG_NON_PAGED,rawSize+8,RPI5CYW_TAG);
     if(!nv) {Status=STATUS_INSUFFICIENT_RESOURCES;goto Exit;}
     if(!CywPackNvram(raw,rawSize,nv,rawSize+8,&nvSize)) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
+    /* A warm Windows restart may leave the previous firmware/F2 enabled.
+     * Quiesce its FIFO and interrupt source before replacing chip RAM. */
+    TRY(SdioCmd52Read(A,0,2,&byte));
+    TRY(SdioCmd52Write(A,0,2,(UCHAR)(byte&~4),0xfe));
+    TRY(SdioCmd52Write(A,0,4,0,7));
+    TRY(SdioCmd52Write(A,0,6,2,0));
     TRY(CywEnable(A,2)); TRY(CywClock(A,0x28,0x40));
     TRY(SdioCmd52Write(A,1,0x1000e,0x21,0x3f)); KeStallExecutionProcessor(65);
     A->NetworkPhase=410;
@@ -203,6 +209,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     token=(ULONG)(nvSize/4);token=((~token&0xffff)<<16)|(token&0xffff);
     CywPut32(b,token);TRY(CywRam(A,A->RamBase+A->RamSize-4,b,4,TRUE));
     TRY(CywRam(A,0,fw,4,TRUE));
+    TRY(CywBpWrite(A,A->SdioCoreBase+0x20,0xffffffff));
     A->NetworkPhase=430;
     TRY(CywCr4Reset(A,0x20,0,0));TRY(CywClock(A,0x10,0xc0));
     TRY(SdioCmd52Read(A,1,0x10009,&byte));
