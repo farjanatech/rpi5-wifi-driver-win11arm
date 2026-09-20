@@ -170,6 +170,11 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG CountryExplicitError;
     ULONG ClmLoadStatus;
     NTSTATUS ClmQueryStatus;
+    NTSTATUS CountryListStatus;
+    ULONG CountryListError;
+    ULONG CountryListCount;
+    ULONG CountryListMembership;
+    ULONG CountryListReplyLength;
     ULONG RamTransferAddress;
     ULONG RamTransferLength;
     ULONG RamTransferWrite;

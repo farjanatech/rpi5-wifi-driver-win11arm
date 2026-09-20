@@ -41,17 +41,26 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG 
     if(Fault==5)return STATUS_IO_DEVICE_ERROR;
     if(Mode) {
         payload=0;declared=RequestCapacity;error=0;
-        if(RequestCommand==262){
+        if(RequestCommand==261){
+            CHECK(!(RequestFlags&2) && RequestCapacity==1024 && CywLe32(data+16)==1024);
+            CHECK(CywLe32(data+20)==0 && CywLe32(data+24)==0 && CywLe32(data+28)==0);
+            memset(Value,0,sizeof(Value));CywPut32(Value,1024);CywPut32(Value+12,2);
+            memcpy(Value+16,"US\0\0BD\0\0",8);payload=24;
+            if(Fault==9)error=0xffffffe9;
+            if(Fault==10)payload=23;
+        } else if(RequestCommand==262){
             /* Firmware can return the whole IOVAR buffer, not just the value. */
             payload=RequestCapacity;memset(Value,0,sizeof(Value));
             if(strcmp((char*)data+16,"clmload_status")==0){
                 CywPut32(Value,ClmValue);if(Fault==7)payload=3;
             } else {CHECK(strcmp((char*)data+16,"country")==0);memcpy(Value,Country,12);}
         } else if(RequestCommand==263 && strcmp((char*)data+16,"country")==0){
-            CHECK(RequestCapacity==20 || RequestCapacity==12);
+            CHECK(RequestCapacity==20);
             CHECK(data[24]=='B' && data[25]=='D');
-            if(RequestCapacity==20 && Fault==8)error=0xfffffffe;
-            else {CHECK(CywCountryRequest(data+24,Country));if(RequestCapacity==12)CywPut32(Country+4,7);}
+            CHECK(data[32]=='B' && data[33]=='D' && !data[26] && !data[27] && !data[34] && !data[35]);
+            CHECK(CywLe32(data+28)==0 || CywLe32(data+28)==0xffffffff);
+            if(CywLe32(data+28)==0 && Fault==8)error=0xfffffffe;
+            else {CHECK(CywCountryRequest(data+24,Country));if(CywLe32(data+28)==0xffffffff)CywPut32(Country+4,7);}
         } else if(RequestCommand==2){RadioUp=1;CHECK(A->CountryApplied==0x4442);}
         else if(RequestCommand==26){Joined=1;CHECK(RadioUp);}
     }
@@ -125,7 +134,10 @@ int main(void)
     /* Integration: actual transport, actual IOVAR and actual connection checks. */
     request.Version=1;request.Country[0]='B';request.Country[1]='D';request.SsidLength=4;memcpy(request.Ssid,"test",4);
     Init(&a,&n);Mode=1;CHECK(CywConnect(&a,&request)==0 && Joined && RadioUp && a.ClmLoadStatus==0);
-    Init(&a,&n);Mode=1;Fault=8;CHECK(CywConnect(&a,&request)==0 && Joined && a.CountrySetMode==3 && a.CountryRevision==7);
+    CHECK(a.CountryListMembership==1 && a.CountryListCount==2 && a.CountryListReplyLength==24);
+    Init(&a,&n);Mode=1;Fault=8;CHECK(CywConnect(&a,&request)==0 && Joined && a.CountrySetMode==4 && a.CountryRevision==7);
+    Init(&a,&n);Mode=1;Fault=9;CHECK(CywConnect(&a,&request)==0 && Joined && !a.CountryListMembership && a.CountryListError==0xffffffe9);
+    Init(&a,&n);Mode=1;Fault=10;CHECK(CywConnect(&a,&request)==0 && Joined && !a.CountryListMembership && a.CountryListStatus==STATUS_DEVICE_DATA_ERROR);
     Init(&a,&n);Mode=1;ClmValue=1;
     CHECK(CywConnect(&a,&request)==STATUS_DEVICE_DATA_ERROR && !RadioUp && !Joined && a.ClmLoadStatus==1);
     Init(&a,&n);Mode=1;Fault=7;

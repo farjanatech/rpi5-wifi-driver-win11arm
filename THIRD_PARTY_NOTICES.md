@@ -52,6 +52,17 @@ The current direct-SDIO probe is not represented as a working Wi-Fi driver.
 
 ## Country protocol compatibility references (exp0.6.4)
 
+exp0.6.6 references Ahmed ARIF's ReactOS CywSetCountry full-structure revision
+-1 protocol (GPL-2.0-or-later, Copyright 2026 Ahmed ARIF). The bounded fallback
+and tests here are independently implemented; no upstream firmware is bundled.
+https://github.com/ahmedarif193/reactos/blob/929bdd689d1e18d0ef71214741d4e16eec74409c/drivers/network/dd/cyw43455/chip.c
+
+The read-only country-list wire layout and command 261 are documented by
+Infineon WHD whd_wifi_get_country_list and wl_country_list_t. No vendor source
+is copied; our parser independently validates lengths/counts before reading.
+https://github.com/Infineon/wifi-host-driver/blob/master/WHD/COMPONENT_WIFI6/src/whd_wifi_api.c
+https://github.com/Infineon/wifi-host-driver/blob/master/WHD/COMPONENT_WIFI6/src/include/whd_wlioctl.h
+
 exp0.6.5 additionally references Linux v6.12 brcmfmac/bcdc.c and fwil.c for
 buffer metadata versus received control payload and IOVAR value-copy semantics.
 The bounded parser and host integration tests are maintained here; no Linux

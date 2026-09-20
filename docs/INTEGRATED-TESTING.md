@@ -1,4 +1,27 @@
-# exp0.6.5 firmware reply decoding: physical test checklist
+# exp0.6.6 full country request: physical test checklist
+
+Install exp0.6.6 on the Pi only, restart once, then run Connect-RPi5-WiFi.cmd.
+Keep your actual country BD; do not substitute USA or France. Firmware upload
+and verification timing is unchanged (previously about 6-7 minutes).
+
+This build changes only the same-country BADARG fallback to a full 12-byte
+structure with revision -1 (CountrySetMode=4, step 16). It retains revision 0
+as the initial request and full exact-country/nonnegative-revision readback.
+The earlier four-byte fallback is removed. Firmware/CLM/NVRAM and UEFI are unchanged.
+
+New saved diagnostics (DiagVersion=7): CountryListStatus, CountryListError,
+CountryListCount, CountryListReplyLength, CountryListMembership. Membership is
+0 unknown, 1 requested code listed, 2 requested code not listed in a validated
+nonempty returned list. A list does not specify revisions, prove RF compliance,
+or override country SET/readback. The query is optional and read-only (command
+261, band_set=0, bounded 1024-byte buffer); unsupported, empty and malformed
+responses remain inconclusive. It runs once per connection request (step 17).
+
+If connection fails, collect diagnostics AFTER the failure without rebooting.
+This preserves both the failing SET and the separate country-list result.
+Keep exp0.6.5 available for rollback. This build is NOT hardware-validated.
+
+## Retained exp0.6.5 reply decoding
 
 exp0.6.4's post-restart log had ClmQueryStatus=0, FirmwareError=0,
 ClmLoadStatus=0xffffffff and step 15 / STATUS_DEVICE_DATA_ERROR. This identifies
@@ -26,7 +49,7 @@ country value. Nonzero CLM status, wrong country, negative revision, truncated
 reply or rejected firmware command still stop connection before radio-up.
 No UEFI change, firmware speed change or networking success is claimed.
 
-## Retained exp0.6.4 country policy
+## Historical exp0.6.4 policy (four-byte fallback superseded above)
 
 exp0.6.3 physically completed all 609,309 upload/readback bytes and failed at
 country-set for BD with BADARG (-2). exp0.6.4 changes only country connection

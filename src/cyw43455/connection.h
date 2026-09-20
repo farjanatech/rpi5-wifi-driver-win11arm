@@ -5,7 +5,8 @@
  */
 static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
 {
-    UCHAR country[12]={0},clm[4]={0},pmk[132]={0},ssid[36]={0};
+    UCHAR country[12]={0},clm[4]={0},pmk[132]={0},ssid[36]={0},countries[1024]={0};
+    uint32_t countryCount=0,countryListed=0;
     UCHAR rsn[22]={0x30,0x14,1,0,0,0x0f,0xac,4,1,0,0,0x0f,0xac,4,1,0,0,0x0f,0xac,2,0,0};
     NTSTATUS Status;
     A->Network->Associated=A->Network->Authorized=FALSE;CywLink(A,FALSE);
@@ -15,6 +16,8 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
     A->CountryBefore=0;A->CountryBeforeRevision=0xffffffffUL;
     A->CountrySetMode=0;A->CountryExplicitError=0;
     A->ClmLoadStatus=0xffffffffUL;A->ClmQueryStatus=(NTSTATUS)0x103;
+    A->CountryListStatus=(NTSTATUS)0x103;A->CountryListError=0;
+    A->CountryListCount=0;A->CountryListMembership=0;A->CountryListReplyLength=0;
 #define STEP(n,op) do { A->ConnectStep=(n); TRY(op); } while(0)
     STEP(1,CywCmdInt(A,3,0));
     A->Network->Associated=A->Network->Authorized=FALSE;
@@ -28,6 +31,22 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
         A->ClmLoadStatus=CywLe32(clm);
         if(A->ClmLoadStatus) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
     } else if(Status!=STATUS_UNSUCCESSFUL || A->FirmwareError!=0xffffffe9UL) goto Exit;
+    /* Optional bounded read-only query. Unsupported/malformed results remain
+     * unknown; the actual country SET/readback remains the authority. */
+    A->ConnectStep=17;CywPut32(countries,sizeof(countries));
+    A->FirmwareError=0;A->FirmwareReplyLength=0;
+    A->CountryListStatus=CywFirmwareCommand(A,261,FALSE,countries,sizeof(countries));
+    A->CountryListError=A->FirmwareError;
+    A->CountryListReplyLength=A->FirmwareReplyLength;
+    if(NT_SUCCESS(A->CountryListStatus)) {
+        if(!CywCountryList(countries,A->CountryListReplyLength,R->Country,&countryCount,&countryListed))
+            A->CountryListStatus=STATUS_DEVICE_DATA_ERROR;
+        else {
+            A->CountryListCount=countryCount;
+            /* Empty list is inconclusive, not evidence of no supported country. */
+            if(countryCount)A->CountryListMembership=countryListed?1:2;
+        }
+    }
     STEP(14,CywIovar(A,"country",FALSE,country,sizeof(country)));
     if(A->FirmwareReplyLength!=sizeof(country)) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
     A->CountryBefore=(ULONG)country[0]|((ULONG)country[1]<<8);
@@ -42,12 +61,13 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
     if(!NT_SUCCESS(Status)) {
         A->CountryExplicitError=A->FirmwareError;
         if(Status!=STATUS_UNSUCCESSFUL || A->FirmwareError!=0xfffffffeUL) goto Exit;
-        /* Legacy country IOVAR: ISO abbreviation only (four bytes). Let the
-         * firmware select its default revision for THIS country, once, after
-         * explicit revision zero returned BADARG. Never try another country,
-         * brute-force revisions, or continue without a full matching readback. */
-        A->CountrySetMode=3;
-        STEP(16,CywIovar(A,"country",TRUE,country,4));
+        /* Full wl_country_t, revision -1, as used by ReactOS CywSetCountry.
+         * Both country fields stay the requested ISO code. Never substitute
+         * another country or proceed without matching nonnegative readback. */
+        if(!CywCountryRequest(R->Country,country)) {Status=STATUS_INVALID_PARAMETER;goto Exit;}
+        CywPut32(country+4,0xffffffffUL);
+        A->CountrySetMode=4;
+        STEP(16,CywIovar(A,"country",TRUE,country,sizeof(country)));
     }
     RtlZeroMemory(country,sizeof(country));
     STEP(3,CywIovar(A,"country",FALSE,country,sizeof(country)));

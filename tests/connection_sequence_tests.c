@@ -11,6 +11,7 @@
 struct _CYW_NETWORK { BOOLEAN Associated,Authorized; };
 static unsigned Failures,Calls,FailStep,WrongCountry,ShortReply,RadioUp,Joined;
 static unsigned AutoCalls,SetCalls,RejectExplicit,RejectAuto,ClmBad,ClmUnsupported,CountryReads;
+static unsigned ListMode,NegativeRevision;
 static ULONG ExplicitError;
 static NTSTATUS ExplicitStatus;
 static UCHAR Country[12];
@@ -38,10 +39,11 @@ static NTSTATUS CywIovar(PRPI5CYW_ADAPTER A,const char *Name,BOOLEAN Set,PUCHAR 
     } else if(strcmp(Name,"country")==0) {
         if(Set){
             ++SetCalls;CHECK(Data[0]=='B' && Data[1]=='D' && !Data[2] && !Data[3]);
-            if(Length==4){
+            CHECK(Length==12 && Data[8]=='B' && Data[9]=='D' && !Data[10] && !Data[11]);
+            if(CywLe32(Data+4)==0xffffffffUL){
                 ++AutoCalls;CHECK(RejectExplicit && ExplicitError==0xfffffffe);
                 if(RejectAuto){A->FirmwareError=0xfffffffe;return STATUS_UNSUCCESSFUL;}
-                CHECK(CywCountryRequest(Data,Country));CywPut32(Country+4,7);
+                CHECK(CywCountryRequest(Data,Country));CywPut32(Country+4,NegativeRevision?0xffffffffUL:7);
             } else {
                 CHECK(Length==12 && CywLe32(Data+4)==0);
                 if(RejectExplicit){A->FirmwareError=ExplicitError;return ExplicitStatus;}
@@ -59,7 +61,19 @@ static NTSTATUS CywInt(PRPI5CYW_ADAPTER A,const char *Name,ULONG Value)
 {(void)Name;(void)Value;return Call(A,263);}
 static NTSTATUS CywFirmwareCommand(PRPI5CYW_ADAPTER A,ULONG Command,BOOLEAN Set,PUCHAR Data,ULONG Length)
 {
-    NTSTATUS s=Call(A,Command);CHECK(Set);if(!NT_SUCCESS(s))return s;
+    NTSTATUS s=Call(A,Command);if(!NT_SUCCESS(s))return s;
+    if(Command==261) {
+        CHECK(!Set && Length==1024 && CywLe32(Data)==1024 && CywLe32(Data+4)==0 && CywLe32(Data+8)==0 && CywLe32(Data+12)==0);
+        if(ListMode==1){A->FirmwareError=0xffffffe9;return STATUS_UNSUCCESSFUL;}
+        if(ListMode==4)return STATUS_IO_TIMEOUT;
+        memset(Data,0,Length);CywPut32(Data,1024);CywPut32(Data+12,2);
+        memcpy(Data+16,"US\0\0BD\0\0",8);
+        if(ListMode==2)Data[20]='U';
+        if(ListMode==3)CywPut32(Data+12,0xffffffff);
+        if(ListMode==5)CywPut32(Data+12,0);
+        A->FirmwareReplyLength=24;return 0;
+    }
+    CHECK(Set);
     if(Command==268){CHECK(Length==132 && CywLe16(Data)==32 && CywLe16(Data+2)==0);}
     else {CHECK(Command==26 && RadioUp && Length==36 && CywLe32(Data)==4);Joined=1;}
     return 0;
@@ -70,6 +84,7 @@ static void Init(PRPI5CYW_ADAPTER A,struct _CYW_NETWORK *N)
     memset(A,0,sizeof(*A));memset(N,0,sizeof(*N));A->Network=N;
     Calls=FailStep=WrongCountry=ShortReply=RadioUp=Joined=0;memset(Country,0,sizeof(Country));
     AutoCalls=SetCalls=RejectExplicit=RejectAuto=ClmBad=ClmUnsupported=CountryReads=0;
+    ListMode=NegativeRevision=0;
     ExplicitError=0xfffffffe;
     ExplicitStatus=STATUS_UNSUCCESSFUL;
 }
@@ -78,7 +93,8 @@ int main(void)
     RPI5CYW_ADAPTER a;struct _CYW_NETWORK n;CYW_CONNECT_REQUEST r={0};unsigned i;
     r.Version=1;r.Country[0]='B';r.Country[1]='D';r.SsidLength=4;memcpy(r.Ssid,"test",4);
     Init(&a,&n);CHECK(CywConnect(&a,&r)==0);
-    CHECK(Calls==15 && Joined && a.NetworkPhase==520 && a.CountryRequested==0x4442 && a.CountrySetMode==2);
+    CHECK(Calls==16 && Joined && a.NetworkPhase==520 && a.CountryRequested==0x4442 && a.CountrySetMode==2);
+    CHECK(a.CountryListStatus==0 && a.CountryListCount==2 && a.CountryListMembership==1);
     for(i=1;i<=16;++i) {
         if(i==2)continue; /* BADARG here is the single intentional fallback. */
         Init(&a,&n);FailStep=i;
@@ -97,11 +113,22 @@ int main(void)
     CHECK(CywConnect(&a,&r)==0 && Joined && !SetCalls && a.CountrySetMode==1 && a.CountryRevision==7);
     Init(&a,&n);RejectExplicit=1;
     CHECK(CywConnect(&a,&r)==0 && Joined && AutoCalls==1 && SetCalls==2);
-    CHECK(a.CountrySetMode==3 && a.CountryExplicitError==0xfffffffe && a.CountryRevision==7);
+    CHECK(a.CountrySetMode==4 && a.CountryExplicitError==0xfffffffe && a.CountryRevision==7);
     Init(&a,&n);RejectExplicit=RejectAuto=1;
     CHECK(CywConnect(&a,&r)==STATUS_UNSUCCESSFUL && !RadioUp && !Joined && AutoCalls==1);
     Init(&a,&n);RejectExplicit=WrongCountry=1;
     CHECK(CywConnect(&a,&r)==STATUS_DEVICE_DATA_ERROR && !RadioUp && !Joined);
+    Init(&a,&n);RejectExplicit=NegativeRevision=1;
+    CHECK(CywConnect(&a,&r)==STATUS_DEVICE_DATA_ERROR && !RadioUp && !Joined);
+    for(i=1;i<=5;++i){
+        Init(&a,&n);ListMode=i;
+        CHECK(CywConnect(&a,&r)==0 && Joined);
+        CHECK(a.CountryListMembership==(i==2?2u:0u));
+        if(i==1)CHECK(a.CountryListStatus==STATUS_UNSUCCESSFUL && a.CountryListError==0xffffffe9);
+        if(i==3)CHECK(a.CountryListStatus==STATUS_DEVICE_DATA_ERROR);
+        if(i==4)CHECK(a.CountryListStatus==STATUS_IO_TIMEOUT && !a.CountryListReplyLength);
+        if(i==5)CHECK(a.CountryListStatus==0 && !a.CountryListCount);
+    }
     Init(&a,&n);RejectExplicit=1;ExplicitError=0xfffffff9;
     CHECK(CywConnect(&a,&r)==STATUS_UNSUCCESSFUL && !AutoCalls && !RadioUp);
     Init(&a,&n);RejectExplicit=1;ExplicitStatus=STATUS_IO_TIMEOUT;

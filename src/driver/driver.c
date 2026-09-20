@@ -113,7 +113,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 6);
+    SET_DWORD(L"DiagVersion", 7);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -138,6 +138,11 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"CountryExplicitError", Adapter->CountryExplicitError);
     SET_DWORD(L"ClmLoadStatus", Adapter->ClmLoadStatus);
     SET_DWORD(L"ClmQueryStatus", Adapter->ClmQueryStatus);
+    SET_DWORD(L"CountryListStatus", Adapter->CountryListStatus);
+    SET_DWORD(L"CountryListError", Adapter->CountryListError);
+    SET_DWORD(L"CountryListCount", Adapter->CountryListCount);
+    SET_DWORD(L"CountryListMembership", Adapter->CountryListMembership);
+    SET_DWORD(L"CountryListReplyLength", Adapter->CountryListReplyLength);
     SET_DWORD(L"RamTransferAddress", Adapter->RamTransferAddress);
     SET_DWORD(L"RamTransferLength", Adapter->RamTransferLength);
     SET_DWORD(L"RamTransferWrite", Adapter->RamTransferWrite);

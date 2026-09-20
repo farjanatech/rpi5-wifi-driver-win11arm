@@ -22,7 +22,8 @@ function Get-Rpi5ConnectStepName {
         4 { 'infrastructure' } 5 { 'authentication-mode' } 6 { 'AES-cipher' }
         7 { 'WPA2-mode' } 8 { 'mfp' } 9 { 'sup_wpa' } 10 { 'wpaie' }
         11 { 'PMK' } 12 { 'radio-up' } 13 { 'join-SSID' }
-        14 { 'country-initial-read' } 15 { 'regulatory-data-status' } 16 { 'country-auto-revision' }
+        14 { 'country-initial-read' } 15 { 'regulatory-data-status' } 16 { 'country-full-auto-revision' }
+        17 { 'supported-country-query' }
         default { 'not-recorded' }
     }
 }

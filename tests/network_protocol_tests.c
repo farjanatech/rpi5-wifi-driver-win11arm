@@ -5,7 +5,7 @@ static int failures;
 int main(void)
 {
     uint8_t b[1600]={0},out[128],raw[]="# comment\r\na=1\r\n\n b=2 #tail\n";
-    uint32_t len,off;size_t used,payload,offset;unsigned i;
+    uint32_t len,off,count,listed;size_t used,payload,offset;unsigned i;
     CYW_CONNECT_REQUEST r={0};
     const uint8_t mac[6]={2,1,2,3,4,5},group[6]={1,0,0x5e,0,0,1},bc[6]={255,255,255,255,255,255};
     CHECK(sizeof(r)==76);
@@ -18,6 +18,20 @@ int main(void)
     CywPut32(out+4,0xffffffff);CHECK(!CywCountryMatches((const uint8_t*)"BD",out,12));
     CHECK(!CywCountryRequest((const uint8_t*)"bd",out));
     CHECK(!CywCountryRequest(NULL,out));CHECK(!CywCountryMatches(NULL,out,12));
+    memset(b,0,sizeof(b));CywPut32(b,1024);CywPut32(b+12,2);memcpy(b+16,"US\0\0BD\0\0",8);
+    CHECK(CywCountryList(b,24,(const uint8_t*)"BD",&count,&listed) && count==2 && listed==1);
+    CHECK(CywCountryList(b,1024,(const uint8_t*)"GB",&count,&listed) && count==2 && listed==0);
+    for(i=0;i<24;++i)CHECK(!CywCountryList(b,i,(const uint8_t*)"BD",&count,&listed));
+    CywPut32(b+12,0xffffffff);CHECK(!CywCountryList(b,1024,(const uint8_t*)"BD",&count,&listed));
+    CywPut32(b+12,2);CywPut32(b,20);CHECK(!CywCountryList(b,24,(const uint8_t*)"BD",&count,&listed));
+    CywPut32(b,1024);b[23]='X';CHECK(!CywCountryList(b,24,(const uint8_t*)"BD",&count,&listed));b[23]=0;
+    CywPut32(b+4,1);CHECK(!CywCountryList(b,24,(const uint8_t*)"BD",&count,&listed));CywPut32(b+4,0);
+    CywPut32(b+12,0);CHECK(CywCountryList(b,16,(const uint8_t*)"BD",&count,&listed) && !count && !listed);
+    CHECK(!CywCountryList(NULL,24,(const uint8_t*)"BD",&count,&listed));
+    CHECK(!CywCountryList(b,24,NULL,&count,&listed));
+    CHECK(!CywCountryList(b,24,(const uint8_t*)"BD",NULL,&listed));
+    CHECK(!CywCountryList(b,24,(const uint8_t*)"BD",&count,NULL));
+    memset(b,0,sizeof(b));
     CHECK(CywPackNvram(raw,sizeof(raw)-1,out,sizeof(out),&used));
     CHECK(used==12 && memcmp(out,"a=1\0b=2\0\0",9)==0);
     CHECK(!CywPackNvram(raw,sizeof(raw),out,sizeof(out),&used));

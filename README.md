@@ -4,6 +4,27 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.6 candidate — full country request and supported-country evidence
+
+Physical exp0.6.5 passed upload/readback and CLM status checks but firmware
+rejected BD revision 0 and the four-byte fallback with BADARG (-2). This version
+replaces that fallback with the complete 12-byte country structure, revision -1,
+as used by the referenced ReactOS CywSetCountry routine. Both abbreviation and
+locale remain BD (or the actual user-confirmed country). Matching full readback
+with a nonnegative revision is still mandatory before radio-up. Mode 4 identifies
+this new path; mode 3 identifies the older four-byte request.
+
+A bounded read-only WLC_GET_COUNTRY_LIST query records whether the requested
+country is listed, the count, reply length, query status and firmware error.
+Unknown/unsupported/malformed/empty results never mean the country is absent.
+Listing is diagnostic evidence only, not permission to bypass SET/readback.
+No automatic USA/France substitution, firmware/CLM/NVRAM or UEFI/fan change.
+
+An early exp0.6.1 already used revision -1 but lacked precise failure-step logs;
+there is no evidence that this format alone solves the Pi failure. This is a
+targeted compatibility/diagnostic candidate, not a proven working Wi-Fi release.
+Host tests exercise real connection/control code; physical testing is still needed.
+
 ### Integrated exp0.6.5 candidate — firmware reply-length decoding
 
 exp0.6.4 stopped at the new CLM status check after the query itself succeeded.

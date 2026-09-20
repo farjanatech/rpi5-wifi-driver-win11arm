@@ -113,6 +113,22 @@ static __inline int CywCountryMatches(const uint8_t *alpha2,const uint8_t *value
         !value[2] && !value[3] && value[8]==alpha2[0] && value[9]==alpha2[1] &&
         !value[10] && !value[11] && !(CywLe32(value+4)&0x80000000u);
 }
+/* WLC_GET_COUNTRY_LIST: four LE32 header fields, then count four-byte codes.
+ * This is diagnostic evidence, never permission to use a different country. */
+static __inline int CywCountryList(const uint8_t *data,size_t length,
+    const uint8_t *alpha2,uint32_t *count,uint32_t *listed)
+{
+    uint32_t n,bytes,i,found=0;
+    if(!data || !alpha2 || !count || !listed || length<16)return 0;
+    bytes=CywLe32(data);n=CywLe32(data+12);
+    if(bytes<16 || CywLe32(data+4)!=0 || n>(bytes-16)/4 || n>(length-16)/4)return 0;
+    for(i=0;i<n;++i) {
+        const uint8_t *code=data+16+4*i;
+        if(!code[0] || !code[1] || code[3])return 0;
+        if(code[0]==alpha2[0] && code[1]==alpha2[1] && !code[2])found=1;
+    }
+    *count=n;*listed=found;return 1;
+}
 static __inline int CywValidConnect(const CYW_CONNECT_REQUEST *r)
 {
     if(!r || r->Version!=1 || !r->SsidLength || r->SsidLength>32 ||
