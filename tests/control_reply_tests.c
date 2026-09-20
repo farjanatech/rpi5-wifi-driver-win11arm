@@ -48,10 +48,10 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG 
                 CywPut32(Value,ClmValue);if(Fault==7)payload=3;
             } else {CHECK(strcmp((char*)data+16,"country")==0);memcpy(Value,Country,12);}
         } else if(RequestCommand==263 && strcmp((char*)data+16,"country")==0){
-            CHECK(RequestCapacity==19 || RequestCapacity==11);
+            CHECK(RequestCapacity==20 || RequestCapacity==12);
             CHECK(data[24]=='B' && data[25]=='D');
-            if(RequestCapacity==19 && Fault==8)error=0xfffffffe;
-            else {CHECK(CywCountryRequest(data+24,Country));if(RequestCapacity==11)CywPut32(Country+4,7);}
+            if(RequestCapacity==20 && Fault==8)error=0xfffffffe;
+            else {CHECK(CywCountryRequest(data+24,Country));if(RequestCapacity==12)CywPut32(Country+4,7);}
         } else if(RequestCommand==2){RadioUp=1;CHECK(A->CountryApplied==0x4442);}
         else if(RequestCommand==26){Joined=1;CHECK(RadioUp);}
     }
