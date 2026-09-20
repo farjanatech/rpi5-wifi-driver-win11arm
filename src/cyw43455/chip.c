@@ -80,6 +80,7 @@ static NTSTATUS CywDiscoverCores(PRPI5CYW_ADAPTER Adapter)
     Adapter->ChipCommonBase = Map.ChipCommon;
     Adapter->SdioCoreBase = Map.Sdio;
     Adapter->D11CoreBase = Map.D11;
+    Adapter->D11WrapperBase = Map.D11Wrapper;
     Adapter->Cr4CoreBase = Map.Cr4;
     Adapter->Cr4WrapperBase = Map.Cr4Wrapper;
     if (!NT_SUCCESS(Status)) return Status;

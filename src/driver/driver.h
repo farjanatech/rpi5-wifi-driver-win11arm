@@ -131,6 +131,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG ChipCommonBase;
     ULONG SdioCoreBase;
     ULONG D11CoreBase;
+    ULONG D11WrapperBase;
     ULONG Cr4CoreBase;
     ULONG Cr4WrapperBase;
     ULONG Cr4Capabilities;

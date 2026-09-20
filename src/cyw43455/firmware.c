@@ -31,7 +31,7 @@ NTSTATUS CywReadFirmwareFile(PCWSTR Name, PUCHAR *Data, PULONG Size, ULONG Limit
         Status=STATUS_INVALID_IMAGE_FORMAT;
     if(NT_SUCCESS(Status)) {
         *Size=Info.EndOfFile.LowPart;
-        *Data=ExAllocatePool2(POOL_FLAG_NON_PAGED,*Size,RPI5CYW_TAG);
+        *Data=ExAllocatePool2(POOL_FLAG_NON_PAGED,(*Size+3)&~3UL,RPI5CYW_TAG);
         if(!*Data) Status=STATUS_INSUFFICIENT_RESOURCES;
         else {
             Status=ZwReadFile(File,NULL,NULL,NULL,&Io,*Data,*Size,NULL,NULL);
@@ -82,8 +82,8 @@ static NTSTATUS CywRam(PRPI5CYW_ADAPTER A, ULONG Address, PUCHAR Data,
         if(CywNetworkCancelled(A))return STATUS_CANCELLED;
         n=0x8000-(Address&0x7fff); if(n>512)n=512; if(n>Length)n=Length;
         Status=CywWindow(A,Address); if(!NT_SUCCESS(Status)) return Status;
-        Status=Write ? SdioCmd53Write(A,1,Address&0x7fff,Data,n) :
-                       SdioCmd53Read(A,1,Address&0x7fff,Data,n);
+        Status=Write ? SdioCmd53Write(A,1,(Address&0x7fff)|0x8000,Data,n) :
+                       SdioCmd53Read(A,1,(Address&0x7fff)|0x8000,Data,n);
         if(!NT_SUCCESS(Status)) return Status;
         Address+=n; Data+=n; Length-=n;
     }
@@ -136,10 +136,26 @@ static NTSTATUS CywEnable(PRPI5CYW_ADAPTER A, UCHAR Bits)
     Status=STATUS_IO_TIMEOUT;
 Exit: return Status;
 }
+static NTSTATUS CywD11Hold(PRPI5CYW_ADAPTER A)
+{
+    ULONG v,w=A->D11WrapperBase;NTSTATUS Status;
+    if(w<0x18100000 || w>0x181ff000 || w==A->Cr4WrapperBase)
+        return STATUS_DEVICE_CONFIGURATION_ERROR;
+    TRY(CywBpRead(A,w+0x800,&v));
+    if(!(v&1)) {
+        TRY(CywBpWrite(A,w+0x408,0xf));
+        TRY(CywBpRead(A,w+0x408,&v));
+        TRY(CywBpWrite(A,w+0x800,1));KeStallExecutionProcessor(10);
+        TRY(CywBpRead(A,w+0x800,&v));
+        if(!(v&1)) {Status=STATUS_DEVICE_NOT_READY;goto Exit;}
+    }
+    TRY(CywBpWrite(A,w+0x408,7));TRY(CywBpRead(A,w+0x408,&v));
+Exit:return Status;
+}
 NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
 {
     PUCHAR fw=NULL,raw=NULL,nv=NULL;
-    ULONG fwSize=0,rawSize=0,cap,bank,v,i,token,address,off,n;
+    ULONG fwSize=0,fwPadded,rawSize=0,cap,bank,v,i,token,address,off,n;
     UCHAR b[4],check[512],byte;
     size_t nvSize=0;
     NTSTATUS Status=STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -151,6 +167,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     TRY(CywReadFirmwareFile(FW_DIR L"cyfmac43455-sdio.bin",&fw,&fwSize,1024*1024));
     TRY(CywReadFirmwareFile(FW_DIR L"brcmfmac43455-sdio.txt",&raw,&rawSize,16384));
     if(fwSize<4) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
+    fwPadded=(fwSize+3)&~3UL;
     nv=ExAllocatePool2(POOL_FLAG_NON_PAGED,rawSize+8,RPI5CYW_TAG);
     if(!nv) {Status=STATUS_INSUFFICIENT_RESOURCES;goto Exit;}
     if(!CywPackNvram(raw,rawSize,nv,rawSize+8,&nvSize)) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
@@ -159,6 +176,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     A->NetworkPhase=410;
     TRY(CywBpRead(A,A->Cr4WrapperBase+0x408,&v));
     TRY(CywCr4Reset(A,v&0x20,0x20,0x20));
+    TRY(CywD11Hold(A)); /* firmware, not host, releases D11 reset */
     TRY(CywBpRead(A,A->Cr4CoreBase+4,&cap));
     bank=(cap&15)+((cap>>4)&15);
     if(!bank || bank>30) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
@@ -170,15 +188,15 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
         A->RamSize+=((v&0x7f)+1)*((v&0x200)?1024:8192);
     }
     if(A->RamSize>4*1024*1024 || nvSize+4>A->RamSize ||
-        fwSize>A->RamSize-nvSize-4) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
+        fwPadded>A->RamSize-nvSize-4) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
     A->NetworkPhase=420;
-    TRY(CywRam(A,A->RamBase,fw,fwSize,TRUE));
+    TRY(CywRam(A,A->RamBase,fw,fwPadded,TRUE));
     /* Full readback, not just the first word. Refuse to start a corrupt upload. */
-    for(off=0;off<fwSize;off+=n) {
-        n=fwSize-off;if(n>sizeof(check))n=sizeof(check);
+    for(off=0;off<fwPadded;off+=n) {
+        n=fwPadded-off;if(n>sizeof(check))n=sizeof(check);
         TRY(CywRam(A,A->RamBase+off,check,n,FALSE));
         if(RtlCompareMemory(check,fw+off,n)!=n) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
-        A->FirmwareBytes=off+n;
+        A->FirmwareBytes=min(off+n,fwSize);
     }
     address=A->RamBase+A->RamSize-(ULONG)nvSize-4;
     TRY(CywRam(A,address,nv,(ULONG)nvSize,TRUE));
@@ -213,6 +231,7 @@ VOID CywFirmwareStop(PRPI5CYW_ADAPTER A)
     if(A->NetworkPhase>=410) {
         (void)CywBpWrite(A,A->SdioCoreBase+0x24,0);
         (void)CywCr4Reset(A,0,0x20,0x20);
+        (void)CywD11Hold(A);
     }
     if(NT_SUCCESS(SdioCmd52Read(A,0,2,&v)))
         (void)SdioCmd52Write(A,0,2,(UCHAR)(v&~6),0);

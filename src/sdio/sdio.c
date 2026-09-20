@@ -678,8 +678,9 @@ SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
     return SdioCmd53Transfer(Adapter, Function, Address, Buffer, Length, TRUE, TRUE);
 }
 
-/* F2 is a FIFO, not incrementing backplane memory. Byte-mode chunks keep the
- * proven single-buffer PIO engine; no untested DMA/multiblock engine is used. */
+/* Broadcom F2 RX uses a fixed address; TX uses incrementing writes, matching
+ * Linux brcmfmac/bcmsdh.c and the reference driver. Keep bounded byte-mode
+ * chunks and the proven PIO engine, rather than adding an untested DMA path. */
 NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
                           ULONG Length, BOOLEAN Write)
 {
@@ -692,7 +693,7 @@ NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
         Chunk = Length - Done;
         if (Chunk > 512) Chunk = 512;
         Status = SdioCmd53Transfer(Adapter, 2, 0x8000, Buffer + Done,
-                                   Chunk, Write, FALSE);
+                                   Chunk, Write, Write);
         if (!NT_SUCCESS(Status)) return Status;
         Done += Chunk;
     }

@@ -5,7 +5,7 @@
  */
 typedef NTSTATUS (*CYW_EROM_NEXT)(PVOID Context, PULONG Word);
 typedef struct _CYW_CORE_MAP {
-    ULONG Count, ChipCommon, Sdio, D11, Cr4, Cr4Wrapper;
+    ULONG Count, ChipCommon, Sdio, D11, Cr4, Cr4Wrapper, D11Wrapper;
 } CYW_CORE_MAP;
 
 static __forceinline int CywValidCoreAddress(ULONG Address)
@@ -28,6 +28,7 @@ static NTSTATUS CywRecordCore(CYW_CORE_MAP *Map, ULONG Id,
         return STATUS_DEVICE_DATA_ERROR;
     *Target = Base;
     if (Id == 0x83E) Map->Cr4Wrapper = Wrapper;
+    if (Id == 0x812) Map->D11Wrapper = Wrapper;
     return STATUS_SUCCESS;
 }
 

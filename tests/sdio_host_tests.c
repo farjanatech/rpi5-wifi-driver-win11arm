@@ -178,6 +178,7 @@ int main(void)
     Init(&Adapter);
     CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,512,TRUE)==0);
     CHECK(FifoWrites==128 && ((Adapter.LastArgument>>28)&7)==2);
+    CHECK((Adapter.LastArgument&0x04000000)!=0); /* F2 TX increments */
     Init(&Adapter);
     CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,3,FALSE)==STATUS_INVALID_PARAMETER);
     CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,65540,FALSE)==STATUS_INVALID_PARAMETER);

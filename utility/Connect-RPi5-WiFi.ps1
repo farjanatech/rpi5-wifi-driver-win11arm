@@ -62,10 +62,10 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 if ($Disconnect) {
     [void][Rpi5WifiControl]::Call(0x12A008, $null)
-    Write-Host 'Disconnect requested.'
+    Write-Output 'Disconnect requested.'
 } elseif (-not $StatusOnly) {
-    Write-Host 'Experimental WPA2-Personal / AES only. Keep your working Ethernet connection available.'
-    Write-Host 'Use the country where the Pi is physically located. No UEFI or boot settings are changed.'
+    Write-Output 'Experimental WPA2-Personal / AES only. Keep your working Ethernet connection available.'
+    Write-Output 'Use the country where the Pi is physically located. No UEFI or boot settings are changed.'
     $country = (Read-Host 'Two-letter country code, e.g. BD').Trim().ToUpperInvariant()
     $ssid = Read-Host 'Exact Wi-Fi network name (SSID)'
     if (-not (Test-Rpi5ConnectionInput $country $ssid)) { throw 'Invalid country or SSID length (1-32 UTF-8 bytes).' }
@@ -91,7 +91,7 @@ if ($Disconnect) {
         [Text.Encoding]::ASCII.GetBytes($country).CopyTo($request, 8)
         $ssidBytes.CopyTo($request, 12); $pmk.CopyTo($request, 44)
         [void][Rpi5WifiControl]::Call(0x12A000, $request)
-        Write-Host 'Connection requested. Success requires authenticated link AND an IP address.'
+        Write-Output 'Connection requested. Success requires authenticated link AND an IP address.'
     } finally {
         foreach ($buffer in @($passwordBytes, $pmk, $request)) {
             if ($null -ne $buffer) { [Array]::Clear($buffer, 0, $buffer.Length) }
@@ -107,10 +107,10 @@ for ($attempt = 0; $attempt -lt $limit; $attempt++) {
     $phase = [BitConverter]::ToUInt32($state, 4)
     $errorCode = [BitConverter]::ToUInt32($state, 8)
     $connected = [BitConverter]::ToUInt32($state, 28) -eq 1
-    Write-Host ('Phase={0} Status=0x{1:X8} AuthenticatedLink={2}' -f $phase, $errorCode, $connected)
+    Write-Output ('Phase={0} Status=0x{1:X8} AuthenticatedLink={2}' -f $phase, $errorCode, $connected)
     if ($connected -or $errorCode -ne 0) { break }
     if ($attempt + 1 -lt $limit) { Start-Sleep -Seconds 2 }
 }
 Get-NetAdapter | Where-Object InterfaceDescription -like '*CYW43455*' |
     Get-NetIPConfiguration | Format-List InterfaceAlias, IPv4Address, IPv4DefaultGateway
-Write-Host 'If association failed, collect diagnostics. Do not change UEFI or reinstall Windows.'
+Write-Output 'If association failed, collect diagnostics. Do not change UEFI or reinstall Windows.'

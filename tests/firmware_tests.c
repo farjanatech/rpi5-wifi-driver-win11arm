@@ -13,6 +13,7 @@ typedef const wchar_t *PCWSTR;
 #define STATUS_CANCELLED ((NTSTATUS)0xc0000120L)
 static size_t TestCompare(const void *a,const void *b,size_t n) {return memcmp(a,b,n)==0?n:0;}
 #define RtlCompareMemory TestCompare
+#define min(a,b) ((a)<(b)?(a):(b))
 static unsigned Allocations,Outstanding,FailAlloc;
 static void *TestAlloc(int flags,size_t n,unsigned long tag)
 {void *p;(void)flags;(void)tag;if(++Allocations==FailAlloc)return NULL;p=calloc(1,n);if(p)++Outstanding;return p;}
@@ -21,7 +22,7 @@ static void TestFree(void *p,unsigned long tag) {(void)tag;if(p){--Outstanding;f
 #define ExFreePoolWithTag TestFree
 #include "../src/cyw43455/firmware.c"
 static unsigned Failures,Calls,FailCall,Corrupt,Started,ClockNever,ReadyNever,BadBank;
-static ULONG Window,Bank,Ioctl,Reset;
+static ULONG Window,Bank,Ioctl,Reset,D11Reset;
 static UCHAR Card[0x10020],Ram[0xc8000],Vector[4];
 int TestIrql;
 BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A) {return A->IoStopped!=0;}
@@ -33,7 +34,7 @@ NTSTATUS CywReadFirmwareFile(PCWSTR Name,PUCHAR *Data,PULONG Size,ULONG Limit)
 {
     ULONG i;(void)Limit;
     if(wcsstr(Name,L".bin")) {
-        *Size=6147;*Data=TestAlloc(0,*Size,0);if(!*Data)return STATUS_INSUFFICIENT_RESOURCES;
+        *Size=6147;*Data=TestAlloc(0,(*Size+3)&~3UL,0);if(!*Data)return STATUS_INSUFFICIENT_RESOURCES;
         for(i=0;i<*Size;++i)(*Data)[i]=(UCHAR)(i*7);
     } else {
         *Size=8;*Data=TestAlloc(0,*Size,0);if(!*Data)return STATUS_INSUFFICIENT_RESOURCES;
@@ -57,6 +58,7 @@ NTSTATUS SdioCmd52Write(PRPI5CYW_ADAPTER A,UCHAR F,ULONG Reg,UCHAR Value,UCHAR M
 static NTSTATUS Transfer(PRPI5CYW_ADAPTER A,ULONG Address,PUCHAR Data,ULONG Len,BOOLEAN Write)
 {
     ULONG addr=Window|(Address&0x7fff),v=0;NTSTATUS s=Tick();
+    CHECK(Address&0x8000);
     if(!NT_SUCCESS(s))return s;
     if(addr>=0x198000 && addr-0x198000<sizeof(Ram) && Len<=sizeof(Ram)-(addr-0x198000)) {
         if(Write)memcpy(Ram+addr-0x198000,Data,Len);
@@ -68,11 +70,13 @@ static NTSTATUS Transfer(PRPI5CYW_ADAPTER A,ULONG Address,PUCHAR Data,ULONG Len,
             if(addr==A->Cr4CoreBase+0x40)Bank=v;
             if(addr==A->Cr4WrapperBase+0x408) {Ioctl=v;if(!(v&0x20))Started=1;}
             if(addr==A->Cr4WrapperBase+0x800)Reset=v;
+            if(addr==A->D11WrapperBase+0x800)D11Reset=v;
         } else {
             if(addr==A->Cr4CoreBase+4)v=0xb44;
             if(addr==A->Cr4CoreBase+0x44)v=BadBank?0xffffffff:(Bank<4?15:8);
             if(addr==A->Cr4WrapperBase+0x408)v=Ioctl;
             if(addr==A->Cr4WrapperBase+0x800)v=Reset;
+            if(addr==A->D11WrapperBase+0x800)v=D11Reset;
             CywPut32(Data,v);
         }
     } else return STATUS_INVALID_PARAMETER;
@@ -85,9 +89,10 @@ NTSTATUS SdioCmd53Write(PRPI5CYW_ADAPTER A,UCHAR F,ULONG Reg,PUCHAR Data,ULONG L
 static void Init(PRPI5CYW_ADAPTER A)
 {
     CHECK(Outstanding==0);memset(A,0,sizeof(*A));memset(Card,0,sizeof(Card));memset(Ram,0,sizeof(Ram));
-    Calls=FailCall=Allocations=FailAlloc=Started=Corrupt=ClockNever=ReadyNever=BadBank=Window=Bank=Reset=0;Ioctl=0x21;
+    Calls=FailCall=Allocations=FailAlloc=Started=Corrupt=ClockNever=ReadyNever=BadBank=Window=Bank=Reset=D11Reset=0;Ioctl=0x21;
     A->ChipId=0x4345;A->ChipRevision=6;A->CoreInventoryComplete=1;A->SdioFunctions=3;
     A->RamBase=0x198000;A->Cr4CoreBase=0x18002000;A->Cr4WrapperBase=0x18102000;A->SdioCoreBase=0x18004000;
+    A->D11WrapperBase=0x18101000;
 }
 int main(void)
 {
