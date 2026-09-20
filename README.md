@@ -4,7 +4,22 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6.2 candidate — country configuration and precise failures
+### Integrated exp0.6.3 candidate — live firmware progress
+
+exp0.6.2's repeated phase-420 utility timeouts did not show whether the firmware
+upload was advancing. exp0.6.3 adds successful upload and verified-readback byte
+counters, total bytes, last RAM operation/status, and cached SDIO command fields
+to read-only live status. Saved progress is refreshed at most every five seconds
+during transfers, plus phase and exit boundaries. The diagnostic ZIP includes
+`15-live-driver-status.txt`. The transfer method and country policy are unchanged.
+
+The utility reports bytes/percent and elapsed/no-progress time every five
+seconds. It keeps observing beyond three minutes while counters advance, with
+a 30-minute maximum. After 120 seconds without observed byte/phase advancement,
+it asks for diagnostics; this is not proof of a hardware hang and does not stop
+the driver. Do not reboot repeatedly while investigating slow firmware startup.
+
+### exp0.6.2 country configuration and precise failures
 
 The user's exp0.6.1 Pi report confirms all 609,309 firmware bytes passed readback
 and startup reached phase 500. Connection setup then failed at phase 510 with

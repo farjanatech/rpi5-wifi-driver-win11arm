@@ -14,6 +14,19 @@
  * Use conservative nonzero byte counts, not a blind retry or new block engine. */
 #define CYW_F1_RAM_CHUNK 64UL
 
+/* PASSIVE_LEVEL worker only. Persist at most once per five seconds during
+ * transfer, plus phase/failure boundaries. Live status never reads hardware. */
+static VOID CywFirmwareSnapshot(PRPI5CYW_ADAPTER A,BOOLEAN Force)
+{
+    ULONG64 now=KeQueryInterruptTime();
+    if(Force || now>=A->FirmwareNextSnapshot) {
+        A->FirmwareNextSnapshot=now+50000000ULL;
+        Rpi5CywWriteDiagnostics(A,120,A->NetworkStatus);
+    }
+}
+static VOID CywFirmwarePhase(PRPI5CYW_ADAPTER A,ULONG Phase)
+{ A->NetworkPhase=Phase;CywFirmwareSnapshot(A,TRUE); }
+
 #ifndef RPI5CYW_FIRMWARE_TEST
 NTSTATUS CywReadFirmwareFile(PCWSTR Name, PUCHAR *Data, PULONG Size, ULONG Limit)
 {
@@ -83,20 +96,34 @@ static NTSTATUS CywRam(PRPI5CYW_ADAPTER A, ULONG Address, PUCHAR Data,
         (Address>=A->RamBase && Address-A->RamBase<=A->RamSize &&
          Length<=A->RamSize-(Address-A->RamBase)))) return STATUS_INVALID_PARAMETER;
     while(Length) {
-        if(CywNetworkCancelled(A))return STATUS_CANCELLED;
+        if(CywNetworkCancelled(A)) {
+            A->RamTransferStatus=STATUS_CANCELLED;A->RamTransferStage=4;
+            return STATUS_CANCELLED;
+        }
         n=0x8000-(Address&0x7fff);
         if(n>CYW_F1_RAM_CHUNK)n=CYW_F1_RAM_CHUNK; if(n>Length)n=Length;
         A->RamTransferAddress=Address; A->RamTransferLength=n;
         A->RamTransferWrite=Write;
+        A->RamTransferStatus=STATUS_PENDING;A->RamTransferStage=1;
+        CywFirmwareSnapshot(A,FALSE);
         /* The sole SDIO worker owns the window throughout this call. Select
          * once per 32KiB boundary, not six CMD52 operations per small chunk. */
         if(window!=(Address&0xffff8000UL)) {
-            Status=CywWindow(A,Address); if(!NT_SUCCESS(Status)) return Status;
+            Status=CywWindow(A,Address);
+            if(!NT_SUCCESS(Status)) {A->RamTransferStatus=Status;return Status;}
             window=Address&0xffff8000UL;
         }
+        A->RamTransferStage=2;
         Status=Write ? SdioCmd53Write(A,1,(Address&0x7fff)|0x8000,Data,n) :
                        SdioCmd53Read(A,1,(Address&0x7fff)|0x8000,Data,n);
+        A->RamTransferStatus=Status;
         if(!NT_SUCCESS(Status)) return Status;
+        A->RamTransferStage=3;
+        /* Count only successful firmware payload writes, never padding,
+         * register, NVRAM or vector writes. Readback counts remain separate. */
+        if(Write && A->NetworkPhase==420)
+            A->FirmwareUploadedBytes=min(Address-A->RamBase+n,A->FirmwareTotalBytes);
+        CywFirmwareSnapshot(A,FALSE);
         Address+=n; Data+=n; Length-=n;
     }
     return STATUS_SUCCESS;
@@ -173,12 +200,16 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     NTSTATUS Status=STATUS_DEVICE_CONFIGURATION_ERROR;
     if(A->ChipId!=0x4345 || A->ChipRevision!=6 || !A->CoreInventoryComplete ||
         A->SdioFunctions<2 || !A->Cr4WrapperBase) return Status;
-    A->NetworkPhase=400;
+    A->NetworkStatus=STATUS_SUCCESS;A->FirmwareNextSnapshot=0;
+    A->FirmwareTotalBytes=0;A->FirmwareUploadedBytes=0;
+    A->RamTransferStatus=STATUS_SUCCESS;A->RamTransferStage=0;
     A->FirmwareBytes=0; A->RamTransferAddress=0; A->RamTransferLength=0;
     A->RamTransferWrite=0;
+    CywFirmwarePhase(A,400);
     /* Read every file before touching the CPU. Firmware is installed by INF,
      * catalog covered, with pinned source hashes recorded in the package. */
     TRY(CywReadFirmwareFile(FW_DIR L"cyfmac43455-sdio.bin",&fw,&fwSize,1024*1024));
+    A->FirmwareTotalBytes=fwSize;
     TRY(CywReadFirmwareFile(FW_DIR L"brcmfmac43455-sdio.txt",&raw,&rawSize,16384));
     if(fwSize<4) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
     fwPadded=(fwSize+3)&~3UL;
@@ -197,7 +228,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     TRY(SdioCmd52Write(A,0,0x111,0,0xff));
     TRY(CywEnable(A,2)); TRY(CywClock(A,0x28,0x40));
     TRY(SdioCmd52Write(A,1,0x1000e,0x21,0x3f)); KeStallExecutionProcessor(65);
-    A->NetworkPhase=410;
+    CywFirmwarePhase(A,410);
     TRY(CywBpRead(A,A->Cr4WrapperBase+0x408,&v));
     TRY(CywCr4Reset(A,v&0x20,0x20,0x20));
     TRY(CywD11Hold(A)); /* firmware, not host, releases D11 reset */
@@ -213,24 +244,25 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     }
     if(A->RamSize>4*1024*1024 || nvSize+4>A->RamSize ||
         fwPadded>A->RamSize-nvSize-4) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
-    A->NetworkPhase=420;
+    CywFirmwarePhase(A,420);
     TRY(CywRam(A,A->RamBase,fw,fwPadded,TRUE));
-    A->NetworkPhase=421;
+    CywFirmwarePhase(A,421);
     /* Full readback, not just the first word. Refuse to start a corrupt upload. */
     for(off=0;off<fwPadded;off+=n) {
         n=fwPadded-off;if(n>sizeof(check))n=sizeof(check);
         TRY(CywRam(A,A->RamBase+off,check,n,FALSE));
         if(RtlCompareMemory(check,fw+off,n)!=n) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
         A->FirmwareBytes=min(off+n,fwSize);
+        CywFirmwareSnapshot(A,FALSE);
     }
-    A->NetworkPhase=422;
+    CywFirmwarePhase(A,422);
     address=A->RamBase+A->RamSize-(ULONG)nvSize-4;
     TRY(CywRam(A,address,nv,(ULONG)nvSize,TRUE));
     token=(ULONG)(nvSize/4);token=((~token&0xffff)<<16)|(token&0xffff);
     CywPut32(b,token);TRY(CywRam(A,A->RamBase+A->RamSize-4,b,4,TRUE));
     TRY(CywRam(A,0,fw,4,TRUE));
     TRY(CywBpWrite(A,A->SdioCoreBase+0x20,0xffffffff));
-    A->NetworkPhase=430;
+    CywFirmwarePhase(A,430);
     TRY(CywCr4Reset(A,0x20,0,0));TRY(CywClock(A,0x10,0xc0));
     TRY(SdioCmd52Read(A,1,0x10009,&byte));
     TRY(SdioCmd52Write(A,1,0x10009,(UCHAR)(byte|0x10),0x10));
@@ -242,12 +274,13 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     TRY(CywEnable(A,4));
     TRY(SdioCmd52Write(A,0,4,7,7));
     TRY(CywBpWrite(A,A->SdioCoreBase+0x24,0x200000f0));
-    A->NetworkPhase=440;
+    CywFirmwarePhase(A,440);
 Exit:
     if(fw)ExFreePoolWithTag(fw,RPI5CYW_TAG);
     if(raw)ExFreePoolWithTag(raw,RPI5CYW_TAG);
     if(nv)ExFreePoolWithTag(nv,RPI5CYW_TAG);
     A->NetworkStatus=Status;
+    CywFirmwareSnapshot(A,TRUE);
     return Status;
 }
 VOID CywFirmwareStop(PRPI5CYW_ADAPTER A)

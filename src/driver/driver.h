@@ -151,6 +151,11 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG FirmwareReplyLength;
     ULONG FirmwareCommand;
     ULONG FirmwareBytes;
+    ULONG FirmwareTotalBytes;
+    ULONG FirmwareUploadedBytes;
+    NTSTATUS RamTransferStatus;
+    ULONG RamTransferStage;
+    ULONG64 FirmwareNextSnapshot;
     ULONG ConnectStep;
     ULONG CountryRequested;
     ULONG CountryApplied;

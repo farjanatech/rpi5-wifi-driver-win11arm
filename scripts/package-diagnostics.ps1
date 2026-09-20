@@ -13,12 +13,13 @@ foreach ($name in @('Collect-RPi5-WiFi-Diagnostics.ps1','Run-RPi5-WiFi-Diagnosti
     Copy-Item -LiteralPath $path -Destination (Join-Path $stage $name) -Force
 }
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $stage 'LICENSE') -Force
+Copy-Item -LiteralPath (Join-Path $root 'utility\Connect-RPi5-WiFi.ps1') -Destination (Join-Path $stage 'Connect-RPi5-WiFi.ps1') -Force
 
 @"
 repository=$env:GITHUB_REPOSITORY
 commit=$env:GITHUB_SHA
 workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
-utility_version=0.6.2
+utility_version=0.6.3
 matching_acpi_id=ACPI\RPI0011
 "@ | Set-Content -LiteralPath (Join-Path $stage 'SOURCE_REVISION.txt') -Encoding UTF8
 

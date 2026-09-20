@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.2'
+$script:UtilityVersion = '0.6.3'
 
 function Get-Rpi5ProbeResult {
     param([AllowNull()]$Diagnostic, [string]$ServiceStatus, [datetime]$BootTime)
@@ -307,6 +307,7 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'D11CoreBase','Cr4CoreBase','Cr4WrapperBase','Cr4Capabilities',
                     'Cr4IoControl','Cr4ResetControl','RamBankCount','RamBase','CoreInventoryComplete',
                     'NetworkPhase','NetworkStatus','FirmwareCommand','FirmwareError','FirmwareBytes',
+                    'FirmwareTotalBytes','FirmwareUploadedBytes','RamTransferStatus','RamTransferStage',
                     'ConnectStep','CountryRequested','CountryApplied','CountryRevision',
                     'RamTransferAddress','RamTransferLength','RamTransferWrite',
                     'RamSize','LinkEvent','LinkReason','TxPackets','RxPackets'
@@ -409,6 +410,15 @@ function Invoke-Rpi5WiFiDiagnostic {
                     ($_.InstanceId -match '^ACPI\\RPI0011(?:\\|$)' -or $_.FriendlyName -match 'CYW43455|Direct SDIO') -and
                     ($_.Status -ne 'OK' -or $_.Problem -ne 0)
                 } | Format-List *
+        }
+        Write-Capture '15-live-driver-status.txt' {
+            $liveUtility = Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1'
+            if (Test-Path -LiteralPath $liveUtility) {
+                # StatusOnly issues only the read-only status IOCTL; no connect,
+                # disconnect, SDIO operation or reboot is requested.
+                & (Join-Path $PSHOME 'powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $liveUtility -StatusOnly
+                if ($LASTEXITCODE -ne 0) { "Live status utility exit code: $LASTEXITCODE" }
+            } else { 'Live status utility missing; saved registry snapshots may be older than current progress.' }
         }
         Write-Capture '14-crash-and-reliability-inventory.txt' {
             'Only dump metadata is collected; dump contents are not included.'

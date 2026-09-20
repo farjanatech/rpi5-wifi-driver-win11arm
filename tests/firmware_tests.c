@@ -11,6 +11,8 @@ typedef const wchar_t *PCWSTR;
 #define STATUS_INVALID_IMAGE_FORMAT ((NTSTATUS)0xc000007bL)
 #define STATUS_INSUFFICIENT_RESOURCES ((NTSTATUS)0xc000009aL)
 #define STATUS_CANCELLED ((NTSTATUS)0xc0000120L)
+#define STATUS_PENDING ((NTSTATUS)0x103L)
+ULONG64 KeQueryInterruptTime(void);
 static size_t TestCompare(const void *a,const void *b,size_t n) {return memcmp(a,b,n)==0?n:0;}
 #define RtlCompareMemory TestCompare
 #ifndef min
@@ -26,11 +28,20 @@ static void TestFree(void *p,unsigned long tag) {(void)tag;if(p){--Outstanding;f
 static unsigned Failures,Calls,FailCall,Corrupt,Started,ClockNever,ReadyNever,BadBank;
 static ULONG FirmwareLength=6147,MaxRamChunk,NextWrite,NextRead;
 static unsigned RamReads,RamWrites,WindowWrites;
+static unsigned Snapshots;static ULONG LastUploaded,LastVerified;
 static ULONG Window,Bank,Ioctl,Reset,D11Reset;
 static UCHAR Card[0x10020],Ram[0xc8000],Vector[4];
 int TestIrql;
 BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A) {return A->IoStopped!=0;}
 #define CHECK(x) do {if(!(x)){printf("FAIL line %d %s\n",__LINE__,#x);++Failures;}}while(0)
+ULONG64 KeQueryInterruptTime(void) {return (ULONG64)Calls*100000ULL;}
+void Rpi5CywWriteDiagnostics(PRPI5CYW_ADAPTER A,ULONG Stage,NTSTATUS Status)
+{
+    (void)Stage;(void)Status;++Snapshots;
+    CHECK(A->FirmwareUploadedBytes>=LastUploaded && A->FirmwareUploadedBytes<=A->FirmwareTotalBytes);
+    CHECK(A->FirmwareBytes>=LastVerified && A->FirmwareBytes<=A->FirmwareUploadedBytes);
+    LastUploaded=A->FirmwareUploadedBytes;LastVerified=A->FirmwareBytes;
+}
 static NTSTATUS Tick(void) {return ++Calls==FailCall?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;}
 void KeStallExecutionProcessor(ULONG u) {(void)u;}
 void SdioDelayMilliseconds(ULONG u) {(void)u;}
@@ -109,6 +120,7 @@ static void Init(PRPI5CYW_ADAPTER A)
     CHECK(Outstanding==0);memset(A,0,sizeof(*A));memset(Card,0,sizeof(Card));memset(Ram,0,sizeof(Ram));
     Calls=FailCall=Allocations=FailAlloc=Started=Corrupt=ClockNever=ReadyNever=BadBank=Window=Bank=Reset=D11Reset=0;Ioctl=0x21;
     FirmwareLength=6147;MaxRamChunk=RamReads=RamWrites=WindowWrites=0;
+    Snapshots=LastUploaded=LastVerified=0;
     NextWrite=NextRead=0x198000;
     A->ChipId=0x4345;A->ChipRevision=6;A->CoreInventoryComplete=1;A->SdioFunctions=3;
     A->RamBase=0x198000;A->Cr4CoreBase=0x18002000;A->Cr4WrapperBase=0x18102000;A->SdioCoreBase=0x18004000;
@@ -122,13 +134,18 @@ int main(void)
     CHECK(RamWrites==0 && !Started);
     Init(&a);CHECK(CywFirmwareStart(&a)==0);CHECK(a.NetworkPhase==440 && a.RamSize==0xc8000);
     CHECK(Started && a.FirmwareBytes==6147 && Outstanding==0);count=Calls;
+    CHECK(a.FirmwareUploadedBytes==6147 && a.FirmwareTotalBytes==6147 && Snapshots>=7);
     CHECK(MaxRamChunk==64 && RamReads==97 && RamWrites==99);
     CHECK(NextWrite==0x198000+6148 && NextRead==NextWrite);
     CHECK(Card[0x110]==64 && Card[0x111]==0);
     CHECK(CywLe32(Ram+sizeof(Ram)-4)==0xfffc0003);
     CywFirmwareStop(&a);CHECK((Card[2]&6)==0 && Ioctl==0x21 && D11Reset==1);
     Init(&a);Card[2]=6;Card[4]=7;CHECK(CywFirmwareStart(&a)==0);CHECK(a.NetworkPhase==440);
-    for(i=1;i<=count;++i) {Init(&a);FailCall=i;CHECK(!NT_SUCCESS(CywFirmwareStart(&a)));CHECK(Outstanding==0);}
+    for(i=1;i<=count;++i) {
+        Init(&a);FailCall=i;CHECK(!NT_SUCCESS(CywFirmwareStart(&a)));CHECK(Outstanding==0);
+        CHECK(a.FirmwareUploadedBytes==min(NextWrite-0x198000,a.FirmwareTotalBytes));
+        CHECK(LastUploaded==a.FirmwareUploadedBytes && LastVerified==a.FirmwareBytes);
+    }
     for(i=1;i<=3;++i) {Init(&a);FailAlloc=i;CHECK(!NT_SUCCESS(CywFirmwareStart(&a)));CHECK(Outstanding==0 && Calls==0);}
     Init(&a);Corrupt=1;CHECK(CywFirmwareStart(&a)==STATUS_DEVICE_DATA_ERROR);CHECK(!Started);
     CHECK(a.NetworkPhase==421 && a.FirmwareBytes==0 && a.RamTransferWrite==0);
@@ -140,6 +157,8 @@ int main(void)
      * and ends in a partial, zero-padded word. Verify all bytes, not one word. */
     Init(&a);FirmwareLength=609309;CHECK(CywFirmwareStart(&a)==0);
     CHECK(a.FirmwareBytes==FirmwareLength && MaxRamChunk==64 && Started);
+    CHECK(a.FirmwareUploadedBytes==FirmwareLength && LastVerified==FirmwareLength);
+    CHECK(Snapshots>10 && Snapshots<Calls/100); /* throttled, not per chunk */
     CHECK(NextWrite==0x198000+609312 && NextRead==NextWrite);
     for(i=0;i<FirmwareLength;++i)CHECK(Ram[i]==(UCHAR)(i*7));
     CHECK(Ram[609309]==0 && Ram[609310]==0 && Ram[609311]==0);

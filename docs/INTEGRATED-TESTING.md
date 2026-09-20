@@ -1,4 +1,23 @@
-# exp0.6.2 country-setting candidate: physical test checklist
+# exp0.6.3 live-progress candidate: physical test checklist
+
+This is a diagnostic/utility update, not a claimed fix for a stalled transfer.
+The proven 64-byte transfer method, clock and country-setting policy are unchanged.
+During startup, watch Uploaded/Verified byte counts rather than phase alone.
+The utility reports after 120 seconds without observed advancement, or after
+30 minutes overall; neither stops, resets or retries a driver transfer. Keep
+the Pi running and collect diagnostics before rebooting if that happens.
+
+Live status ABI v3 (96 bytes) adds total/uploaded/verified bytes, RAM address,
+length, direction, status and stage, plus cached last command/argument/response/
+interrupt fields. Older 32/48-byte clients remain supported. These are best-effort
+live fields, not an atomic transaction snapshot. No status query issues SDIO IO.
+TransferStage: 0 none, 1 window selection, 2 CMD53, 3 completed, 4 cancelled.
+TransferStatus 0x103 means pending; zero means the operation completed successfully.
+FirmwareUploadedBytes excludes padding/NVRAM/vector writes; FirmwareBytes counts
+only compared, verified readback. Upload 100% is not verification/startup success.
+Registry snapshots update every five seconds when the worker can run, plus phase/
+exit boundaries. If a call stalls, the live status file is more current than the
+saved snapshot. The collector now includes `15-live-driver-status.txt`.
 
 This candidate has not yet demonstrated working Wi-Fi on hardware. Previous
 physical evidence now includes exp0.6.1's full 609,309-byte firmware readback and

@@ -18,6 +18,29 @@ if ($message -notmatch 'Connection setup/runtime' -or $message -notmatch 'countr
 }
 if ((Get-Rpi5ConnectStepName 9) -ne 'sup_wpa') { throw 'Connection step mapping wrong.' }
 if ((Get-Rpi5DriverFailure ([byte[]]::new(32))) -notmatch 'Firmware startup') { throw 'Old status ABI broken.' }
+$progress = [byte[]]::new(96)
+[BitConverter]::GetBytes([uint32]3).CopyTo($progress, 0)
+[BitConverter]::GetBytes([uint32]420).CopyTo($progress, 4)
+[BitConverter]::GetBytes([uint32]609309).CopyTo($progress, 48)
+[BitConverter]::GetBytes([uint32]64).CopyTo($progress, 52)
+[BitConverter]::GetBytes([uint32]0x103).CopyTo($progress, 72)
+$sample = Get-Rpi5StartupSample $progress
+if ($sample.Text -notmatch 'Upload=64/609309' -or $sample.Text -notmatch 'TransferStatus=0x00000103') { throw 'Live counters wrong.' }
+if ((Get-Rpi5StartupDecision $sample 181 0) -ne 'wait') { throw 'Progressing upload still stops after three minutes.' }
+if ((Get-Rpi5StartupDecision $sample 181 120) -ne 'no-progress') { throw 'Missing inactivity detection.' }
+if ((Get-Rpi5StartupDecision $sample 1800 0) -ne 'wait-limit') { throw 'Missing absolute wait bound.' }
+[BitConverter]::GetBytes([uint32]128).CopyTo($progress, 52)
+if ((Get-Rpi5StartupSample $progress).Key -eq $sample.Key) { throw 'Upload advancement not detected.' }
+[BitConverter]::GetBytes([uint32]421).CopyTo($progress, 4)
+[BitConverter]::GetBytes([uint32]64).CopyTo($progress, 56)
+if ((Get-Rpi5StartupSample $progress).Text -notmatch 'Verified=64/609309') { throw 'Readback count missing.' }
+[BitConverter]::GetBytes([uint32]500).CopyTo($progress, 4)
+if ((Get-Rpi5StartupDecision (Get-Rpi5StartupSample $progress) 200 120) -ne 'ready') { throw 'Ready state misclassified.' }
+[BitConverter]::GetBytes([uint32]1).CopyTo($progress, 8)
+if ((Get-Rpi5StartupDecision (Get-Rpi5StartupSample $progress) 200 120) -ne 'error') { throw 'Error hidden by ready state.' }
+foreach ($size in @(32,48)) {
+    if ((Get-Rpi5StartupSample ([byte[]]::new($size))).Text -notmatch 'unavailable') { throw 'Legacy ABI misread.' }
+}
 if (-not (Test-Rpi5ConnectionInput 'BD' 'test-network')) { throw 'Valid connection rejected.' }
 foreach ($bad in @('', 'B', '123', 'bd', 'BD;')) {
     if (Test-Rpi5ConnectionInput $bad 'test') { throw 'Invalid country accepted.' }

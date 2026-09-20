@@ -86,7 +86,11 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.2 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
+Driver exp0.6.3 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
+This update adds live upload/readback byte counters and transfer telemetry.
+The utility no longer stops a progressing upload after three minutes. It reports
+120 seconds without observed progress or a 30-minute observation limit without
+stopping/resetting the driver. Collect diagnostics before rebooting on either.
 exp0.6.1 physically passed firmware upload/readback and initialization, but
 connection setup failed. This update uses ISO country revision zero with strict
 readback, and records ConnectStep to identify any rejected connection setting.

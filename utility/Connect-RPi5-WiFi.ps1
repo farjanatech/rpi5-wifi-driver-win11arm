@@ -30,6 +30,37 @@ function Get-Rpi5DriverFailure {
         $stage, $phase, $step, [BitConverter]::ToUInt32($State, 8),
         [BitConverter]::ToUInt32($State, 12), [BitConverter]::ToInt32($State, 16))
 }
+function Get-Rpi5StartupSample {
+    param([byte[]]$State)
+    if ($State.Length -lt 32) { throw 'Incomplete driver status.' }
+    $phase = [BitConverter]::ToUInt32($State, 4)
+    $status = [BitConverter]::ToUInt32($State, 8)
+    $extended = $State.Length -ge 96 -and [BitConverter]::ToUInt32($State, 0) -ge 3
+    $total = 0; $uploaded = 0; $verified = 0
+    $text = "Phase=$phase (live byte counters unavailable from this driver)"
+    if ($extended) {
+        $total = [BitConverter]::ToUInt32($State, 48)
+        $uploaded = [BitConverter]::ToUInt32($State, 52)
+        $verified = [BitConverter]::ToUInt32($State, 56)
+        $percent = if ($total -gt 0) { [Math]::Round(100.0 * $uploaded / $total, 1) } else { 0 }
+        $text = ('Phase={0} Upload={1}/{2} bytes ({3}%) Verified={4}/{2} bytes RAM=0x{5:X8} Length={6} Write={7} TransferStage={8} TransferStatus=0x{9:X8} CMD={10} Argument=0x{11:X8} Response=0x{12:X8} Interrupt=0x{13:X8}' -f
+            $phase, $uploaded, $total, $percent, $verified,
+            [BitConverter]::ToUInt32($State, 60), [BitConverter]::ToUInt32($State, 64),
+            [BitConverter]::ToUInt32($State, 68), [BitConverter]::ToUInt32($State, 76),
+            [BitConverter]::ToUInt32($State, 72), [BitConverter]::ToUInt32($State, 80),
+            [BitConverter]::ToUInt32($State, 84), [BitConverter]::ToUInt32($State, 88),
+            [BitConverter]::ToUInt32($State, 92))
+    }
+    [pscustomobject]@{ Phase=$phase; Status=$status; Key="$phase/$total/$uploaded/$verified"; Text=$text }
+}
+function Get-Rpi5StartupDecision {
+    param($Sample, [double]$ElapsedSeconds, [double]$IdleSeconds)
+    if ($Sample.Status -ne 0) { return 'error' }
+    if ($Sample.Phase -ge 500) { return 'ready' }
+    if ($IdleSeconds -ge 120) { return 'no-progress' }
+    if ($ElapsedSeconds -ge 1800) { return 'wait-limit' }
+    return 'wait'
+}
 # Deliberately no transcript, saved password, command-line credential or profile.
 Add-Type -TypeDefinition @'
 using System;
@@ -66,12 +97,13 @@ public static class Rpi5WifiControl {
         byte[] input, int inputSize, byte[] output, int outputSize,
         out int returned, IntPtr overlapped);
     public static byte[] Call(uint code, byte[] input) {
-        using(var h=CreateFile(@"\\.\Rpi5CywControl",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero)) {
+        using(var h=CreateFile(@"\\.\Rpi5CywControl",code==0x126004?0x80000000u:0x40000000u,3,IntPtr.Zero,3,0,IntPtr.Zero)) {
             if(h.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
-            byte[] output=new byte[48]; int count;
+            byte[] output=new byte[96]; int count;
             if(!DeviceIoControl(h,code,input,input==null?0:input.Length,output,output.Length,out count,IntPtr.Zero))
                 throw new Win32Exception(Marshal.GetLastWin32Error());
-            if(code==0x126004 && (count<32 || (BitConverter.ToUInt32(output,0)>=2 && count<48)))
+            if(code==0x126004 && (count<32 || (BitConverter.ToUInt32(output,0)>=2 && count<48) ||
+                (BitConverter.ToUInt32(output,0)>=3 && count<96)))
                 throw new InvalidOperationException("Incomplete driver status response.");
             return output;
         }
@@ -93,16 +125,26 @@ if ($Disconnect) {
     [void][Rpi5WifiControl]::Call(0x12A008, $null)
     Write-Output 'Disconnect requested.'
 } elseif (-not $StatusOnly) {
-    for ($readyAttempt = 0; $readyAttempt -lt 60; $readyAttempt++) {
+    $startupWatch = [Diagnostics.Stopwatch]::StartNew()
+    $previousKey = ''; $lastAdvance = 0.0
+    while ($true) {
         $readyState = [Rpi5WifiControl]::Call(0x126004, $null)
-        $readyPhase = [BitConverter]::ToUInt32($readyState, 4)
-        $readyError = [BitConverter]::ToUInt32($readyState, 8)
-        if ($readyError -ne 0) { throw (Get-Rpi5DriverFailure $readyState) }
-        if ($readyPhase -ge 500) { break }
-        Write-Output "Firmware initialization: phase $readyPhase. Waiting before requesting credentials..."
-        Start-Sleep -Seconds 3
+        $sample = Get-Rpi5StartupSample $readyState
+        $elapsed = $startupWatch.Elapsed.TotalSeconds
+        if ($sample.Key -ne $previousKey) { $lastAdvance = $elapsed; $previousKey = $sample.Key }
+        $idle = $elapsed - $lastAdvance
+        Write-Output ('{0} Elapsed={1}s NoProgressObserved={2}s' -f $sample.Text, [int]$elapsed, [int]$idle)
+        $decision = Get-Rpi5StartupDecision $sample $elapsed $idle
+        if ($decision -eq 'error') { throw (Get-Rpi5DriverFailure $readyState) }
+        if ($decision -eq 'ready') { break }
+        if ($decision -eq 'no-progress') {
+            throw 'No startup byte/phase progress observed for 120 seconds. This does not prove a hardware hang. Driver is not stopped. Collect diagnostics now before rebooting.'
+        }
+        if ($decision -eq 'wait-limit') {
+            throw 'Utility reached its 30-minute observation limit. Driver is not stopped. Collect diagnostics before rebooting.'
+        }
+        Start-Sleep -Seconds 5
     }
-    if ($readyPhase -lt 500) { throw 'Firmware did not become ready within three minutes. Run diagnostics.' }
     Write-Output 'Experimental WPA2-Personal / AES only. Keep your working Ethernet connection available.'
     Write-Output 'Use the country where the Pi is physically located. No UEFI or boot settings are changed.'
     $country = (Read-Host 'Two-letter country code, e.g. BD').Trim().ToUpperInvariant()
@@ -143,6 +185,7 @@ if ($Disconnect) {
 $limit = if ($StatusOnly -or $Disconnect) { 1 } else { 60 }
 for ($attempt = 0; $attempt -lt $limit; $attempt++) {
     $state = [Rpi5WifiControl]::Call(0x126004, $null)
+    if ($StatusOnly) { Write-Output (Get-Rpi5StartupSample $state).Text }
     $phase = [BitConverter]::ToUInt32($state, 4)
     $errorCode = [BitConverter]::ToUInt32($state, 8)
     $connected = [BitConverter]::ToUInt32($state, 28) -eq 1

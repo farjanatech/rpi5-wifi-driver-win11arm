@@ -477,6 +477,14 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
                 out[0]=2;out[8]=A->ConnectStep;out[9]=A->CountryRequested;
                 out[10]=A->CountryApplied;out[11]=A->CountryRevision;bytes=48;
             }
+            if(Stack->Parameters.DeviceIoControl.OutputBufferLength>=96) {
+                out[0]=3;out[12]=A->FirmwareTotalBytes;out[13]=A->FirmwareUploadedBytes;
+                out[14]=A->FirmwareBytes;out[15]=A->RamTransferAddress;
+                out[16]=A->RamTransferLength;out[17]=A->RamTransferWrite;
+                out[18]=(ULONG)A->RamTransferStatus;out[19]=A->RamTransferStage;
+                out[20]=A->LastCommand;out[21]=A->LastArgument;
+                out[22]=A->LastResponse;out[23]=A->LastInterruptStatus;bytes=96;
+            }
         } else if((code==CYW_IOCTL_CONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==sizeof(CYW_CONNECT_REQUEST) &&
                     CywValidConnect(Irp->AssociatedIrp.SystemBuffer)) ||
                   (code==CYW_IOCTL_DISCONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==0)) {
