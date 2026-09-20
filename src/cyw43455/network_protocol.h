@@ -49,6 +49,20 @@ static __inline int CywEthernetBody(const uint8_t *p, size_t n,
 }
 static __inline int CywTxCredit(uint8_t seq, uint8_t max, uint8_t flow)
 { uint8_t n=(uint8_t)(max-seq); return n != 0 && n <= 0x40 && flow == 0; }
+static __inline int CywAcceptEthernet(const uint8_t *dst,const uint8_t *mac,
+                                      uint32_t filter,const uint8_t *multicast,uint32_t count)
+{
+    uint32_t i;int broadcast=1;
+    if(!dst || !mac || count>32 || (count && !multicast))return 0;
+    for(i=0;i<6;++i)if(dst[i]!=255)broadcast=0;
+    if(broadcast)return (filter&8)!=0;
+    if(dst[0]&1) {
+        if(filter&4)return 1;
+        if(filter&2)for(i=0;i<count;++i)if(memcmp(dst,multicast+i*6,6)==0)return 1;
+        return 0;
+    }
+    return (filter&1)!=0 && memcmp(dst,mac,6)==0;
+}
 /* Strip comments and blank lines; reject embedded NUL, binary input and
  * unbounded lines. NVRAM is never interpreted as executable content. */
 static __inline int CywPackNvram(const uint8_t *raw, size_t size,

@@ -615,7 +615,7 @@ Rpi5CywSetInformation(
             }
             if ((*(PULONG)Buffer & ~RPI5CYW_SUPPORTED_FILTERS) != 0)
                 return NDIS_STATUS_NOT_SUPPORTED;
-            Adapter->PacketFilter = *(PULONG)Buffer;
+            CywNetworkSetFilter(Adapter, *(PULONG)Buffer);
             OidRequest->DATA.SET_INFORMATION.BytesRead = sizeof(ULONG);
             return NDIS_STATUS_SUCCESS;
 
@@ -636,8 +636,7 @@ Rpi5CywSetInformation(
                 OidRequest->DATA.SET_INFORMATION.BytesNeeded = sizeof(Adapter->MulticastList);
                 return NDIS_STATUS_INVALID_LENGTH;
             }
-            Adapter->MulticastCount = BufferLength / ETH_LENGTH_OF_ADDRESS;
-            RtlCopyMemory(Adapter->MulticastList, Buffer, BufferLength);
+            CywNetworkSetMulticast(Adapter, Buffer, BufferLength);
             OidRequest->DATA.SET_INFORMATION.BytesRead = BufferLength;
             return NDIS_STATUS_SUCCESS;
 
@@ -856,7 +855,9 @@ Rpi5CywReset(
     {
         *AddressingReset = FALSE;
     }
-    return NDIS_STATUS_SUCCESS;
+    /* Recovery needs a controlled adapter restart; never falsely report an
+     * unperformed hardware reset as successful. */
+    return NDIS_STATUS_HARD_ERRORS;
 }
 
 static NDIS_STATUS NTAPI

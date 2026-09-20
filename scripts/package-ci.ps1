@@ -40,6 +40,7 @@ Copy-Item (Join-Path $root 'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd') (Join-Pa
 & (Join-Path $PSScriptRoot 'fetch-firmware.ps1') -Destination $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.cmd') $stage
+Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |

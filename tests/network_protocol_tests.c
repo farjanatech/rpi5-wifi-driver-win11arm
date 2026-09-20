@@ -7,6 +7,7 @@ int main(void)
     uint8_t b[1600]={0},out[128],raw[]="# comment\r\na=1\r\n\n b=2 #tail\n";
     uint32_t len,off;size_t used,payload,offset;unsigned i;
     CYW_CONNECT_REQUEST r={0};
+    const uint8_t mac[6]={2,1,2,3,4,5},group[6]={1,0,0x5e,0,0,1},bc[6]={255,255,255,255,255,255};
     CHECK(sizeof(r)==76);
     CHECK(CywPackNvram(raw,sizeof(raw)-1,out,sizeof(out),&used));
     CHECK(used==12 && memcmp(out,"a=1\0b=2\0\0",9)==0);
@@ -26,6 +27,14 @@ int main(void)
     b[3]=255;CHECK(!CywEthernetBody(b,64,&offset,&payload));
     CHECK(CywTxCredit(255,0,0));CHECK(!CywTxCredit(0,255,0));
     CHECK(!CywTxCredit(1,1,0));CHECK(!CywTxCredit(1,2,1));
+    CHECK(CywAcceptEthernet(mac,mac,1,NULL,0));
+    CHECK(!CywAcceptEthernet(mac,mac,8,NULL,0));
+    CHECK(CywAcceptEthernet(bc,mac,8,NULL,0));
+    CHECK(!CywAcceptEthernet(bc,mac,4,NULL,0));
+    CHECK(CywAcceptEthernet(group,mac,2,group,1));
+    CHECK(!CywAcceptEthernet(group,mac,2,NULL,0));
+    CHECK(CywAcceptEthernet(group,mac,4,NULL,0));
+    CHECK(!CywAcceptEthernet(group,mac,4,group,33));
     CHECK(!CywValidConnect(&r));r.Version=1;r.SsidLength=1;r.Country[0]='B';r.Country[1]='D';
     CHECK(CywValidConnect(&r));r.SsidLength=33;CHECK(!CywValidConnect(&r));
     r.SsidLength=1;r.Reserved[0]=1;CHECK(!CywValidConnect(&r));

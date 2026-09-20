@@ -715,6 +715,8 @@ Rpi5CywDirectSdioProbe(
     }
 
     Status = SdioInitializeHost(Adapter);
+    Adapter->EromWords = 0;
+    Adapter->CoreInventoryComplete = 0;
     Rpi5CywWriteDiagnostics(Adapter, 20, Status);
     if (!NT_SUCCESS(Status))
     {
