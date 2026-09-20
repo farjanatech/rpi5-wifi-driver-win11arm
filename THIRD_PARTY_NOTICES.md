@@ -19,13 +19,20 @@ its SD-bus companion driver is not copied or installed.
 BCDC control flags, CR4 sizing and SDPCM formats also reference Linux v6.12
 brcmfmac `bcdc.c`, `chip.c`, `sdio.c` and `sdio.h` under the ISC notice below.
 
-CI redistributes unmodified Cypress firmware, CLM and Raspberry Pi 5 board
-configuration from RPi-Distro/firmware-nonfree at
-`c91cd2804cf7463aab913e7247c176049f16bbd6`. Exact paths and SHA-256 are pinned
-in `scripts/fetch-firmware.ps1`. The complete upstream `debian/copyright`
-is shipped as `FIRMWARE-COPYRIGHT.txt`. These files have their own licenses,
-are for Cypress hardware, and are not relicensed under this project's GPL.
-The firmware's standard image is renamed but its bytes are not modified.
+Since exp0.6.7, CI redistributes the unmodified CYW43455 firmware, CLM and Pi
+board file from ahmedarif193/reactos revision
+`929bdd689d1e18d0ef71214741d4e16eec74409c`, drivers/network/dd/cyw43455/fw.
+Exact paths and SHA-256 are pinned in `scripts/fetch-firmware.ps1`.
+`brcmfmac43455-sdio.bin` and `.clm_blob` are renamed to `cyfmac43455-sdio.*`
+only to match the existing driver paths, without editing any bytes.
+The source WHENCE attributes these two blobs to Broadcom and specifies
+LICENCE.broadcom_bcm43xx. That complete licence is shipped as
+`FIRMWARE-BROADCOM-LICENCE.txt`, and WHENCE as `FIRMWARE-WHENCE.txt`.
+The source folder's 43430 files are not packaged.
+The Pi board file is byte-identical to our previous RPi-Distro version. Its
+complete prior copyright notice is retained as `FIRMWARE-COPYRIGHT.txt` from
+RPi-Distro/firmware-nonfree `c91cd2804cf7463aab913e7247c176049f16bbd6`.
+These files retain their separate upstream licences, not this project's GPL.
 The runtime sets a locally administered MAC before enabling the radio; the
 upstream board calibration and regulatory blob are preserved.
 
@@ -46,7 +53,7 @@ reference:
 Those sources identify themselves as GPL-2.0-or-later. This repository is
 distributed under GPL-3.0 and retains the upstream project and author history
 through the pinned submodule. Firmware files in the upstream tree carry their
-own Broadcom/Cypress notices and are not included in the current driver package.
+own Broadcom/Cypress notices; exp0.6.7 packages only the files described above.
 
 The current direct-SDIO probe is not represented as a working Wi-Fi driver.
 

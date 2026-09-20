@@ -6,7 +6,7 @@ Signature   = "$Windows NT$"
 Class       = Net
 ClassGuid   = {4D36E972-E325-11CE-BFC1-08002BE10318}
 Provider    = %ProviderName%
-DriverVer   = 09/20/2026,0.6.6.0
+DriverVer   = 09/20/2026,0.6.7.0
 CatalogFile = rpi5cyw.cat
 PnpLockdown = 1
 

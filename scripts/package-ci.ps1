@@ -38,6 +38,7 @@ Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.md') (Join-Path $stage 'THIRD_PA
 Copy-Item (Join-Path $root 'diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1') (Join-Path $stage 'Collect-RPi5-WiFi-Diagnostics.ps1') -Force
 Copy-Item (Join-Path $root 'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd') (Join-Path $stage 'Run-RPi5-WiFi-Diagnostics.cmd') -Force
 & (Join-Path $PSScriptRoot 'fetch-firmware.ps1') -Destination $stage
+& (Join-Path $root 'tests\firmware_package_tests.ps1') -Directory $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.cmd') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
@@ -86,9 +87,12 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.6 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
-This release replaces the four-byte country fallback with a full 12-byte country
-request using revision -1. Both country fields retain your confirmed country.
+Driver exp0.6.7 is an UNVALIDATED integrated WPA2/AES Ethernet-style candidate.
+This release packages the user-requested ReactOS CYW43455 firmware/CLM pair:
+firmware 7.45.229 (631467 bytes), CLM 7163 bytes. The firmware version is OLDER,
+not the newer Infineon 7.45.286. No radio-parameter or regulatory-data edits.
+Calibration bytes are identical; source commit, hashes and licences are retained.
+The exp0.6.6 full country request using revision -1 is unchanged.
 A read-only supported-country query records membership/count/status in diagnostics.
 An unsupported or malformed list is unknown, not proof the country is absent.
 The exp0.6.5 bounded reply decoding is retained.
@@ -101,8 +105,9 @@ The live upload/readback byte counters and transfer method are unchanged.
 The utility no longer stops a progressing upload after three minutes. It reports
 120 seconds without observed progress or a 30-minute observation limit without
 stopping/resetting the driver. Collect diagnostics before rebooting on either.
-exp0.6.5 passed firmware and CLM checks but both BD requests were rejected.
-This candidate keeps the same firmware/CLM/NVRAM and is not physically validated.
+exp0.6.6 reported 116 country entries without BD and rejected the BD requests.
+This alternate firmware/CLM pair is not physically validated and its acceptance
+of BD does not establish board-specific RF compliance or working packet traffic.
 It uploads firmware, checks RAM readback, uses SDPCM/BCDC and a polled packet path.
 It DOES NOT prove successful Wi-Fi until tested physically on the Pi.
 Run Connect-RPi5-WiFi.cmd as administrator AFTER installation and restart.

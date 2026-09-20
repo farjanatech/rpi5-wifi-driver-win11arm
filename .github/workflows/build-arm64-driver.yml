@@ -88,6 +88,7 @@ jobs:
             '.\tests\installer_utility_tests.ps1',
             '.\utility\Connect-RPi5-WiFi.ps1',
             '.\tests\connection_utility_tests.ps1',
+            '.\tests\firmware_package_tests.ps1',
             '.\scripts\fetch-firmware.ps1'
           ) | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning }
           $analysis | Format-Table -AutoSize | Out-String -Width 500 |
@@ -188,7 +189,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.6
+          name: rpi5-wifi-one-click-diagnostics-v0.6.7
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

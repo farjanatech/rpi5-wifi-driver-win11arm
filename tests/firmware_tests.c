@@ -128,7 +128,8 @@ static void Init(PRPI5CYW_ADAPTER A)
 }
 int main(void)
 {
-    RPI5CYW_ADAPTER a;unsigned count,i;UCHAR rejected[512]={0};
+    RPI5CYW_ADAPTER a;unsigned count,i,j;UCHAR rejected[512]={0};
+    const ULONG packageSizes[]={609309,631467};
     Init(&a);Window=0x198000;Card[0x110]=64;
     CHECK(SdioCmd53Write(&a,1,0x8000,rejected,512)==STATUS_IO_DEVICE_ERROR);
     CHECK(RamWrites==0 && !Started);
@@ -153,17 +154,20 @@ int main(void)
     Init(&a);ClockNever=1;CHECK(CywFirmwareStart(&a)==STATUS_IO_TIMEOUT);CHECK(!Started);
     Init(&a);ReadyNever=1;CHECK(CywFirmwareStart(&a)==STATUS_IO_TIMEOUT);CHECK(!Started);
     Init(&a);a.ChipRevision=7;CHECK(CywFirmwareStart(&a)==STATUS_DEVICE_CONFIGURATION_ERROR);CHECK(Calls==0);
-    /* Real package byte count: crosses eighteen 32KiB backplane boundaries
-     * and ends in a partial, zero-padded word. Verify all bytes, not one word. */
-    Init(&a);FirmwareLength=609309;CHECK(CywFirmwareStart(&a)==0);
+    /* Old and ReactOS package sizes cross multiple 32KiB windows and end in
+     * partial words. These are synthetic bytes, not firmware execution. */
+    for(j=0;j<2;++j) {
+    Init(&a);FirmwareLength=packageSizes[j];CHECK(CywFirmwareStart(&a)==0);
     CHECK(a.FirmwareBytes==FirmwareLength && MaxRamChunk==64 && Started);
     CHECK(a.FirmwareUploadedBytes==FirmwareLength && LastVerified==FirmwareLength);
     CHECK(Snapshots>10 && Snapshots<Calls/100); /* throttled, not per chunk */
-    CHECK(NextWrite==0x198000+609312 && NextRead==NextWrite);
+    CHECK(NextWrite==0x198000+((FirmwareLength+3)&~3u) && NextRead==NextWrite);
     for(i=0;i<FirmwareLength;++i)CHECK(Ram[i]==(UCHAR)(i*7));
-    CHECK(Ram[609309]==0 && Ram[609310]==0 && Ram[609311]==0);
+    for(i=FirmwareLength;i<((FirmwareLength+3)&~3u);++i)CHECK(Ram[i]==0);
     CHECK(WindowWrites<5000); /* no reselect for every 64-byte RAM chunk */
     CHECK(a.RamTransferAddress==0 && a.RamTransferLength==4 && a.RamTransferWrite==1);
+    CHECK(Outstanding==0);
+    }
     CHECK(Outstanding==0);if(Failures)return 1;
     printf("PASS: actual firmware startup, RAM sizing/readback, allocation errors and %u injected bus faults\n",count);return 0;
 }

@@ -1,4 +1,25 @@
-# exp0.6.6 full country request: physical test checklist
+# exp0.6.7 ReactOS firmware pair: physical test checklist
+
+Install exp0.6.7 from a fresh extracted folder on the Pi only; restart once.
+The pinned ReactOS 43455 pair is firmware 7.45.229 (631467 bytes) and CLM 7163
+bytes. This is an older alternate firmware, not Infineon 7.45.286. The Pi
+calibration bytes, UEFI, country policy and direct-SDIO implementation are unchanged.
+Both binaries are copied byte-for-byte from the requested source commit; the
+driver path filenames are aliases only. Do not manually mix release folders.
+
+Run Connect-RPi5-WiFi.cmd. Confirm BD for Bangladesh. Upload/readback should
+show 631467 total bytes; if it still shows 609309 after restart, collect logs
+rather than interpreting that result as a test of the new pair. Firmware
+startup can still take several minutes; no speed improvement is claimed.
+
+Collect diagnostics after the connection attempt, BEFORE another reboot. Check
+CountryListMembership and CountryApplied/Revision, then authenticated link,
+DHCP/gateway and traffic with wired Ethernet temporarily disconnected. A country
+accepted by firmware is not itself board-specific regulatory certification.
+Keep wired Ethernet for recovery and exp0.6.6 for rollback. This candidate has
+not been physically tested and is not guaranteed to connect.
+
+## Retained exp0.6.6 country diagnostics (historical introduction)
 
 Install exp0.6.6 on the Pi only, restart once, then run Connect-RPi5-WiFi.cmd.
 Keep your actual country BD; do not substitute USA or France. Firmware upload

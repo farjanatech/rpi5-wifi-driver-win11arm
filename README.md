@@ -4,6 +4,25 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.7 candidate — user-requested ReactOS firmware pair
+
+Package the CYW43455 .bin and .clm_blob from ahmedarif193/reactos revision
+929bdd689d1e18d0ef71214741d4e16eec74409c, drivers/network/dd/cyw43455/fw.
+Firmware version 7.45.229 is OLDER than the previous 7.45.265, not the separately
+discussed Infineon 7.45.286. Firmware size is 631467 bytes and CLM size 7163 bytes.
+The accompanying Pi board file is byte-identical to the previous calibration.
+Pinned hashes, the Broadcom licence and upstream WHENCE are included. Two
+filenames are aliased to the existing driver paths; no binary bytes are edited.
+
+Physical exp0.6.6 reported 116 country entries without BD and rejected both BD
+requests. This release tests a different firmware/CLM combination; it does not
+force US/IN or weaken the country SET/readback checks. Chip-host code, timing,
+UEFI/fan and Windows installation remain unchanged. Country acceptance alone
+does not certify RF limits on the Pi board or prove authentication/IP/traffic.
+This candidate is not hardware-validated; keep exp0.6.6 available for rollback.
+CI checks the real staged firmware bytes/licences and simulates RAM transfers
+for both old/new firmware lengths; it cannot execute the chip firmware.
+
 ### Integrated exp0.6.6 candidate — full country request and supported-country evidence
 
 Physical exp0.6.5 passed upload/readback and CLM status checks but firmware
