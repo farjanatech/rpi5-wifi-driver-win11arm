@@ -15,6 +15,24 @@ typedef unsigned int uint32_t;
 
 #define CYW_WIRE_CAPACITY 65536u
 #define CYW_CONTROL_CAPACITY 8192u
+/* Diagnostic categories only. Never retain addresses, payloads or credentials.
+ * 0=other/malformed, 1=ARP request, 2=ARP reply, 3=IPv4 ICMP,
+ * 4=IPv4 UDP, 5=IPv4 TCP, 6=IPv6. Parsing cannot affect packet acceptance. */
+static __inline unsigned CywPacketKind(const uint8_t *p, size_t n)
+{
+    size_t ihl,total;
+    if(!p || n<14)return 0;
+    if(p[12]==8 && p[13]==6) {
+        if(n<42 || p[14]!=0 || p[15]!=1 || p[16]!=8 || p[17]!=0 ||
+           p[18]!=6 || p[19]!=4 || p[20]!=0)return 0;
+        return p[21]==1?1u:(p[21]==2?2u:0u);
+    }
+    if(p[12]==0x86 && p[13]==0xdd)return n>=54 && (p[14]>>4)==6?6u:0u;
+    if(p[12]!=8 || p[13]!=0 || n<34 || (p[14]>>4)!=4)return 0;
+    ihl=(size_t)(p[14]&15)*4;total=(size_t)p[16]*256+p[17];
+    if(ihl<20 || total<ihl || total>n-14 || ihl>n-14)return 0;
+    return p[23]==1?3u:(p[23]==17?4u:(p[23]==6?5u:0u));
+}
 /* Bound receive work between send opportunities; not a packet-drop limit. */
 static __inline int CywReceiveBudget(uint32_t frames, unsigned long long elapsed100ns)
 { return frames < 4 && elapsed100ns < 20000ULL; }

@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([switch]$StatusOnly, [switch]$Disconnect, [switch]$LibraryOnly)
+param([switch]$StatusOnly, [switch]$Disconnect, [switch]$LibraryOnly,
+      [string]$ConfigPath, [switch]$Startup)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -7,6 +8,27 @@ function Test-Rpi5ConnectionInput {
     param([string]$Country, [string]$Ssid)
     return $Country -cmatch '^[A-Z]{2}$' -and
         [Text.Encoding]::UTF8.GetByteCount($Ssid) -in 1..32
+}
+function Read-Rpi5WifiConfig {
+    param([string]$Path)
+    # Do not emit parser exceptions: malformed JSON can include the password.
+    try {
+        $file = Get-Item -LiteralPath $Path -ErrorAction Stop
+        if ($file.PSIsContainer -or $file.Length -gt 8192) { throw 'size' }
+        $profile = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        if ($null -eq $profile -or $profile -is [array]) { throw 'shape' }
+        foreach ($name in @('Country', 'SSID', 'Password')) {
+            if (-not $profile.PSObject.Properties[$name] -or $profile.$name -isnot [string]) { throw 'field' }
+        }
+        if (@($profile.PSObject.Properties).Count -ne 3) { throw 'extra fields' }
+        $profile.Country = $profile.Country.Trim().ToUpperInvariant()
+        if (-not (Test-Rpi5ConnectionInput $profile.Country $profile.SSID) -or
+            $profile.SSID.Contains([string][char]0) -or
+            $profile.Password -cnotmatch '\A[\x20-\x7E]{8,63}\z') { throw 'bounds' }
+        return $profile
+    } catch {
+        throw 'Wi-Fi configuration is missing or invalid. Use only Country (two letters), SSID (1-32 UTF-8 bytes), and Password (8-63 printable ASCII characters). Contents are not logged.'
+    }
 }
 function Resolve-Rpi5Country {
     param([string]$InputCountry, [string]$SavedCountry)
@@ -70,8 +92,8 @@ function Get-Rpi5StartupDecision {
     if ($ElapsedSeconds -ge 1800) { return 'wait-limit' }
     return 'wait'
 }
-# Deliberately no transcript, saved password, command-line credential or network profile.
-# Only a user-confirmed country abbreviation can be remembered.
+# No transcript or command-line credential. An optional user-owned JSON file
+# supplies credentials, but this connector never writes them or includes them in errors.
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -121,14 +143,33 @@ public static class Rpi5WifiControl {
 }
 '@
 if ($LibraryOnly) { return }
+if (-not $ConfigPath -and -not $StatusOnly -and -not $Disconnect) {
+    $candidate = Join-Path $PSScriptRoot 'WiFi.private.json'
+    if (Test-Path -LiteralPath $candidate) { $ConfigPath = $candidate }
+}
+if ($ConfigPath) {
+    if ($ConfigPath.Contains('"')) { throw 'Invalid configuration path.' }
+    $ConfigPath = [IO.Path]::GetFullPath($ConfigPath)
+}
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $launchArguments = @('-NoProfile', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath))
     if ($StatusOnly) { $launchArguments += '-StatusOnly' }
     if ($Disconnect) { $launchArguments += '-Disconnect' }
-    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launchArguments
+    if ($ConfigPath) { $launchArguments += @('-ConfigPath', ('"{0}"' -f $ConfigPath)) }
+    if ($Startup) { throw 'Startup mode requires the installed SYSTEM task.' }
+    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launchArguments -WindowStyle Hidden
     return
+}
+if ($Startup -and -not $ConfigPath) { throw 'Startup mode requires a configuration file.' }
+if ($Startup) {
+    $deviceWatch = [Diagnostics.Stopwatch]::StartNew()
+    while ($true) {
+        try { [void][Rpi5WifiControl]::Call(0x126004, $null); break }
+        catch { if ($deviceWatch.Elapsed.TotalSeconds -ge 180) { throw 'Driver control device unavailable after 180 seconds.' } }
+        Start-Sleep -Seconds 5
+    }
 }
 
 if ($Disconnect) {
@@ -166,10 +207,19 @@ if ($Disconnect) {
     $countryPrompt = if ($savedCountry) {
         "Country where this Pi is physically located [Enter confirms $savedCountry, or type another]"
     } else { 'Two-letter country code, e.g. BD (no automatic USA fallback)' }
-    $country = Resolve-Rpi5Country (Read-Host $countryPrompt) $savedCountry
-    $ssid = Read-Host 'Exact Wi-Fi network name (SSID)'
+    if ($ConfigPath) {
+        $profile = Read-Rpi5WifiConfig $ConfigPath
+        $country = $profile.Country; $ssid = $profile.SSID
+        $secure = [Security.SecureString]::new()
+        foreach ($character in $profile.Password.ToCharArray()) { $secure.AppendChar($character) }
+        $secure.MakeReadOnly(); $profile.Password = $null; $profile = $null
+        Write-Output 'Using the editable local configuration. Credentials are not printed.'
+    } else {
+        $country = Resolve-Rpi5Country (Read-Host $countryPrompt) $savedCountry
+        $ssid = Read-Host 'Exact Wi-Fi network name (SSID)'
+        $secure = Read-Host 'WPA2 password (8-63 printable ASCII characters)' -AsSecureString
+    }
     if (-not (Test-Rpi5ConnectionInput $country $ssid)) { throw 'Invalid country or SSID length (1-32 UTF-8 bytes).' }
-    $secure = Read-Host 'WPA2 password (8-63 printable ASCII characters)' -AsSecureString
     $pointer = [IntPtr]::Zero
     $passwordBytes = $null; $pmk = $null; $request = $null
     try {
@@ -229,3 +279,6 @@ for ($attempt = 0; $attempt -lt $limit; $attempt++) {
 Get-NetAdapter | Where-Object InterfaceDescription -like '*CYW43455*' |
     Get-NetIPConfiguration | Format-List InterfaceAlias, IPv4Address, IPv4DefaultGateway
 Write-Output 'If association failed, collect diagnostics. Do not change UEFI or reinstall Windows.'
+if ($ConfigPath -and -not $StatusOnly -and -not $Disconnect -and (-not $connected -or $errorCode -ne 0)) {
+    throw 'Configured connection did not authenticate. Run diagnostics; automatic mode does not imply working Internet.'
+}

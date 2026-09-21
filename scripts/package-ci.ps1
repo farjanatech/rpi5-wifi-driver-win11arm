@@ -41,6 +41,11 @@ Copy-Item (Join-Path $root 'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd') (Join-Pa
 & (Join-Path $root 'tests\firmware_package_tests.ps1') -Directory $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.cmd') $stage
+foreach ($name in @('Set-RPi5-WiFi-Autoconnect.ps1', 'Enable-RPi5-WiFi-Autoconnect.cmd',
+    'Disable-RPi5-WiFi-Autoconnect.cmd', 'WiFi.config.example.json')) {
+    Copy-Item (Join-Path $root "utility\$name") $stage
+}
+Copy-Item (Join-Path $root 'docs\AUTO-CONNECT.md') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.cmd') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
@@ -89,7 +94,15 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.10 is an UNVALIDATED 4-bit/25 MHz operating-bus candidate.
+Driver exp0.6.11 adds optional editable local credentials/startup connection,
+packet-path counters, firmware MAC readback and explicit RX NBL initialization.
+It is NOT a confirmed packet-loss fix. exp0.6.10 verified 4-bit/25 MHz on the
+user's Pi but its performance capture lost every ping and failed DNS/HTTPS.
+See AUTO-CONNECT.md; never publish WiFi.private.json or include it in reports.
+Counters distinguish submitted-to-chip TX, received-from-chip RX and indicated
+Windows RX by protocol, with state/format/filter/allocation drop evidence.
+These are counts only, not payload/MAC/credential captures or AP ACK evidence.
+The 4-bit/25 MHz operating-bus path is retained.
 Firmware upload/readback stays conservative. After F2 startup, default timing
 and 4-bit width are set on both ends, then the clock targets <=25 MHz.
 Sixteen matching read-only chip-ID CMD53 probes are required. Failed upgrades
@@ -126,7 +139,7 @@ This update reuses a matching existing country and, only after revision-zero
 BADARG, tries the same country's firmware-selected revision once. A complete
 matching readback is required before radio-up. It checks loaded CLM status and
 records the country selection path. No USA or alternate-country fallback.
-The utility remembers only your confirmed country (HKCU), not Wi-Fi credentials.
+Without an optional private configuration, the utility remembers only country.
 The upload/readback counters and PIO transfer format are unchanged.
 The utility no longer stops a progressing upload after three minutes. It reports
 120 seconds without observed progress or a 30-minute observation limit without
@@ -137,13 +150,13 @@ but that is not board-specific RF certification or validation of this new build.
 It uploads firmware, checks RAM readback, uses SDPCM/BCDC and a polled packet path.
 It DOES NOT prove successful Wi-Fi until tested physically on the Pi.
 Run Connect-RPi5-WiFi.cmd as administrator AFTER installation and restart.
-Enter your actual country, exact SSID and WPA2 password. No saved credentials.
+Enter your actual country, SSID and WPA2 password, or supply WiFi.private.json.
 NetworkPhase: 400 files, 410 CR4/RAM, 420 upload, 421 readback, 422 NVRAM/vector,
 430 CPU start,
 440 F2 ready, 500 firmware configured/radio down, 520 joining, 600 authenticated.
 Use diagnostics if any step fails. Do not replace UEFI or reinstall Windows.
 First candidate limitations: WPA2-Personal/AES only, no WPA3/enterprise,
-no scanning UI, no saved reconnect profile, conservative 1-bit/400kHz PIO,
+no scanning UI or continuous reconnect service; firmware uploads at 1-bit/400kHz,
 no performance claim. Use Ethernet for recovery and do not use sleep/hibernate.
 MAC is locally administered and regenerated on adapter initialization.
 Keep UEFI exp.0.3 (source bda4c47); this package contains NO UEFI update.

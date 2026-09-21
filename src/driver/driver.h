@@ -82,6 +82,10 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
     ULONG TxNblAccepted, TxNblCompleted, TxCancelled, TxExpired, TxCreditWaits;
     ULONG TxCreditSequence, TxCreditMaximum, TxFlowMask;
+    ULONG PacketTx[7], PacketRxWire[7], PacketRxHost[7];
+    ULONG RxDropState, RxDropFormat, RxDropFilter, RxUnicastOther;
+    ULONG RxFilterSnapshot, MacReadbackMatches;
+    NTSTATUS MacReadbackStatus;
 
     ULONG DiagStage;
     NTSTATUS ProbeStatus;

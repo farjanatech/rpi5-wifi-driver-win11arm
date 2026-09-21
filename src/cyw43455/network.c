@@ -94,12 +94,19 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     CYW_NETWORK *N=A->Network;
     size_t off,len;
     PMDL Mdl; PNET_BUFFER_LIST Nbl;KIRQL irql;BOOLEAN accept;
-    if(N->Paused || !N->Published || !N->Authorized || !N->Associated ||
-        !A->PacketFilter || !CywEthernetBody(p,n,&off,&len))return;
+    unsigned kind;
+    if(!CywEthernetBody(p,n,&off,&len)) {A->RxDropFormat++;return;}
+    kind=CywPacketKind(p+off,len);A->PacketRxWire[kind]++;
+    if(N->Paused || !N->Published || !N->Authorized || !N->Associated) {
+        A->RxDropState++;return;
+    }
     KeAcquireSpinLock(&N->Lock,&irql);
+    A->RxFilterSnapshot=A->PacketFilter;
     accept=(BOOLEAN)CywAcceptEthernet(p+off,A->CurrentMacAddress,A->PacketFilter,
                                       &A->MulticastList[0][0],A->MulticastCount);
-    KeReleaseSpinLock(&N->Lock,irql);if(!accept)return;
+    KeReleaseSpinLock(&N->Lock,irql);
+    if(!(p[off]&1) && RtlCompareMemory(p+off,A->CurrentMacAddress,6)!=6)A->RxUnicastOther++;
+    if(!accept) {A->RxDropFilter++;return;}
     /* RESOURCES forces synchronous consumption: Pause/Halt cannot race an
      * outstanding return callback or a retained pointer into the RX buffer. */
     Mdl=IoAllocateMdl(p+off,(ULONG)len,FALSE,FALSE,NULL);
@@ -108,7 +115,10 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     Nbl=NdisAllocateNetBufferAndNetBufferList(N->RxPool,0,0,Mdl,0,(ULONG)len);
     if(Nbl) {
         Nbl->SourceHandle=A->MiniportHandle;
+        NET_BUFFER_LIST_STATUS(Nbl)=NDIS_STATUS_SUCCESS;
+        NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;
         NdisMIndicateReceiveNetBufferLists(A->MiniportHandle,Nbl,0,1,NDIS_RECEIVE_FLAGS_RESOURCES);
+        A->PacketRxHost[kind]++;
         NdisFreeNetBufferList(Nbl);A->RxPackets++;
     } else A->RxNoBuffer++;
     IoFreeMdl(Mdl);
@@ -176,7 +186,12 @@ static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER A)
         N->Authorized && N->Associated && CywTxCredit(N->TxSeq,N->TxMax,N->TxFlow);
 }
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
-{return CywSendFrame(A,2,Data,Length);}
+{
+    NTSTATUS Status=CywSendFrame(A,2,Data,Length);
+    /* Transfer success is not proof that the AP received/acknowledged a frame. */
+    if(NT_SUCCESS(Status) && Length>=4)A->PacketTx[CywPacketKind(Data+4,Length-4)]++;
+    return Status;
+}
 #include "tx_queue.h"
 static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A)
 {
@@ -195,7 +210,7 @@ static NTSTATUS CywCmdInt(PRPI5CYW_ADAPTER A,ULONG Command,ULONG Value)
 {UCHAR b[4];CywPut32(b,Value);return CywFirmwareCommand(A,Command,TRUE,b,4);}
 static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
 {
-    PUCHAR clm=NULL;ULONG size,off,n;UCHAR chunk[460],events[16]={0};
+    PUCHAR clm=NULL;ULONG size,off,n;UCHAR chunk[460],events[16]={0},mac[6]={0};
     NTSTATUS Status;
     TRY(CywReadFirmwareFile(L"\\SystemRoot\\System32\\drivers\\rpi5cyw\\cyfmac43455-sdio.clm_blob",&clm,&size,65536));
     for(off=0;off<size;off+=n) {
@@ -210,6 +225,11 @@ static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
     TRY(CywInt(A,"mpc",0));TRY(CywCmdInt(A,86,0));
     TRY(CywInt(A,"allmulti",1)); /* software applies NDIS multicast filters */
     TRY(CywIovar(A,"cur_etheraddr",TRUE,A->CurrentMacAddress,6));
+    /* Read-only evidence: distinguish an accepted SET from matching readback.
+     * An unavailable GET is recorded, not used to rewrite or invent a MAC. */
+    A->MacReadbackStatus=CywIovar(A,"cur_etheraddr",FALSE,mac,sizeof(mac));
+    A->MacReadbackMatches=NT_SUCCESS(A->MacReadbackStatus) &&
+        RtlCompareMemory(mac,A->CurrentMacAddress,6)==6?1:0;
     events[0]=(1<<0)|(1<<5)|(1<<6);events[1]=(1<<3)|(1<<4);
     events[2]=1;events[5]=1<<6;
     TRY(CywIovar(A,"event_msgs",TRUE,events,sizeof(events)));

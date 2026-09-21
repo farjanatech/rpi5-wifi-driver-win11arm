@@ -98,6 +98,8 @@ jobs:
             '.\tests\installer_utility_tests.ps1',
             '.\utility\Connect-RPi5-WiFi.ps1',
             '.\tests\connection_utility_tests.ps1',
+            '.\utility\Set-RPi5-WiFi-Autoconnect.ps1',
+            '.\tests\autoconnect_utility_tests.ps1',
             '.\utility\Test-RPi5-WiFi-Performance.ps1',
             '.\tests\performance_utility_tests.ps1',
             '.\tests\firmware_package_tests.ps1',
@@ -118,6 +120,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\connection_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\connection-utility-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\autoconnect_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\autoconnect-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Simulate actual firmware startup with bus failures
@@ -208,7 +213,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.10
+          name: rpi5-wifi-one-click-diagnostics-v0.6.11
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

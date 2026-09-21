@@ -113,7 +113,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 10);
+    SET_DWORD(L"DiagVersion", 11);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -154,6 +154,24 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"TxErrors", Adapter->TxErrors);
     SET_DWORD(L"RxErrors", Adapter->RxErrors);
     SET_DWORD(L"RxNoBuffer", Adapter->RxNoBuffer);
+    SET_DWORD(L"RxDropState", Adapter->RxDropState);
+    SET_DWORD(L"RxDropFormat", Adapter->RxDropFormat);
+    SET_DWORD(L"RxDropFilter", Adapter->RxDropFilter);
+    SET_DWORD(L"RxUnicastOther", Adapter->RxUnicastOther);
+    SET_DWORD(L"RxFilterSnapshot", Adapter->RxFilterSnapshot);
+    SET_DWORD(L"MacReadbackStatus", Adapter->MacReadbackStatus);
+    SET_DWORD(L"MacReadbackMatches", Adapter->MacReadbackMatches);
+    {
+        static const PCWSTR TxNames[7]={L"TxOther",L"TxArpRequest",L"TxArpReply",L"TxIpv4Icmp",L"TxIpv4Udp",L"TxIpv4Tcp",L"TxIpv6"};
+        static const PCWSTR WireNames[7]={L"RxWireOther",L"RxWireArpRequest",L"RxWireArpReply",L"RxWireIpv4Icmp",L"RxWireIpv4Udp",L"RxWireIpv4Tcp",L"RxWireIpv6"};
+        static const PCWSTR HostNames[7]={L"RxHostOther",L"RxHostArpRequest",L"RxHostArpReply",L"RxHostIpv4Icmp",L"RxHostIpv4Udp",L"RxHostIpv4Tcp",L"RxHostIpv6"};
+        ULONG PacketIndex;
+        for(PacketIndex=0;PacketIndex<7;++PacketIndex) {
+            SET_DWORD(TxNames[PacketIndex],Adapter->PacketTx[PacketIndex]);
+            SET_DWORD(WireNames[PacketIndex],Adapter->PacketRxWire[PacketIndex]);
+            SET_DWORD(HostNames[PacketIndex],Adapter->PacketRxHost[PacketIndex]);
+        }
+    }
     SET_DWORD(L"Cmd53FastPolls", Adapter->Cmd53FastPolls);
     SET_DWORD(L"Cmd53WaitSleeps", Adapter->Cmd53WaitSleeps);
     SET_DWORD(L"Cmd53Timeouts", Adapter->Cmd53Timeouts);
