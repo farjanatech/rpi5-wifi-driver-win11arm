@@ -113,7 +113,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 9);
+    SET_DWORD(L"DiagVersion", 10);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -187,6 +187,16 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"Capabilities2", Adapter->Capabilities2);
     SET_DWORD(L"PresentState", Adapter->PresentState);
     SET_DWORD(L"ClockControl", Adapter->ClockControl);
+    SET_DWORD(L"BusModeStage", Adapter->BusModeStage);
+    SET_DWORD(L"BusTargetKhz", Adapter->BusTargetKhz);
+    SET_DWORD(L"BusActualKhz", Adapter->BusActualKhz);
+    SET_DWORD(L"BusWidth", Adapter->BusWidth);
+    SET_DWORD(L"BusCardInterface", Adapter->BusCardInterface);
+    SET_DWORD(L"BusCardSpeed", Adapter->BusCardSpeed);
+    SET_DWORD(L"BusVerifyReads", Adapter->BusVerifyReads);
+    SET_DWORD(L"BusUpgradeStatus", Adapter->BusUpgradeStatus);
+    SET_DWORD(L"BusRecoveryStatus", Adapter->BusRecoveryStatus);
+    SET_DWORD(L"BusVerifyStatus", Adapter->BusVerifyStatus);
     SET_DWORD(L"PowerControl", Adapter->PowerControl);
     SET_DWORD(L"HostControl", Adapter->HostControl);
     SET_DWORD(L"HostControl2", Adapter->HostControl2);

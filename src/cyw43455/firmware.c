@@ -275,6 +275,25 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     TRY(SdioCmd52Write(A,0,4,7,7));
     TRY(CywBpWrite(A,A->SdioCoreBase+0x24,0x200000f0));
     CywFirmwarePhase(A,440);
+    /* Keep upload/readback unchanged. First validate the faster bus using
+     * read-only chip-ID CMD53 transfers, not writes into running firmware RAM.
+     * Association/control traffic then exercises F2 at this same speed. */
+    TRY(SdioNegotiateOperatingSpeed(A));
+    A->BusModeStage=5; A->BusVerifyReads=0;
+    for(i=0;i<16;++i) {
+        Status=CywNetworkCancelled(A) ? STATUS_CANCELLED :
+            CywBpRead(A,A->ChipCommonBase,&v);
+        if(NT_SUCCESS(Status) && v!=A->ChipIdRaw)Status=STATUS_DEVICE_DATA_ERROR;
+        if(!NT_SUCCESS(Status)) {
+            A->BusVerifyStatus=Status;
+            (void)SdioRestoreIdentificationBus(A);
+            A->BusModeStage=NT_SUCCESS(A->BusRecoveryStatus)?90:99;
+            goto Exit; /* Never label recovered slow mode a speed success. */
+        }
+        ++A->BusVerifyReads;
+    }
+    A->BusVerifyStatus=STATUS_SUCCESS;A->BusModeStage=6;
+    CywFirmwarePhase(A,450);
 Exit:
     if(fw)ExFreePoolWithTag(fw,RPI5CYW_TAG);
     if(raw)ExFreePoolWithTag(raw,RPI5CYW_TAG);
@@ -286,7 +305,7 @@ Exit:
 VOID CywFirmwareStop(PRPI5CYW_ADAPTER A)
 {
     UCHAR v;
-    if(A->IoStopped)return;
+    if(A->IoStopped || !NT_SUCCESS(A->BusRecoveryStatus))return;
     /* No host disk/boot/UEFI changes. Stop this chip only, best effort. */
     if(A->NetworkPhase>=410) {
         (void)CywBpWrite(A,A->SdioCoreBase+0x24,0);

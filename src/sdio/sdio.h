@@ -29,6 +29,16 @@
 #define SDHCI_PS_CARD_INSERTED        0x00010000UL
 
 #define SDHCI_HC_DATA_WIDTH_4BIT      0x02
+#define SDHCI_HC_HIGH_SPEED_ENABLE    0x04
+#define SDHCI_HC_DATA_WIDTH_8BIT      0x20
+#define CYW_SDIO_CCCR_BUS_INTERFACE   0x07UL
+#define CYW_SDIO_CCCR_CAPS            0x08UL
+#define CYW_SDIO_CCCR_SPEED           0x13UL
+#define CYW_SDIO_BUS_WIDTH_MASK       0x03
+#define CYW_SDIO_BUS_WIDTH_4BIT       0x02
+#define CYW_SDIO_SPEED_BSS_MASK       0x0e
+#define CYW_SDIO_CAP_LOW_SPEED        0x40
+#define CYW_SDIO_OPERATING_CLOCK_KHZ  25000UL
 
 #define SDHCI_PC_BUS_POWER_ON         0x01
 #define SDHCI_PC_BUS_VOLTAGE_180      0x0A
@@ -109,3 +119,6 @@ NTSTATUS SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
 VOID SdioDelayMilliseconds(ULONG Milliseconds);
 NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
                           ULONG Length, BOOLEAN Write);
+/* Serialized PASSIVE_LEVEL only. No high-speed/voltage/DMA changes. */
+NTSTATUS SdioRestoreIdentificationBus(PRPI5CYW_ADAPTER Adapter);
+NTSTATUS SdioNegotiateOperatingSpeed(PRPI5CYW_ADAPTER Adapter);

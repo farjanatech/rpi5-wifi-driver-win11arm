@@ -4,6 +4,25 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.10 candidate — verified 4-bit/25 MHz operating mode
+
+The exp0.6.9 hardware capture still filled all 64 pending slots with 920
+queue-full rejections. The bus also remained at 1-bit/400 kHz. This release
+targets that confirmed throughput limit, not a larger queue or DNS workaround.
+After the unchanged firmware upload/readback, the driver selects default-speed
+4-bit mode and targets 25 MHz (no 50 MHz, DMA, block-mode or IRQ changes).
+Sixteen matching read-only chip-ID transfers are required before configuration.
+Every startup explicitly synchronizes card and host to slow mode before data
+transfers. Failed upgrades recover to matching slow mode where possible, then
+stop connection startup; an unverified fast bus is never silently used.
+
+Install on the Pi, reboot once, then run **Test-RPi5-WiFi-Performance.cmd**.
+It connects and collects one ZIP: bus state, routing, gateway/internet ping,
+DNS, HTTPS, bounded 1 MiB download and the complete diagnostics. Disconnect
+wired Ethernet/VPNs for an unambiguous Wi-Fi test. No logs are uploaded.
+Hardware throughput and signal timing still require validation on the Pi.
+See [testing and rollback](docs/INTEGRATED-TESTING.md).
+
 ### Integrated exp0.6.9 candidate — pending sends and bounded backpressure
 
 The user's exp0.6.8 logs record 1274 transmit errors and exactly 1274 full-queue

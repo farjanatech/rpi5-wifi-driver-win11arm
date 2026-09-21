@@ -93,6 +93,9 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG Capabilities2;
     ULONG PresentState;
     ULONG ClockControl;
+    ULONG BusModeStage, BusTargetKhz, BusActualKhz, BusWidth;
+    ULONG BusCardInterface, BusCardSpeed, BusVerifyReads;
+    NTSTATUS BusUpgradeStatus, BusRecoveryStatus, BusVerifyStatus;
     ULONG PowerControl;
     ULONG HostControl;
     ULONG HostControl2;

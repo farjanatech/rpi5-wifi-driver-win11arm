@@ -98,6 +98,8 @@ jobs:
             '.\tests\installer_utility_tests.ps1',
             '.\utility\Connect-RPi5-WiFi.ps1',
             '.\tests\connection_utility_tests.ps1',
+            '.\utility\Test-RPi5-WiFi-Performance.ps1',
+            '.\tests\performance_utility_tests.ps1',
             '.\tests\firmware_package_tests.ps1',
             '.\scripts\fetch-firmware.ps1'
           ) | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning }
@@ -126,6 +128,13 @@ jobs:
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
           $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\firmware_tests.c /Fe:ci-logs\firmware_tests.exe && ci-logs\firmware_tests.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\firmware-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test bounded automatic performance utility without hardware
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\performance_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\performance-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Record runner toolchain
@@ -199,7 +208,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.9
+          name: rpi5-wifi-one-click-diagnostics-v0.6.10
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

@@ -10,6 +10,7 @@ static ULONG Fault, Fail52At, Commands52, ReadbackMismatch, Command53Events;
 static ULONG FifoWrites, WriteWords[128], DiscoveryMode, Fail53At;
 static ULONG64 SimTime, ReadyAt;
 static ULONG SleepUs, SleepCount, StallUs, StopOnSleep;
+static ULONG BusClockFault,BusHostFault;
 static PRPI5CYW_ADAPTER ActiveAdapter;
 static const ULONG Erom[] = {
     0x4BF80001, 0x01080001, 0x18000005, 0x18100085,
@@ -48,6 +49,7 @@ void WRITE_REGISTER_UCHAR(PUCHAR Address, UCHAR Value)
         ResetCount++;
         *Address = Fault == 7 ? Value : 0;
     }
+    else if(Offset(Address)==SDHCI_HOST_CONTROL && BusHostFault && (Value&2)) *Address=0;
     else *Address = Value;
 }
 void WRITE_REGISTER_ULONG(PULONG Address, ULONG Value)
@@ -67,7 +69,8 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
 {
     ULONG Argument, Fn, Reg, Response = 0, Command;
     *Address = Value;
-    if (Offset(Address) == SDHCI_CLOCK_CONTROL && (Value & 1))
+    if (Offset(Address) == SDHCI_CLOCK_CONTROL && (Value & 1) &&
+        !(BusClockFault==2 || (BusClockFault==1 && (Value&0xff00)==0x0400)))
         *Address |= SDHCI_CLK_INT_CLK_STABLE;
     if (Offset(Address) != SDHCI_COMMAND) return;
     CommandCount++;
@@ -167,6 +170,7 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     TestIrql = 0;
     SimTime=ReadyAt=0;SleepUs=1000;SleepCount=StallUs=StopOnSleep=0;
     ActiveAdapter=Adapter;
+    BusClockFault=BusHostFault=0;
     Card[1][CYW_F1_WINDOW_LOW] = 0x80;
     Card[1][CYW_F1_WINDOW_LOW + 1] = 0x12;
     Card[1][CYW_F1_WINDOW_LOW + 2] = 0x18;
@@ -182,6 +186,7 @@ static void CheckRestored(void)
 }
 
 #include "erom_tests.h"
+#include "bus_mode_tests.h"
 
 int main(void)
 {
@@ -192,6 +197,7 @@ int main(void)
     C_ASSERT(sizeof(ULONG) == 4);
     C_ASSERT(sizeof(NTSTATUS) == 4);
     RunEromTests();
+    RunBusModeTests();
     /* Actual F2 completion polling: immediate, short-ready, slow scheduler,
      * timeout and cancellation. No MMIO or driver loaded on this host. */
     Init(&Adapter);

@@ -41,6 +41,8 @@ Copy-Item (Join-Path $root 'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd') (Join-Pa
 & (Join-Path $root 'tests\firmware_package_tests.ps1') -Directory $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.cmd') $stage
+Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') $stage
+Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.cmd') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -87,7 +89,19 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.9 is an UNVALIDATED pending-transmit/backpressure candidate.
+Driver exp0.6.10 is an UNVALIDATED 4-bit/25 MHz operating-bus candidate.
+Firmware upload/readback stays conservative. After F2 startup, default timing
+and 4-bit width are set on both ends, then the clock targets <=25 MHz.
+Sixteen matching read-only chip-ID CMD53 probes are required. Failed upgrades
+restore a verified 1-bit/400 kHz configuration or stop without unsafe cleanup.
+No association is attempted after an upgrade/verification failure.
+Run Test-RPi5-WiFi-Performance.cmd after one reboot: it prompts for connection,
+then saves one desktop report ZIP with bus/route/ping/DNS/HTTPS/download results
+and diagnostics. Unplug wired Ethernet and disconnect VPNs for this test.
+The tool requests example.com and up to 1 MiB from speed.cloudflare.com;
+logs stay local and passwords are not recorded. No settings are changed.
+Firmware, country policy, UEFI and existing pending-send logic are unchanged.
+The exp0.6.9 pending-transmit/backpressure implementation is retained:
 Windows sends remain pending until every frame is transferred to the chip.
 Firmware-busy sends retain their place and retry without duplicating completed
 frames. Bounded bursts run before and after receive polling. No per-packet
@@ -95,7 +109,7 @@ allocation; still at most 64 retained frames and 64 outstanding NBLs.
 Cancellation, pause, disconnect, stop and power-down return pending ownership.
 Requests expire after 30 seconds rather than being held indefinitely.
 New completion/expiry/credit diagnostics and isolated optional Windows stats.
-The exp0.6.8 SDIO polling changes and 1-bit/400 kHz bus are unchanged.
+The exp0.6.8 SDIO polling engine is unchanged; runtime bus speed is upgraded.
 Physical exp0.6.7 showed authentication, DHCP, ping, DNS and HTTPS responses,
 but high latency and intermittent DNS timeouts. exp0.6.8 recorded 1274 queue-full
 rejections matching transmit errors. This build is not a proven speed fix.

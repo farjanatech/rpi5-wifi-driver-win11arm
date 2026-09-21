@@ -2,6 +2,13 @@
 
 ## Integrated candidate 0.6 references and redistributed firmware
 
+exp0.6.10 operating-speed sequencing was informed by the user-supplied
+`sdio-operating-speed (1).patch` from the shared Claude discussion. The mode
+implementation is rewritten with explicit startup synchronization, failure
+recovery, capability checks and tests. CCCR register definitions are protocol
+constants cross-checked against Linux include/linux/mmc/sdio.h. No firmware
+binary, calibration data, or regulatory settings are modified by this change.
+
 exp0.6.9 pending-NBL completion, retry-on-firmware-busy and transmit-draining
 design references Ahmed ARIF's `CywDrainTxQueue` and `CywQueueTxWork` in
 `drivers/network/dd/cyw43455/cyw43455.c` and the bus worker in `fwil.c`, revision

@@ -121,6 +121,7 @@ SdioSetClock(
     {
         return STATUS_INVALID_PARAMETER;
     }
+    if (Adapter->IoStopped) return STATUS_INVALID_DEVICE_STATE;
 
     BaseClockMhz = (Adapter->Capabilities & SDHCI_CAP_BASE_CLK_MASK) >> SDHCI_CAP_BASE_CLK_SHIFT;
     if (BaseClockMhz == 0)
@@ -144,6 +145,7 @@ SdioSetClock(
 
     for (Timeout = 0; Timeout < 2000; Timeout++)
     {
+        if (Adapter->IoStopped) return STATUS_INVALID_DEVICE_STATE;
         ClockControl = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
         if ((ClockControl & SDHCI_CLK_INT_CLK_STABLE) != 0)
         {
@@ -159,8 +161,15 @@ SdioSetClock(
     ClockControl |= SDHCI_CLK_SD_CLK_ENABLE;
     SdioWrite16(Adapter, SDHCI_CLOCK_CONTROL, ClockControl);
     Adapter->ClockControl = SdioRead16(Adapter, SDHCI_CLOCK_CONTROL);
+    if ((Adapter->ClockControl & 0xffc7) !=
+        (ULONG)(((Divider & 0xff) << 8) | DividerHigh | 7))
+        return STATUS_DEVICE_DATA_ERROR;
+    Adapter->BusTargetKhz = TargetClockKhz;
+    Adapter->BusActualKhz = Divider ? BaseClockKhz / (2UL * Divider) : BaseClockKhz;
     return STATUS_SUCCESS;
 }
+
+#include "bus_mode.h"
 
 static NTSTATUS
 SdioInitializeHost(
@@ -790,6 +799,17 @@ Rpi5CywDirectSdioProbe(
         return Status;
     }
     Adapter->CccrRevision = Value;
+
+    /* A host reset does not establish the card's width/timing. Explicitly
+     * synchronize both ends before the first F1 data transfer, including D0
+     * resume and warm restart. CMD52 uses CMD, not the DAT bus width. */
+    Adapter->BusModeStage = 1;
+    Adapter->BusUpgradeStatus = STATUS_SUCCESS;
+    Adapter->BusVerifyStatus = STATUS_SUCCESS;
+    Adapter->BusVerifyReads = 0;
+    Status = SdioRestoreIdentificationBus(Adapter);
+    Rpi5CywWriteDiagnostics(Adapter, 80, Status);
+    if (!NT_SUCCESS(Status)) return Status;
 
     Status = SdioCmd52Read(Adapter, 0, CYW_SDIO_CCCR_IO_ENABLE, &Value);
     if (!NT_SUCCESS(Status))

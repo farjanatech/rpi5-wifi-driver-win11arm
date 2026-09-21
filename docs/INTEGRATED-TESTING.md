@@ -1,4 +1,44 @@
-# exp0.6.9 pending-send candidate: physical test checklist
+# exp0.6.10: one-reboot, one-utility performance check
+
+1. Extract the entire new package into a new folder on the Pi. Run the included
+   installer, then restart once. Do not install on the development PC.
+2. Unplug wired Ethernet and disconnect VPNs for the measurement. Keep the cable
+   available for recovery. No UEFI/Windows/DNS/firmware changes are needed.
+3. Run **Test-RPi5-WiFi-Performance.cmd**. It runs the connection prompts (confirm
+   BD only if physically in Bangladesh) then automates the tests and diagnostics.
+4. Share its single **RPI5-WIFI-PERFORMANCE-*.zip** on the desktop. No separate
+   diagnostics command is normally necessary. Review device/network info before
+   posting publicly. Credentials are not transcribed or stored.
+
+Firmware upload still runs at slow speed and can take several minutes. This is
+intentional for this release; the performance change starts afterwards. The
+utility allows progressing upload time, then uses bounded network tests.
+It requests example.com and a 1 MiB HTTPS download from speed.cloudflare.com;
+no personal files or logs are sent. ICMP failure alone does not prove no internet.
+Competing default routes cause an inconclusive report instead of Ethernet being
+mislabelled as working Wi-Fi. No adapter is automatically disabled.
+
+DiagVersion=10: BusModeStage 1=baseline, 2=capabilities, 3=width/default timing,
+4=clock, 5=data verification, 6=verified, 90=failed but restored, 99=recovery
+failed. BusTargetKhz/BusActualKhz are target/calculated from controller base clock
+and divider (not measured with an oscilloscope); BusWidth is the verified host
+and card width. BusUpgradeStatus, BusVerifyStatus, BusRecoveryStatus preserve
+failure evidence. BusVerifyReads=16 is required for success. Phase 450 marks
+verified operating mode, before association. A failed speed change stops startup
+even if slow-mode recovery succeeds; it is not disguised as a speed success.
+Read-only chip-ID probes check real CMD53 reads, not a complete stress test or
+proof of RF stability. Subsequent firmware commands exercise F2 writes/reads.
+
+CI tests include each negotiation CMD52 failure, partial writes/readback failure,
+host latch/clock failure, failed recovery, warm-state synchronization and repeat
+resume, plus actual firmware probe mismatch/bus failure cleanup. These are
+simulations, not hardware validation. Existing pending-send tests remain enabled.
+
+If Wi-Fi fails, keep the ZIP before restarting. Reconnect working Ethernet and
+use Device Manager's Roll Back Driver if available, or reinstall the retained
+previous signed package using its installer. Do not replace UEFI or Windows.
+
+## Historical exp0.6.9 pending-send candidate: physical test checklist
 
 Install from a new extracted folder on the Pi only, then restart once. No UEFI
 replacement, firmware mixing, DNS changes or Windows reinstall. Connect using

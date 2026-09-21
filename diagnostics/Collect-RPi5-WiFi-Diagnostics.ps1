@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.9'
+$script:UtilityVersion = '0.6.10'
 
 function Invoke-Rpi5ReadOnlyCapture {
     param([Parameter(Mandatory=$true)][scriptblock]$Command)
@@ -310,6 +310,8 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'LastCommandResetStatus','Cmd5AttemptCount','Cmd5ValidAttempt','Cmd5SuccessAttempt',
                     'Cmd5ProbeResponse','SdioOcr','SdioFunctions','RelativeAddress',
                     'CccrRevision','IoEnable','IoReady','F1InterfaceCode','F2InterfaceCode',
+                    'BusModeStage','BusTargetKhz','BusActualKhz','BusWidth','BusCardInterface',
+                    'BusCardSpeed','BusVerifyReads','BusUpgradeStatus','BusRecoveryStatus','BusVerifyStatus',
                     'DiagVersion','ProbePhase','Function1Ready','ChipClockCsr','ChipIdRaw',
                     'ChipId','ChipRevision','Cmd53ReadCount','Cmd53BytesTransferred',
                     'Cmd53ResetStatus','ProbeRestoreStatus','Cmd53WriteCount',
