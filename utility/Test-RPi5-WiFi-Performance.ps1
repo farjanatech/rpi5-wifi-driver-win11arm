@@ -56,9 +56,9 @@ try {
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Host 'exp0.6.10: connection, bus, gateway, DNS, HTTPS and bounded download test.'
-    Write-Host 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
-    Write-Host 'The test requests example.com and about 1 MiB from speed.cloudflare.com. No logs are uploaded.'
+    Write-Output 'exp0.6.10: connection, bus, gateway, DNS, HTTPS and bounded download test.'
+    Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
+    Write-Output 'The test requests example.com and about 1 MiB from speed.cloudflare.com. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
     # prompts/clearing; all saved performance output starts after it returns.
     try { & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') }
@@ -71,7 +71,7 @@ try {
     function Write-Report {
         param([string]$Text)
         $Text | Add-Content -LiteralPath $report -Encoding UTF8
-        Write-Host $Text
+        Write-Output $Text
     }
     function Save-Step {
         param([string]$Name, [string]$File, [string[]]$Arguments, [int]$Seconds)
@@ -144,9 +144,9 @@ try {
     catch { Write-Report "DIAGNOSTICS ERROR: $($_.Exception.Message)" }
     $zip = "$resultDirectory.zip"
     Compress-Archive -Path (Join-Path $resultDirectory '*') -DestinationPath $zip
-    Write-Host "`r`nShare this one report ZIP: $zip"
-    Write-Host 'It contains local network addresses/device logs. Review before sharing publicly. No password was saved.'
+    Write-Output "`r`nShare this one report ZIP: $zip"
+    Write-Output 'It contains local network addresses/device logs. Review before sharing publicly. No password was saved.'
 } catch {
-    Write-Host "Test could not complete: $($_.Exception.Message)"
-    if ($resultDirectory) { Write-Host "Partial results: $resultDirectory" }
+    Write-Output "Test could not complete: $($_.Exception.Message)"
+    if ($resultDirectory) { Write-Output "Partial results: $resultDirectory" }
 } finally { if (-not $NoPause) { [void](Read-Host 'Press Enter to close') } }
