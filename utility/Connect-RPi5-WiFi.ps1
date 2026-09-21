@@ -159,7 +159,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     if ($Disconnect) { $launchArguments += '-Disconnect' }
     if ($ConfigPath) { $launchArguments += @('-ConfigPath', ('"{0}"' -f $ConfigPath)) }
     if ($Startup) { throw 'Startup mode requires the installed SYSTEM task.' }
-    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launchArguments -WindowStyle Hidden
+    # Interactive connection must show its prompts/results; only the SYSTEM
+    # startup task is noninteractive and runs without a user desktop window.
+    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launchArguments
     return
 }
 if ($Startup -and -not $ConfigPath) { throw 'Startup mode requires a configuration file.' }

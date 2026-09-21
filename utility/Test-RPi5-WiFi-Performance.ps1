@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 function Get-Rpi5BusAssessment {
     param($Diagnostic)
     if ($null -eq $Diagnostic -or -not $Diagnostic.PSObject.Properties['BusModeStage']) {
-        return 'Updated runtime diagnostics missing. Restart after installing exp0.6.10.'
+        return 'Updated runtime diagnostics missing. Restart after installing exp0.6.11.'
     }
     if ($Diagnostic.DiagVersion -ge 10 -and $Diagnostic.BusModeStage -eq 6 -and
         $Diagnostic.BusWidth -eq 4 -and $Diagnostic.BusActualKhz -gt 400 -and
@@ -56,7 +56,7 @@ try {
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Output 'exp0.6.10: connection, bus, gateway, DNS, HTTPS and bounded download test.'
+    Write-Output 'exp0.6.11: connection, bus, packet-path counters, gateway, DNS, HTTPS and bounded download test.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
     Write-Output 'The test requests example.com and about 1 MiB from speed.cloudflare.com. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
@@ -83,7 +83,7 @@ try {
         } catch { Write-Report "TEST ERROR: $($_.Exception.Message)" }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "exp0.6.10 performance report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "exp0.6.11 performance report; UTC=$([datetime]::UtcNow.ToString('o'))"
     Write-Report 'Counters are cumulative periodic driver snapshots, not atomic per-test measurements.'
     $before = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
     $before | Format-List * | Out-String -Width 500 | Set-Content (Join-Path $resultDirectory 'driver-before.txt')
