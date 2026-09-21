@@ -32,6 +32,8 @@ static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter
 static ULONG64 Clock;
 static CYW_TX_STATE TestQueue;
 static RPI5CYW_ADAPTER TestAdapter;
+VOID Rpi5CywTrafficDrop(PRPI5CYW_ADAPTER A,BOOLEAN Tx,ULONG Frames,BOOLEAN Error)
+{if(Error)A->Traffic.Errors[Tx]+=Frames;else A->Traffic.Discards[Tx]+=Frames;}
 static NET_BUFFER_LIST Reentrant;
 static NET_BUFFER ReentrantNb;
 #define CHECK(x) do {if(!(x)){printf("FAIL %d: %s\n",__LINE__,#x);Failures++;}}while(0)
@@ -98,6 +100,7 @@ int main(void)
     CHECK(TestQueue.Outstanding==64 && TestQueue.Frames==64 && TestQueue.Bytes==6400);
     CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);
     CHECK(!TestQueue.Outstanding && TestAdapter.TxNblCompleted==64);
+    CHECK(TestAdapter.Traffic.Discards[1]==64 && TestAdapter.Traffic.Errors[1]==0);
     for(i=0;i<64;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_PAUSED);
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[64])==NDIS_STATUS_PAUSED);
 
@@ -125,6 +128,7 @@ int main(void)
     Init();Packet(&nbl[0],&nb[0],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
     Credits=0;Clock=CYW_TX_MAX_AGE;CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && TestAdapter.TxExpired==1 && !TestQueue.Outstanding);
     CHECK(nbl[0].Status==NDIS_STATUS_FAILURE);
+    CHECK(TestAdapter.Traffic.Errors[1]==1);
 
     Init();for(i=0;i<2;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
     FailTransfer=1;CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==STATUS_IO_DEVICE_ERROR && nbl[0].Completions==1);
@@ -150,6 +154,7 @@ int main(void)
     for(i=0;i<3;i++)CHECK(nbl[i].Completions==1);
     CHECK(nbl[0].Flags==0 && nbl[1].Flags==1 && nbl[2].Flags==0);
     CHECK(nbl[1].Status==NDIS_STATUS_INVALID_LENGTH && TestAdapter.TxNblCompleted==2 && !TestQueue.Outstanding);
+    CHECK(TestAdapter.Traffic.Errors[1]==1 && TestAdapter.Traffic.Discards[1]==0);
     CHECK(!Locks);if(Failures)return 1;
     puts("PASS: actual pending TX/dispatch: bounded admission, multi-NB, busy retry, cancellation, pause/power, timeout, bus failure, mapping, reentrant/early completion");return 0;
 }

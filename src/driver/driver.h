@@ -10,6 +10,7 @@
 #endif
 
 #include "../cyw43455/packet_probe.h"
+#include "traffic_stats.h"
 
 #ifndef ETH_LENGTH_OF_ADDRESS
 #define ETH_LENGTH_OF_ADDRESS 6
@@ -91,6 +92,11 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG RuntimeF1FastPolls, TxQueueMaxDelayMs;
     ULONG RuntimeCmd53SleepPhase[3], RuntimeF1WaitSleeps, RuntimeF2WaitSleeps;
     ULONG64 RuntimeCmd53Sleep100ns;
+    ULONG BpWindow, BpWindowValid, BpWindowCacheHits, BpWindowSelections;
+    CYW_TRAFFIC_STATS Traffic;
+#ifndef RPI5CYW_HOST_TEST
+    KSPIN_LOCK TrafficLock;
+#endif
     CYW_PACKET_PROBE PacketProbe;
 
     ULONG DiagStage;
@@ -201,6 +207,8 @@ typedef struct _RPI5CYW_ADAPTER
 } RPI5CYW_ADAPTER, *PRPI5CYW_ADAPTER;
 
 DRIVER_INITIALIZE DriverEntry;
+VOID Rpi5CywTrafficFrame(PRPI5CYW_ADAPTER A, BOOLEAN Tx, PUCHAR Data, ULONG Length);
+VOID Rpi5CywTrafficDrop(PRPI5CYW_ADAPTER A, BOOLEAN Tx, ULONG Frames, BOOLEAN Error);
 
 NTSTATUS
 Rpi5CywDirectSdioProbe(

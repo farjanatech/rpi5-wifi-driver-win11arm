@@ -1,6 +1,7 @@
 #include "driver.h"
 #include "../sdio/sdio.h"
 #include "../cyw43455/network.h"
+#include "statistics_flags.h"
 
 static NDIS_HANDLE gRpi5CywDriverHandle;
 
@@ -28,6 +29,11 @@ static const NDIS_OID gRpi5CywSupportedOids[] =
     OID_GEN_VENDOR_DRIVER_VERSION,
     OID_GEN_PHYSICAL_MEDIUM,
     OID_GEN_LINK_STATE,
+    OID_GEN_STATISTICS,
+    OID_GEN_BYTES_RCV,
+    OID_GEN_BYTES_XMIT,
+    OID_GEN_RCV_DISCARDS,
+    OID_GEN_XMIT_DISCARDS,
     OID_GEN_XMIT_OK,
     OID_GEN_RCV_OK,
     OID_GEN_XMIT_ERROR,
@@ -62,6 +68,8 @@ Rpi5CywCopyQuery(
     OidRequest->DATA.QUERY_INFORMATION.BytesWritten = Length;
     return NDIS_STATUS_SUCCESS;
 }
+
+#include "statistics_ndis.h"
 
 VOID
 Rpi5CywWriteDiagnostics(
@@ -113,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 13);
+    SET_DWORD(L"DiagVersion", 14);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -162,6 +170,8 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"MacReadbackStatus", Adapter->MacReadbackStatus);
     SET_DWORD(L"MacReadbackMatches", Adapter->MacReadbackMatches);
     SET_DWORD(L"RuntimeF1FastPolls", Adapter->RuntimeF1FastPolls);
+    SET_DWORD(L"BpWindowCacheHits", Adapter->BpWindowCacheHits);
+    SET_DWORD(L"BpWindowSelections", Adapter->BpWindowSelections);
     SET_DWORD(L"RuntimeCmd53CommandSleeps", Adapter->RuntimeCmd53SleepPhase[0]);
     SET_DWORD(L"RuntimeCmd53BufferSleeps", Adapter->RuntimeCmd53SleepPhase[1]);
     SET_DWORD(L"RuntimeCmd53CompleteSleeps", Adapter->RuntimeCmd53SleepPhase[2]);
@@ -424,6 +434,7 @@ Rpi5CywSetGeneralAttributes(
     General.SupportedOidList = (PNDIS_OID)gRpi5CywSupportedOids;
     General.SupportedOidListLength = sizeof(gRpi5CywSupportedOids);
     General.SupportedStatistics =
+        CYW_STATISTICS_SUPPORTED |
         NDIS_STATISTICS_XMIT_OK_SUPPORTED |
         NDIS_STATISTICS_RCV_OK_SUPPORTED |
         NDIS_STATISTICS_XMIT_ERROR_SUPPORTED |
@@ -523,6 +534,23 @@ Rpi5CywQueryInformation(
 
     switch (Oid)
     {
+        case OID_GEN_STATISTICS:
+        {
+            CYW_TRAFFIC_STATS s;NDIS_STATISTICS_INFO v;
+            CywTrafficSnapshot(Adapter,&s);CywNdisStatistics(&s,&v);
+            return Rpi5CywCopyQuery(OidRequest,&v,sizeof(v));
+        }
+        case OID_GEN_BYTES_RCV:
+        case OID_GEN_BYTES_XMIT:
+        case OID_GEN_RCV_DISCARDS:
+        case OID_GEN_XMIT_DISCARDS:
+        {
+            CYW_TRAFFIC_STATS s;CywTrafficSnapshot(Adapter,&s);
+            Data.Ulong64=Oid==OID_GEN_BYTES_RCV?CywTrafficTotal(s.Bytes[0]):
+                Oid==OID_GEN_BYTES_XMIT?CywTrafficTotal(s.Bytes[1]):
+                Oid==OID_GEN_RCV_DISCARDS?s.Discards[0]:s.Discards[1];
+            return Rpi5CywCopyQuery(OidRequest,&Data.Ulong64,sizeof(Data.Ulong64));
+        }
         case OID_GEN_SUPPORTED_LIST:
             return Rpi5CywCopyQuery(OidRequest,
                                     gRpi5CywSupportedOids,
@@ -580,7 +608,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00060005;
+            Data.Ulong = 0x0006000e;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:
@@ -616,12 +644,12 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong64, sizeof(Data.Ulong64));
 
         case OID_GEN_XMIT_ERROR:
-            Data.Ulong64 = Adapter->TxErrors;
-            return Rpi5CywCopyQuery(OidRequest, &Data.Ulong64, sizeof(Data.Ulong64));
-
         case OID_GEN_RCV_ERROR:
-            Data.Ulong64 = Adapter->RxErrors;
+        {
+            CYW_TRAFFIC_STATS s;CywTrafficSnapshot(Adapter,&s);
+            Data.Ulong64=s.Errors[Oid==OID_GEN_XMIT_ERROR?1:0];
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong64, sizeof(Data.Ulong64));
+        }
 
         case OID_GEN_RCV_NO_BUFFER:
             Data.Ulong64 = Adapter->RxNoBuffer;
@@ -766,6 +794,7 @@ Rpi5CywInitializeEx(
     }
 
     RtlZeroMemory(Adapter, sizeof(*Adapter));
+    KeInitializeSpinLock(&Adapter->TrafficLock);
     Adapter->MiniportHandle = MiniportAdapterHandle;
     Adapter->NdisPaused = TRUE;
     Adapter->Lookahead = RPI5CYW_MTU;

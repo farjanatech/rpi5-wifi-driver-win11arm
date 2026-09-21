@@ -271,6 +271,11 @@ int main(void)
     RunEromTests();
     RunBusModeTests();
     RunPhasePollingTests();
+    Init(&Adapter);Adapter.BpWindowValid=1;
+    CHECK(SdioCmd52Write(&Adapter,1,0x1000a,0,0xff)==0 && !Adapter.BpWindowValid);
+    Adapter.BpWindowValid=1;CHECK(SdioCmd52Write(&Adapter,1,0x1000e,0,0)==0 && Adapter.BpWindowValid);
+    CHECK(SdioCmd52Write(&Adapter,0,6,2,0)==0 && !Adapter.BpWindowValid);
+    Adapter.BpWindowValid=1;CHECK(SdioResetHost(&Adapter,SDHCI_RESET_CMD)==0 && !Adapter.BpWindowValid);
     /* Actual F2 completion polling: immediate, short-ready, slow scheduler,
      * timeout and cancellation. No MMIO or driver loaded on this host. */
     Init(&Adapter);

@@ -94,7 +94,20 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.13 gives each of the three CMD53 phases its own bounded short-poll
+Driver exp0.6.14 caches the verified runtime backplane address window, avoiding
+six redundant CMD52 operations on each repeated register access. Partial/failed
+selections, direct window/reset writes, bus errors and restart invalidate it.
+Slow-mode upload retains the original selection behavior. A single bus worker
+owns the cache; no concurrency, clock, firmware or wire-format changes.
+Adds locked 64-bit Ethernet byte/frame/error/discard statistics and the standard
+NDIS OID_GEN_STATISTICS interface for Windows traffic graphs. Bytes count actual
+chip transfers / host receive indications, not queued work or a fabricated rate.
+The utility adds a bounded 16 MiB download with concurrent router ping, plus
+Windows adapter statistics. It transfers up to 17 MiB total and uploads no logs.
+This is a throughput candidate, not a guaranteed or hardware-validated speedup.
+Keep exp0.6.13 for rollback; its Pi test measured 3.17 Mbps and no ping loss.
+
+Retained exp0.6.13 behavior gives each CMD53 phase its own bounded short-poll
 budget on the verified operating bus: at most 50 us per phase / 150 us total,
 in individual 10-us stalls, then yielding. The previous shared 40-us allowance
 could be exhausted before buffer/transfer completion. No unbounded busy waits.

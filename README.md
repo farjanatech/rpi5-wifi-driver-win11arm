@@ -4,6 +4,22 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.14 candidate — fewer bus commands and Windows traffic counters
+
+exp0.6.13 measured 3.17 Mbps, all 16 ping replies, zero queue-full rejections and
+an 18-ms maximum queue wait. Sustained browser/video traffic still needs work.
+This version avoids reselecting the same runtime backplane window: after three
+verified register writes, repeated accesses skip six redundant CMD52 operations.
+Failures, direct window writes, host resets and restart invalidate the cache.
+Only the single bus worker uses it, and slow upload behavior stays unchanged.
+
+Implements locked 64-bit NDIS traffic statistics for Windows graphs; no fake
+link rate. The test now includes a 16 MiB/60-second capped download with router
+pings during load. All probes total up to 17 MiB; logs remain local.
+No UEFI/firmware/country/bus-mode/queue-size change. Preserve exp0.6.13 for
+rollback. A source-level reduction in bus operations is not a measured speedup
+until tested on the Pi. See [testing](docs/INTEGRATED-TESTING.md).
+
 ### Integrated exp0.6.13 candidate — phase-aware operating-bus polling
 
 The exp0.6.12 Pi test established browsing and HTTPS, with zero observed bad

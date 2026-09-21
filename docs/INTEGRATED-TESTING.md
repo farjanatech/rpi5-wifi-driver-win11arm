@@ -1,4 +1,18 @@
-# exp0.6.13: one-reboot, one-utility performance check
+# exp0.6.14: one-reboot, one-utility performance check
+
+Keep exp0.6.13 for rollback. This candidate removes redundant runtime window
+selection commands and adds genuine 64-bit Windows traffic statistics. It does
+not claim a new negotiated PHY rate. DiagVersion=14 adds BpWindowCacheHits and
+BpWindowSelections. Each hit saves three CMD52 writes and their three readbacks.
+Compare actual measured throughput; do not infer Mbps from cache hits.
+
+The utility downloads up to 17 MiB total (1 MiB quick + 16 MiB sustained capped
+at 60 seconds). Router ping runs concurrently with the sustained transfer and
+is stopped after a bounded collection deadline; partial replies are labelled.
+Check gateway-under-load.txt, adapter-traffic-after.txt and performance.txt.
+One passing test is not proof of long-term stability. No network settings change.
+
+Previous exp0.6.13 test notes:
 
 Keep the working exp0.6.12 package for rollback. This update changes only
 operating-bus CMD53 short-poll budgeting and performance observations; firmware,

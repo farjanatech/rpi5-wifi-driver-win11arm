@@ -95,10 +95,10 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     size_t off,len;
     PMDL Mdl; PNET_BUFFER_LIST Nbl;KIRQL irql;BOOLEAN accept;
     unsigned kind;
-    if(!CywEthernetBody(p,n,&off,&len)) {A->RxDropFormat++;return;}
+    if(!CywEthernetBody(p,n,&off,&len)) {A->RxDropFormat++;Rpi5CywTrafficDrop(A,FALSE,1,TRUE);return;}
     kind=CywPacketKind(p+off,len);A->PacketRxWire[kind]++;
     if(N->Paused || !N->Published || !N->Authorized || !N->Associated) {
-        A->RxDropState++;return;
+        A->RxDropState++;Rpi5CywTrafficDrop(A,FALSE,1,FALSE);return;
     }
     KeAcquireSpinLock(&N->Lock,&irql);
     A->RxFilterSnapshot=A->PacketFilter;
@@ -110,7 +110,7 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     /* RESOURCES forces synchronous consumption: Pause/Halt cannot race an
      * outstanding return callback or a retained pointer into the RX buffer. */
     Mdl=IoAllocateMdl(p+off,(ULONG)len,FALSE,FALSE,NULL);
-    if(!Mdl) {A->RxNoBuffer++;return;}
+    if(!Mdl) {A->RxNoBuffer++;Rpi5CywTrafficDrop(A,FALSE,1,FALSE);return;}
     MmBuildMdlForNonPagedPool(Mdl);
     Nbl=NdisAllocateNetBufferAndNetBufferList(N->RxPool,0,0,Mdl,0,(ULONG)len);
     if(Nbl) {
@@ -118,10 +118,11 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
         Nbl->SourceHandle=A->MiniportHandle;
         NET_BUFFER_LIST_STATUS(Nbl)=NDIS_STATUS_SUCCESS;
         NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;
+        Rpi5CywTrafficFrame(A,FALSE,p+off,(ULONG)len);
         NdisMIndicateReceiveNetBufferLists(A->MiniportHandle,Nbl,0,1,NDIS_RECEIVE_FLAGS_RESOURCES);
         A->PacketRxHost[kind]++;
         NdisFreeNetBufferList(Nbl);A->RxPackets++;
-    } else A->RxNoBuffer++;
+    } else {A->RxNoBuffer++;Rpi5CywTrafficDrop(A,FALSE,1,FALSE);}
     IoFreeMdl(Mdl);
 }
 /* STATUS_NO_MORE_ENTRIES is not an I/O error: there is no frame this poll. */
@@ -191,6 +192,7 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
     NTSTATUS Status=CywSendFrame(A,2,Data,Length);
     /* Transfer success is not proof that the AP received/acknowledged a frame. */
     if(NT_SUCCESS(Status) && Length>=4) {
+        Rpi5CywTrafficFrame(A,TRUE,Data+4,Length-4);
         A->PacketTx[CywPacketKind(Data+4,Length-4)]++;
         CywProbePacket(&A->PacketProbe,Data+4,Length-4,1,KeQueryInterruptTime());
     }

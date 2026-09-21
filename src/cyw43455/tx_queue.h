@@ -51,9 +51,11 @@ static VOID CywTxCancel(CYW_TX_STATE *Q,PVOID CancelId)
     KeReleaseSpinLock(&Q->Lock,irql);
 }
 /* Caller holds Lock; at most 64 metadata records are moved, never packet data. */
-static PNET_BUFFER_LIST CywTxRemove(CYW_TX_STATE *Q,ULONG Index)
+static PNET_BUFFER_LIST CywTxRemove(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status)
 {
     PNET_BUFFER_LIST nbl=Q->Entries[Index].Nbl;ULONG i;
+    if(Status!=NDIS_STATUS_SUCCESS)
+        Rpi5CywTrafficDrop(A,TRUE,Q->Entries[Index].Frames,Status==NDIS_STATUS_FAILURE);
     Q->Frames-=Q->Entries[Index].HeldFrames;Q->Bytes-=Q->Entries[Index].Bytes;
     for(i=Index+1;i<Q->Count;++i)Q->Entries[i-1]=Q->Entries[i];
     Q->Count--;RtlZeroMemory(&Q->Entries[Q->Count],sizeof(Q->Entries[0]));
@@ -83,7 +85,7 @@ static VOID CywTxFlush(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,NDIS_STATUS Status)
     CywTxSetGate(Q,Status);
     for(;;) {
         KeAcquireSpinLock(&Q->Lock,&irql);
-        nbl=Q->Count?CywTxRemove(Q,0):NULL;
+        nbl=Q->Count?CywTxRemove(A,Q,0,Status):NULL;
         KeReleaseSpinLock(&Q->Lock,irql);
         if(!nbl)break;
         CywTxComplete(A,Q,nbl,Status);
@@ -103,7 +105,7 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
             completion=CywTxAbortStatus(Q,&Q->Entries[index],now);
             if(completion!=NDIS_STATUS_SUCCESS) {
                 if(Q->Gate==NDIS_STATUS_SUCCESS && !Q->Entries[index].Cancelled)A->TxExpired++;
-                nbl=CywTxRemove(Q,index);break;
+                nbl=CywTxRemove(A,Q,index,completion);break;
             }
         }
         KeReleaseSpinLock(&Q->Lock,irql);
@@ -115,7 +117,7 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
         if(!Q->Count) {KeReleaseSpinLock(&Q->Lock,irql);break;}
         completion=CywTxAbortStatus(Q,&Q->Entries[0],KeQueryInterruptTime());
         if(completion!=NDIS_STATUS_SUCCESS) {
-            nbl=CywTxRemove(Q,0);KeReleaseSpinLock(&Q->Lock,irql);
+            nbl=CywTxRemove(A,Q,0,completion);KeReleaseSpinLock(&Q->Lock,irql);
             CywTxComplete(A,Q,nbl,completion);break;
         }
         nb=Q->Entries[0].Next;
@@ -141,7 +143,7 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
              * admission budget early. */
             Q->Entries[0].Frames--;
         } else if(completion==NDIS_STATUS_SUCCESS)completion=NDIS_STATUS_FAILURE;
-        if(completion!=NDIS_STATUS_SUCCESS || !Q->Entries[0].Frames)nbl=CywTxRemove(Q,0);
+        if(completion!=NDIS_STATUS_SUCCESS || !Q->Entries[0].Frames)nbl=CywTxRemove(A,Q,0,completion);
         KeReleaseSpinLock(&Q->Lock,irql);
         if(nbl)CywTxComplete(A,Q,nbl,completion);
         if(!NT_SUCCESS(status) && data)return status; /* Bus fault: fail rest in worker exit. */

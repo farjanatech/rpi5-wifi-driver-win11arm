@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 function Get-Rpi5BusAssessment {
     param($Diagnostic)
     if ($null -eq $Diagnostic -or -not $Diagnostic.PSObject.Properties['BusModeStage']) {
-        return 'Updated runtime diagnostics missing. Restart after installing exp0.6.13.'
+        return 'Updated runtime diagnostics missing. Restart after installing exp0.6.14.'
     }
     if ($Diagnostic.DiagVersion -ge 10 -and $Diagnostic.BusModeStage -eq 6 -and
         $Diagnostic.BusWidth -eq 4 -and $Diagnostic.BusActualKhz -gt 400 -and
@@ -61,9 +61,9 @@ try {
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Output 'exp0.6.13: connection, bus, packet-path counters, gateway, DNS, HTTPS and bounded download test.'
+    Write-Output 'exp0.6.14: connection, bus, traffic counters, latency under load, DNS and HTTPS downloads.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
-    Write-Output 'The test requests example.com and about 1 MiB from speed.cloudflare.com. No logs are uploaded.'
+    Write-Output 'The test requests example.com and up to 17 MiB from speed.cloudflare.com, including a loaded-latency test. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
     # prompts/clearing; all saved performance output starts after it returns.
     try { & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') }
@@ -92,7 +92,7 @@ try {
     }
     function Save-Step {
         param([string]$Name, [string]$File, [string[]]$Arguments, [int]$Seconds)
-        Write-Report "`r`n--- $Name ---"
+        Write-Report "`r`n--- $Name --- UTC=$([datetime]::UtcNow.ToString('o'))"
         try {
             $result = Invoke-Rpi5BoundedProcess $File $Arguments $Seconds
             Write-Report "ExitCode=$($result.ExitCode) TimedOut=$($result.TimedOut)"
@@ -100,7 +100,7 @@ try {
         } catch { Write-Report "TEST ERROR: $($_.Exception.Message)" }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "exp0.6.13 performance report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "exp0.6.14 performance report; UTC=$([datetime]::UtcNow.ToString('o'))"
     Write-Report 'Counters are cumulative periodic driver snapshots, not atomic per-test measurements.'
     $before = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
     $before | Format-List * | Out-String -Width 500 | Set-Content (Join-Path $resultDirectory 'driver-before.txt')
@@ -145,6 +145,22 @@ try {
         $common = @('-4','--noproxy','*','--interface',$ip.IPAddress,'--connect-timeout','10','--silent','--show-error')
         Save-Step 'HTTPS headers; certificate verification enabled' (Join-Path $system 'curl.exe') ($common + @('--max-time','25','-I','-w','dns_seconds=%{time_namelookup} tcp_seconds=%{time_connect} tls_seconds=%{time_appconnect} first_byte_seconds=%{time_starttransfer} total_seconds=%{time_total}','https://example.com')) 30
         Save-Step '1 MiB bounded HTTPS download; bytes/sec is application throughput' (Join-Path $system 'curl.exe') ($common + @('--max-time','45','--fail','-o','NUL','-w','http=%{http_code} bytes=%{size_download} bytes_per_second=%{speed_download} total_seconds=%{time_total}','https://speed.cloudflare.com/__down?bytes=1048576')) 50
+        # A separate bounded ping process measures router latency under load.
+        # Only this process is stopped on timeout; no adapters/settings change.
+        $loadedPing = $null
+        try {
+            $loadedPing = Start-Process -FilePath (Join-Path $system 'ping.exe') -ArgumentList @('-4','-n','60','-w','1000',$gateway) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $resultDirectory 'gateway-under-load.txt') -RedirectStandardError (Join-Path $resultDirectory 'gateway-under-load-errors.txt')
+            Save-Step '16 MiB sustained HTTPS download (60s cap); router ping runs concurrently' (Join-Path $system 'curl.exe') ($common + @('--max-time','60','--fail','-o','NUL','-w','http=%{http_code} bytes=%{size_download} bytes_per_second=%{speed_download} total_seconds=%{time_total}','https://speed.cloudflare.com/__down?bytes=16777216')) 65
+        } finally {
+            if ($null -ne $loadedPing) {
+                if (-not $loadedPing.WaitForExit(5000)) { $loadedPing.Kill(); $loadedPing.WaitForExit(); Write-Report 'Loaded ping stopped at collection deadline; partial replies saved.' }
+                $loadedPing.Dispose()
+            }
+        }
+        try {
+            Get-NetAdapterStatistics -Name $adapter.Name | Format-List * | Out-String -Width 500 |
+                Set-Content (Join-Path $resultDirectory 'adapter-traffic-after.txt')
+        } catch { Write-Report 'Windows traffic statistics unavailable; retain driver counters.' }
     } catch { Write-Report "PERFORMANCE INCOMPLETE: $($_.Exception.Message)" }
     try {
         $protocolAfter = Invoke-Rpi5BoundedProcess (Join-Path $env:windir 'System32\netstat.exe') @('-s') 10

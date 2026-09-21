@@ -91,6 +91,7 @@ SdioResetHost(
 {
     ULONG Timeout;
 
+    Adapter->BpWindowValid=0;
     SdioWrite8(Adapter, SDHCI_SOFTWARE_RESET, ResetMask);
     for (Timeout = 0; Timeout < 1000; Timeout++)
     {
@@ -117,6 +118,7 @@ SdioSetClock(
     USHORT Divider;
     USHORT DividerHigh;
     USHORT ClockControl;
+    Adapter->BpWindowValid=0;
     if (TargetClockKhz == 0)
     {
         return STATUS_INVALID_PARAMETER;
@@ -553,6 +555,8 @@ SdioCmd52Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
         Function > 7 || Address > SDIO_CMD52_ADDRESS_MASK)
         return STATUS_INVALID_PARAMETER;
 
+    if ((Function == 1 && Address >= 0x1000a && Address <= 0x1000c) ||
+        (Function == 0 && (Address == 2 || Address == 6))) Adapter->BpWindowValid=0;
     Status = SdioSendCommand(Adapter, SDCMD_IO_RW_DIRECT,
         SdioBuildCmd52Argument(TRUE, Function, FALSE, Address, Value),
         SDHCI_CMD_RESP_48 | SDHCI_CMD_CRC_CHECK | SDHCI_CMD_INDEX_CHECK,

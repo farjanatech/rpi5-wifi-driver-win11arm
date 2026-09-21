@@ -147,6 +147,27 @@ static void Init(PRPI5CYW_ADAPTER A)
 int main(void)
 {
     RPI5CYW_ADAPTER a;unsigned count,i,j;UCHAR rejected[512]={0};
+    ULONG value;
+    /* Real CywBpRead/Write: a verified window replaces six redundant CMD52
+     * write/readback operations per subsequent register access in production. */
+    Init(&a);a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=25000;
+    CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0 && value==a.ChipIdRaw);
+    CHECK(WindowWrites==3 && a.BpWindowValid && a.BpWindowSelections==1);
+    for(i=0;i<100;++i)CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0 && value==a.ChipIdRaw);
+    CHECK(WindowWrites==3 && a.BpWindowCacheHits==100);
+    CHECK(CywBpWrite(&a,a.SdioCoreBase+0x20,0)==0 && WindowWrites==3);
+    CHECK(CywBpRead(&a,a.Cr4WrapperBase+0x408,&value)==0 && WindowWrites==6);
+    FailCall=Calls+1;
+    CHECK(!NT_SUCCESS(CywBpRead(&a,a.Cr4WrapperBase+0x408,&value)) && !a.BpWindowValid);
+    FailCall=0;CHECK(CywBpRead(&a,a.Cr4WrapperBase+0x408,&value)==0 && WindowWrites==9);
+    for(i=1;i<=3;++i) {
+        Init(&a);a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=25000;FailCall=i;
+        CHECK(!NT_SUCCESS(CywBpRead(&a,a.ChipCommonBase,&value)) && !a.BpWindowValid);
+        FailCall=0;CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0 && a.BpWindowValid);
+    }
+    Init(&a);CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0);
+    CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0 && WindowWrites==6 && !a.BpWindowValid);
+    a.BpWindowValid=1;a.IoStopped=1;CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==STATUS_CANCELLED && !a.BpWindowValid);
     const ULONG packageSizes[]={609309,631467};
     Init(&a);Window=0x198000;Card[0x110]=64;
     CHECK(SdioCmd53Write(&a,1,0x8000,rejected,512)==STATUS_IO_DEVICE_ERROR);

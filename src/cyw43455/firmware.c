@@ -65,10 +65,20 @@ static NTSTATUS CywWindow(PRPI5CYW_ADAPTER A, ULONG Address)
 {
     ULONG i, Window=Address&0xffff8000UL;
     NTSTATUS Status;
+    BOOLEAN cache=A->BusModeStage==6 && A->BusWidth==4 &&
+        A->BusActualKhz>400 && A->BusActualKhz<=25000;
+    if(A->IoStopped)return STATUS_CANCELLED;
+    /* The single bus worker owns this cache. Never reuse a partial selection.
+     * Low-level window writes and failed transfers invalidate it as well. */
+    if(cache && A->BpWindowValid && A->BpWindow==Window) {
+        A->BpWindowCacheHits++;return STATUS_SUCCESS;
+    }
+    A->BpWindowValid=0;
     for(i=0;i<3;++i) {
         Status=SdioCmd52Write(A,1,0x1000a+i,(UCHAR)(Window>>(8+i*8)),0xff);
         if(!NT_SUCCESS(Status)) return Status;
     }
+    if(cache) {A->BpWindow=Window;A->BpWindowValid=1;A->BpWindowSelections++;}
     return STATUS_SUCCESS;
 }
 NTSTATUS CywBpRead(PRPI5CYW_ADAPTER A, ULONG Address, PULONG Value)
@@ -77,6 +87,7 @@ NTSTATUS CywBpRead(PRPI5CYW_ADAPTER A, ULONG Address, PULONG Value)
     if((Address&3) || Address<0x18000000 || Address>0x181ffffc) return STATUS_INVALID_PARAMETER;
     Status=CywWindow(A,Address);
     if(NT_SUCCESS(Status)) Status=SdioCmd53Read(A,1,(Address&0x7fff)|0x8000,b,4);
+    if(!NT_SUCCESS(Status))A->BpWindowValid=0;
     if(NT_SUCCESS(Status)) *Value=CywLe32(b);
     return Status;
 }
@@ -86,6 +97,7 @@ NTSTATUS CywBpWrite(PRPI5CYW_ADAPTER A, ULONG Address, ULONG Value)
     if((Address&3) || Address<0x18000000 || Address>0x181ffffc) return STATUS_INVALID_PARAMETER;
     CywPut32(b,Value); Status=CywWindow(A,Address);
     if(NT_SUCCESS(Status)) Status=SdioCmd53Write(A,1,(Address&0x7fff)|0x8000,b,4);
+    if(!NT_SUCCESS(Status))A->BpWindowValid=0;
     return Status;
 }
 static NTSTATUS CywRam(PRPI5CYW_ADAPTER A, ULONG Address, PUCHAR Data,
@@ -198,6 +210,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     UCHAR b[4],check[512],byte;
     size_t nvSize=0;
     NTSTATUS Status=STATUS_DEVICE_CONFIGURATION_ERROR;
+    A->BpWindowValid=0;
     if(A->ChipId!=0x4345 || A->ChipRevision!=6 || !A->CoreInventoryComplete ||
         A->SdioFunctions<2 || !A->Cr4WrapperBase) return Status;
     A->NetworkStatus=STATUS_SUCCESS;A->FirmwareNextSnapshot=0;
@@ -305,6 +318,7 @@ Exit:
 VOID CywFirmwareStop(PRPI5CYW_ADAPTER A)
 {
     UCHAR v;
+    A->BpWindowValid=0;
     if(A->IoStopped || !NT_SUCCESS(A->BusRecoveryStatus))return;
     /* No host disk/boot/UEFI changes. Stop this chip only, best effort. */
     if(A->NetworkPhase>=410) {
@@ -314,4 +328,5 @@ VOID CywFirmwareStop(PRPI5CYW_ADAPTER A)
     }
     if(NT_SUCCESS(SdioCmd52Read(A,0,2,&v)))
         (void)SdioCmd52Write(A,0,2,(UCHAR)(v&~6),0);
+    A->BpWindowValid=0;
 }
