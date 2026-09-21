@@ -15,17 +15,17 @@ function Read-Rpi5WifiConfig {
     try {
         $file = Get-Item -LiteralPath $Path -ErrorAction Stop
         if ($file.PSIsContainer -or $file.Length -gt 8192) { throw 'size' }
-        $profile = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
-        if ($null -eq $profile -or $profile -is [array]) { throw 'shape' }
+        $wifiProfile = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop
+        if ($null -eq $wifiProfile -or $wifiProfile -is [array]) { throw 'shape' }
         foreach ($name in @('Country', 'SSID', 'Password')) {
-            if (-not $profile.PSObject.Properties[$name] -or $profile.$name -isnot [string]) { throw 'field' }
+            if (-not $wifiProfile.PSObject.Properties[$name] -or $wifiProfile.$name -isnot [string]) { throw 'field' }
         }
-        if (@($profile.PSObject.Properties).Count -ne 3) { throw 'extra fields' }
-        $profile.Country = $profile.Country.Trim().ToUpperInvariant()
-        if (-not (Test-Rpi5ConnectionInput $profile.Country $profile.SSID) -or
-            $profile.SSID.Contains([string][char]0) -or
-            $profile.Password -cnotmatch '\A[\x20-\x7E]{8,63}\z') { throw 'bounds' }
-        return $profile
+        if (@($wifiProfile.PSObject.Properties).Count -ne 3) { throw 'extra fields' }
+        $wifiProfile.Country = $wifiProfile.Country.Trim().ToUpperInvariant()
+        if (-not (Test-Rpi5ConnectionInput $wifiProfile.Country $wifiProfile.SSID) -or
+            $wifiProfile.SSID.Contains([string][char]0) -or
+            $wifiProfile.Password -cnotmatch '\A[\x20-\x7E]{8,63}\z') { throw 'bounds' }
+        return $wifiProfile
     } catch {
         throw 'Wi-Fi configuration is missing or invalid. Use only Country (two letters), SSID (1-32 UTF-8 bytes), and Password (8-63 printable ASCII characters). Contents are not logged.'
     }
@@ -208,11 +208,11 @@ if ($Disconnect) {
         "Country where this Pi is physically located [Enter confirms $savedCountry, or type another]"
     } else { 'Two-letter country code, e.g. BD (no automatic USA fallback)' }
     if ($ConfigPath) {
-        $profile = Read-Rpi5WifiConfig $ConfigPath
-        $country = $profile.Country; $ssid = $profile.SSID
+        $wifiProfile = Read-Rpi5WifiConfig $ConfigPath
+        $country = $wifiProfile.Country; $ssid = $wifiProfile.SSID
         $secure = [Security.SecureString]::new()
-        foreach ($character in $profile.Password.ToCharArray()) { $secure.AppendChar($character) }
-        $secure.MakeReadOnly(); $profile.Password = $null; $profile = $null
+        foreach ($character in $wifiProfile.Password.ToCharArray()) { $secure.AppendChar($character) }
+        $secure.MakeReadOnly(); $wifiProfile.Password = $null; $wifiProfile = $null
         Write-Output 'Using the editable local configuration. Credentials are not printed.'
     } else {
         $country = Resolve-Rpi5Country (Read-Host $countryPrompt) $savedCountry

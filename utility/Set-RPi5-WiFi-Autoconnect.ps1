@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Set-Rpi5PrivateDirectory {
+    [CmdletBinding(SupportsShouldProcess)]
     param([string]$Path)
     $acl = [Security.AccessControl.DirectorySecurity]::new()
     $acl.SetAccessRuleProtection($true, $false)
@@ -14,7 +15,9 @@ function Set-Rpi5PrivateDirectory {
         $acl.AddAccessRule($rule)
     }
     $acl.SetOwner([Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
-    Set-Acl -LiteralPath $Path -AclObject $acl
+    if ($PSCmdlet.ShouldProcess($Path, 'Restrict Wi-Fi configuration access')) {
+        Set-Acl -LiteralPath $Path -AclObject $acl
+    } else { throw 'Private directory permissions were not applied.' }
 }
 if ($LibraryOnly) { return }
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
@@ -42,8 +45,8 @@ if ($Disable) {
 }
 . (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') -LibraryOnly
 $sourceConfig = Join-Path $PSScriptRoot 'WiFi.private.json'
-$profile = Read-Rpi5WifiConfig $sourceConfig
-$profile.Password = $null; $profile = $null
+$wifiProfile = Read-Rpi5WifiConfig $sourceConfig
+$wifiProfile.Password = $null; $wifiProfile = $null
 $destination = Join-Path $env:ProgramData 'RPi5WiFi'
 if (Test-Path -LiteralPath $destination) {
     # Reject junctions and unexpected contents before a SYSTEM task trusts this directory.

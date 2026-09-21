@@ -8,8 +8,8 @@ $path = Join-Path $temporary 'WiFi.private.json'
 try {
     # Synthetic credentials only; never use a real profile in CI.
     '{"Country":"bd","SSID":"test network","Password":"test-only-123"}' | Set-Content -LiteralPath $path -Encoding UTF8
-    $profile = Read-Rpi5WifiConfig $path
-    if ($profile.Country -ne 'BD' -or $profile.SSID -cne 'test network' -or $profile.Password -cne 'test-only-123') { throw 'Configuration changed valid fields.' }
+    $wifiProfile = Read-Rpi5WifiConfig $path
+    if ($wifiProfile.Country -ne 'BD' -or $wifiProfile.SSID -cne 'test network' -or $wifiProfile.Password -cne 'test-only-123') { throw 'Configuration changed valid fields.' }
     foreach ($json in @(
         '{"Country":"BD","SSID":"test","Password":"short"}',
         '{"Country":"BD","SSID":"test","Password":"test-only-123\n"}',
