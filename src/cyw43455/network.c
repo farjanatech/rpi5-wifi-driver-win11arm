@@ -114,6 +114,7 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     MmBuildMdlForNonPagedPool(Mdl);
     Nbl=NdisAllocateNetBufferAndNetBufferList(N->RxPool,0,0,Mdl,0,(ULONG)len);
     if(Nbl) {
+        CywProbePacket(&A->PacketProbe,p+off,len,0,KeQueryInterruptTime());
         Nbl->SourceHandle=A->MiniportHandle;
         NET_BUFFER_LIST_STATUS(Nbl)=NDIS_STATUS_SUCCESS;
         NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;
@@ -189,7 +190,10 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
 {
     NTSTATUS Status=CywSendFrame(A,2,Data,Length);
     /* Transfer success is not proof that the AP received/acknowledged a frame. */
-    if(NT_SUCCESS(Status) && Length>=4)A->PacketTx[CywPacketKind(Data+4,Length-4)]++;
+    if(NT_SUCCESS(Status) && Length>=4) {
+        A->PacketTx[CywPacketKind(Data+4,Length-4)]++;
+        CywProbePacket(&A->PacketProbe,Data+4,Length-4,1,KeQueryInterruptTime());
+    }
     return Status;
 }
 #include "tx_queue.h"

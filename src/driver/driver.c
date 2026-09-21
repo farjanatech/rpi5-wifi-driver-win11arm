@@ -113,7 +113,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 11);
+    SET_DWORD(L"DiagVersion", 12);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -161,6 +161,25 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"RxFilterSnapshot", Adapter->RxFilterSnapshot);
     SET_DWORD(L"MacReadbackStatus", Adapter->MacReadbackStatus);
     SET_DWORD(L"MacReadbackMatches", Adapter->MacReadbackMatches);
+    SET_DWORD(L"RuntimeF1FastPolls", Adapter->RuntimeF1FastPolls);
+    SET_DWORD(L"TxQueueMaxDelayMs", Adapter->TxQueueMaxDelayMs);
+    SET_DWORD(L"TxIpv4ChecksumBad", Adapter->PacketProbe.TxIpBad);
+    SET_DWORD(L"RxIpv4ChecksumBad", Adapter->PacketProbe.RxIpBad);
+    SET_DWORD(L"TxTransportChecksumBad", Adapter->PacketProbe.TxTransportBad);
+    SET_DWORD(L"RxTransportChecksumBad", Adapter->PacketProbe.RxTransportBad);
+    SET_DWORD(L"RxIpv4Malformed", Adapter->PacketProbe.RxMalformed);
+    SET_DWORD(L"RxIpv4Fragment", Adapter->PacketProbe.RxFragment);
+    SET_DWORD(L"RxUdpNoChecksum", Adapter->PacketProbe.RxUdpNoChecksum);
+    SET_DWORD(L"TxEchoRequest", Adapter->PacketProbe.TxEcho);
+    SET_DWORD(L"RxEchoRequest", Adapter->PacketProbe.RxEchoRequest);
+    SET_DWORD(L"RxEchoReply", Adapter->PacketProbe.RxEchoReply);
+    SET_DWORD(L"RxEchoMatched", Adapter->PacketProbe.RxEchoMatched);
+    SET_DWORD(L"RxEchoUnmatched", Adapter->PacketProbe.RxEchoUnmatched);
+    SET_DWORD(L"EchoLate1000ms", Adapter->PacketProbe.EchoLate);
+    SET_DWORD(L"EchoMaxRttMs", Adapter->PacketProbe.EchoMaxMs);
+    SET_DWORD(L"EchoTrackingEvicted", Adapter->PacketProbe.EchoEvicted);
+    SET_DWORD(L"RxIcmpUnreachable", Adapter->PacketProbe.RxIcmpUnreachable);
+    SET_DWORD(L"RxIcmpOther", Adapter->PacketProbe.RxIcmpOther);
     {
         static const PCWSTR TxNames[7]={L"TxOther",L"TxArpRequest",L"TxArpReply",L"TxIpv4Icmp",L"TxIpv4Udp",L"TxIpv4Tcp",L"TxIpv6"};
         static const PCWSTR WireNames[7]={L"RxWireOther",L"RxWireArpRequest",L"RxWireArpReply",L"RxWireIpv4Icmp",L"RxWireIpv4Udp",L"RxWireIpv4Tcp",L"RxWireIpv6"};

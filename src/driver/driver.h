@@ -9,6 +9,8 @@
 #include <ipifcons.h>
 #endif
 
+#include "../cyw43455/packet_probe.h"
+
 #ifndef ETH_LENGTH_OF_ADDRESS
 #define ETH_LENGTH_OF_ADDRESS 6
 #endif
@@ -86,6 +88,8 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG RxDropState, RxDropFormat, RxDropFilter, RxUnicastOther;
     ULONG RxFilterSnapshot, MacReadbackMatches;
     NTSTATUS MacReadbackStatus;
+    ULONG RuntimeF1FastPolls, TxQueueMaxDelayMs;
+    CYW_PACKET_PROBE PacketProbe;
 
     ULONG DiagStage;
     NTSTATUS ProbeStatus;

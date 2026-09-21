@@ -630,11 +630,17 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
             }
             if ((InterruptStatus & Events[Phase]) != 0) break;
             if (KeQueryInterruptTime() >= Deadline) break;
-            if (Function == 2 && FastPolls < 4)
+            /* Runtime F1 interrupt/mailbox reads share the same worker as F2
+             * packets. Do not impose a scheduler sleep on each short register
+             * transfer after the operating bus has been verified. Startup,
+             * upload and recovery keep their original conservative behavior. */
+            if ((Function == 2 || (Function == 1 && Adapter->BusModeStage == 6 &&
+                 Adapter->BusWidth == 4 && Adapter->BusActualKhz > 400)) && FastPolls < 4)
             {
                 KeStallExecutionProcessor(10);
                 FastPolls++;
                 Adapter->Cmd53FastPolls++;
+                if (Function == 1) Adapter->RuntimeF1FastPolls++;
             }
             else
             {

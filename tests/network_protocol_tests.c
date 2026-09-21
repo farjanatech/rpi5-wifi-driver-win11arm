@@ -2,6 +2,7 @@
 #include "../src/cyw43455/network_protocol.h"
 static int failures;
 #define CHECK(x) do {if(!(x)){printf("FAIL %d: %s\n",__LINE__,#x);++failures;}}while(0)
+#include "packet_probe_tests.h"
 int main(void)
 {
     uint8_t b[1600]={0},out[128],raw[]="# comment\r\na=1\r\n\n b=2 #tail\n";
@@ -9,6 +10,7 @@ int main(void)
     CYW_CONNECT_REQUEST r={0};
     const uint8_t mac[6]={2,1,2,3,4,5},group[6]={1,0,0x5e,0,0,1},bc[6]={255,255,255,255,255,255};
     CHECK(sizeof(r)==76);
+    RunPacketProbeTests();
     CHECK(CywPacketKind(NULL,100)==0);
     memset(b,0,sizeof(b));b[12]=8;b[13]=6;b[15]=1;b[16]=8;b[18]=6;b[19]=4;b[21]=1;
     for(i=0;i<42;++i)CHECK(CywPacketKind(b,i)==0);

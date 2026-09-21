@@ -118,7 +118,10 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
             nbl=CywTxRemove(Q,0);KeReleaseSpinLock(&Q->Lock,irql);
             CywTxComplete(A,Q,nbl,completion);break;
         }
-        nb=Q->Entries[0].Next;KeReleaseSpinLock(&Q->Lock,irql);
+        nb=Q->Entries[0].Next;
+        now=(KeQueryInterruptTime()-Q->Entries[0].Submitted)/10000ULL;
+        if(now>A->TxQueueMaxDelayMs)A->TxQueueMaxDelayMs=now>0xffffffffULL?0xffffffffUL:(ULONG)now;
+        KeReleaseSpinLock(&Q->Lock,irql);
         if(!CywTxCanTransfer(A)) {A->TxCreditWaits++;break;}
         len=NET_BUFFER_DATA_LENGTH(nb);
         RtlZeroMemory(Q->Frame,4);Q->Frame[0]=0x20;

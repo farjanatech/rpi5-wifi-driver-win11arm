@@ -206,6 +206,21 @@ int main(void)
     Init(&Adapter);ReadyAt=200;
     CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,64,FALSE)==0);
     CHECK(SleepCount==0 && StallUs==20 && Adapter.Cmd53FastPolls==2);
+    Init(&Adapter);ReadyAt=200;SleepUs=16000;
+    CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,4)==0);
+    CHECK(SleepCount==1 && StallUs==0 && Adapter.RuntimeF1FastPolls==0);
+    Init(&Adapter);ReadyAt=200;SleepUs=16000;
+    Adapter.BusModeStage=6;Adapter.BusWidth=4;Adapter.BusActualKhz=25000;
+    CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,4)==0);
+    CHECK(SleepCount==0 && StallUs==20 && Adapter.RuntimeF1FastPolls==2);
+    Init(&Adapter);ReadyAt=10000;SleepUs=16000;
+    Adapter.BusModeStage=6;Adapter.BusWidth=4;Adapter.BusActualKhz=25000;
+    CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,4)==0);
+    CHECK(SleepCount==1 && StallUs==40); /* Never spin until ready. */
+    Init(&Adapter);Fault=1;SleepUs=16000;
+    Adapter.BusModeStage=6;Adapter.BusWidth=4;Adapter.BusActualKhz=25000;
+    CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,4)==STATUS_IO_TIMEOUT);
+    CHECK(SleepCount==16 && StallUs==40 && Adapter.Cmd53Timeouts==1);
     Init(&Adapter);ReadyAt=10000;
     CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,64,FALSE)==0);
     CHECK(SleepCount==1 && StallUs==40 && Adapter.Cmd53WaitSleeps==1);

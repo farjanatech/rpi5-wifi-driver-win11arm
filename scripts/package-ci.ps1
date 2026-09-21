@@ -94,7 +94,18 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.11 adds optional editable local credentials/startup connection,
+Driver exp0.6.12 extends the bounded 40-microsecond fast-poll budget to verified
+runtime F1 transfers. Runtime interrupt/mailbox backplane reads previously used
+the startup sleep path. Startup/upload/recovery behavior is unchanged.
+Adds software IPv4 and ICMP/TCP/UDP checksum observations, validated ICMP echo
+request/reply matching and bus-transfer-to-reply timing, and maximum TX queue age.
+The bounded in-memory echo ring is never exported; reports contain counts only.
+Checks do not modify packets, bypass Windows validation or claim checksum offload.
+This is a targeted latency candidate, not a hardware-proven Internet fix.
+exp0.6.11 confirmed MAC readback matched and ICMP packets reached the Windows
+indication boundary, but all pings timed out. Type/checksum/timing was unknown.
+UEFI, firmware, country, MAC generation, bus mode and queue size are unchanged.
+Retained exp0.6.11 features: optional editable local credentials/startup connection,
 packet-path counters, firmware MAC readback and explicit RX NBL initialization.
 It is NOT a confirmed packet-loss fix. exp0.6.10 verified 4-bit/25 MHz on the
 user's Pi but its performance capture lost every ping and failed DNS/HTTPS.
