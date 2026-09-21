@@ -67,6 +67,9 @@
     <ClInclude Include="src\sdio\sdio.h" />
     <ClInclude Include="src\cyw43455\connection.h" />
     <ClInclude Include="src\cyw43455\control.h" />
+    <ClInclude Include="src\cyw43455\worker_io.h" />
+    <ClInclude Include="src\cyw43455\tx_types.h" />
+    <ClInclude Include="src\cyw43455\tx_queue.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

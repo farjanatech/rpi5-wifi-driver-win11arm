@@ -4,6 +4,21 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.15 candidate — burst admission and credit-aware scheduling
+
+The exp0.6.14 sustained test completed 128 MiB at 14.7 Mbps over 73 seconds,
+but recorded queue-full rejections and four `NoResources` router probes. This
+candidate releases a completion's admission slot before calling back into NDIS,
+while retaining a separate completion reference for pause safety. A bounded
+256-frame host queue replaces the 64-frame cap; payload admission, pending
+ownership, cancellation and expiry remain bounded. After each received frame,
+the worker offers two pending sends using the updated chip credit window.
+The chip credit limit, receive fairness, firmware, UEFI and 25 MHz clock are
+unchanged. This is not a promise of zero drops or higher speed; a larger host
+queue can also increase latency. See [exp0.6.15 testing](docs/EXP0.6.15.md).
+Keep exp0.6.14 for rollback. Install, restart once, then run the included
+`Test-RPi5-WiFi-Performance.cmd` for the same bounded workload.
+
 ### Performance utility 0.6.14.1 — keep driver exp0.6.14 installed
 
 The latest Pi capture measured a 16.8 Mbps **short** download and working Windows

@@ -12,7 +12,7 @@ static VOID CywTxSetGate(CYW_TX_STATE *Q, NDIS_STATUS Status)
 static ULONG CywTxOutstanding(CYW_TX_STATE *Q)
 {
     ULONG count;KIRQL irql;KeAcquireSpinLock(&Q->Lock,&irql);
-    count=Q->Outstanding;KeReleaseSpinLock(&Q->Lock,irql);return count;
+    count=Q->Outstanding+Q->Completing;KeReleaseSpinLock(&Q->Lock,irql);return count;
 }
 static NDIS_STATUS CywTxSubmit(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LIST Nbl)
 {
@@ -24,7 +24,7 @@ static NDIS_STATUS CywTxSubmit(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LI
     for(nb=NET_BUFFER_LIST_FIRST_NB(Nbl);nb;nb=NET_BUFFER_NEXT_NB(nb)) {
         len=NET_BUFFER_DATA_LENGTH(nb);
         if(len<14 || len>1514)return NDIS_STATUS_INVALID_LENGTH;
-        if(++frames>CYW_TX_LIMIT)return NDIS_STATUS_RESOURCES;
+        if(++frames>CYW_TX_LIMIT) {A->TxOversizedNbl++;return NDIS_STATUS_RESOURCES;}
         bytes+=len;
     }
     if(!frames)return NDIS_STATUS_INVALID_LENGTH;
@@ -38,6 +38,8 @@ static NDIS_STATUS CywTxSubmit(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LI
             item->CancelId=NDIS_GET_NET_BUFFER_LIST_CANCEL_ID(Nbl);
             item->Frames=item->HeldFrames=frames;item->Bytes=bytes;item->Submitted=KeQueryInterruptTime();
             Q->Frames+=frames;Q->Bytes+=bytes;Q->Outstanding++;
+            A->TxQueueFrames=Q->Frames;
+            if(Q->Frames>CYW_TX_BASELINE)A->TxBurstAdmissions++;
             if(Q->Frames>A->TxQueueHighWater)A->TxQueueHighWater=Q->Frames;
             A->TxNblAccepted++;status=NDIS_STATUS_PENDING;
         }
@@ -50,13 +52,14 @@ static VOID CywTxCancel(CYW_TX_STATE *Q,PVOID CancelId)
     for(i=0;i<Q->Count;++i)if(Q->Entries[i].CancelId==CancelId)Q->Entries[i].Cancelled=TRUE;
     KeReleaseSpinLock(&Q->Lock,irql);
 }
-/* Caller holds Lock; at most 64 metadata records are moved, never packet data. */
+/* Caller holds Lock; bounded metadata records are moved, never packet data. */
 static PNET_BUFFER_LIST CywTxRemove(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status)
 {
     PNET_BUFFER_LIST nbl=Q->Entries[Index].Nbl;ULONG i;
     if(Status!=NDIS_STATUS_SUCCESS)
         Rpi5CywTrafficDrop(A,TRUE,Q->Entries[Index].Frames,Status==NDIS_STATUS_FAILURE);
     Q->Frames-=Q->Entries[Index].HeldFrames;Q->Bytes-=Q->Entries[Index].Bytes;
+    A->TxQueueFrames=Q->Frames;
     for(i=Index+1;i<Q->Count;++i)Q->Entries[i-1]=Q->Entries[i];
     Q->Count--;RtlZeroMemory(&Q->Entries[Q->Count],sizeof(Q->Entries[0]));
     return nbl;
@@ -68,8 +71,13 @@ static VOID CywTxComplete(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LIST Nb
     NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;NET_BUFFER_LIST_STATUS(Nbl)=Status;
     if(Status!=NDIS_STATUS_SUCCESS)A->TxErrors++;
     if(Status==NDIS_STATUS_SEND_ABORTED)A->TxCancelled++;
+    /* Release admission BEFORE handing ownership back: NDIS can submit new
+     * sends synchronously from completion. Keep a separate in-completion
+     * reference so pause cannot observe zero outstanding work too early. */
+    KeAcquireSpinLock(&Q->Lock,&irql);Q->Outstanding--;Q->Completing++;
+    KeReleaseSpinLock(&Q->Lock,irql);
     NdisMSendNetBufferListsComplete(A->MiniportHandle,Nbl,0);
-    KeAcquireSpinLock(&Q->Lock,&irql);Q->Outstanding--;A->TxNblCompleted++;
+    KeAcquireSpinLock(&Q->Lock,&irql);Q->Completing--;A->TxNblCompleted++;
     KeReleaseSpinLock(&Q->Lock,irql);
 }
 static NDIS_STATUS CywTxAbortStatus(CYW_TX_STATE *Q,CYW_PENDING_SEND *Item,ULONG64 Now)

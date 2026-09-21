@@ -28,7 +28,7 @@ typedef struct TEST_NBL { struct TEST_NBL *Next;PNET_BUFFER First;PVOID CancelId
 #define NDIS_SEND_COMPLETE_FLAGS_DISPATCH_LEVEL 1
 #define RtlCopyMemory memcpy
 #include "../src/cyw43455/tx_types.h"
-static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter,Immediate,Poison;
+static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter,Immediate,Poison,CheckCompleting;
 static ULONG64 Clock;
 static CYW_TX_STATE TestQueue;
 static RPI5CYW_ADAPTER TestAdapter;
@@ -61,6 +61,7 @@ static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST 
 {
     (void)handle;CHECK(!Locks && nbl->Completions==0 && !nbl->Next);
     nbl->Completions++;nbl->Flags=flags;
+    if(CheckCompleting)CHECK(TestQueue.Completing==1 && CywTxOutstanding(&TestQueue)==TestQueue.Outstanding+1);
     if(Reenter){Reenter=0;CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&Reentrant)==NDIS_STATUS_PENDING);}
     if(Poison)nbl->Next=(PNET_BUFFER_LIST)(size_t)1; /* freed/reused NBL surrogate */
 }
@@ -74,7 +75,7 @@ static NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER adapter,PNET_BUFFER_LIST nbl)
 static void Init(void)
 {
     memset(&TestAdapter,0,sizeof(TestAdapter));memset(&TestQueue,0,sizeof(TestQueue));Clock=0;Credits=100;
-    TransferCalls=Busy=FailTransfer=Hook=Reenter=Immediate=Poison=0;CHECK(!Locks);
+    TransferCalls=Busy=FailTransfer=Hook=Reenter=Immediate=Poison=CheckCompleting=0;CHECK(!Locks);
 }
 static void Packet(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG length,PVOID id)
 {
@@ -83,7 +84,7 @@ static void Packet(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG length,PVOID id)
 }
 int main(void)
 {
-    NET_BUFFER_LIST nbl[65];NET_BUFFER nb[65];ULONG sent,i;PVOID id=&TestAdapter;
+    NET_BUFFER_LIST nbl[CYW_TX_LIMIT+1];NET_BUFFER nb[CYW_TX_LIMIT+1];ULONG sent,i;PVOID id=&TestAdapter;
     Init();Packet(&nbl[0],&nb[0],100,id);Packet(&nbl[1],&nb[1],80,id);
     nb[0].Next=&nb[1];nb[1].Copy=1;
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING && !nbl[0].Completions);
@@ -94,15 +95,16 @@ int main(void)
     CHECK(!TestQueue.Outstanding && !TestQueue.Count && !TestQueue.Frames && !TestQueue.Bytes && TestAdapter.TxPackets==2);
     CHECK(TestAdapter.TxNblAccepted==1 && TestAdapter.TxNblCompleted==1 && nb[0].Next==&nb[1]);
 
-    Init();for(i=0;i<65;i++)Packet(&nbl[i],&nb[i],100,id);
-    for(i=0;i<64;i++)CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);
-    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[64])==NDIS_STATUS_RESOURCES && TestAdapter.TxQueueFull==1);
-    CHECK(TestQueue.Outstanding==64 && TestQueue.Frames==64 && TestQueue.Bytes==6400);
+    Init();for(i=0;i<=CYW_TX_LIMIT;i++)Packet(&nbl[i],&nb[i],100,id);
+    for(i=0;i<CYW_TX_LIMIT;i++)CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[CYW_TX_LIMIT])==NDIS_STATUS_RESOURCES && TestAdapter.TxQueueFull==1);
+    CHECK(TestQueue.Outstanding==CYW_TX_LIMIT && TestQueue.Frames==CYW_TX_LIMIT && TestQueue.Bytes==100*CYW_TX_LIMIT);
+    CHECK(TestAdapter.TxBurstAdmissions==CYW_TX_LIMIT-CYW_TX_BASELINE && TestAdapter.TxQueueFrames==CYW_TX_LIMIT);
     CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);
-    CHECK(!TestQueue.Outstanding && TestAdapter.TxNblCompleted==64);
-    CHECK(TestAdapter.Traffic.Discards[1]==64 && TestAdapter.Traffic.Errors[1]==0);
-    for(i=0;i<64;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_PAUSED);
-    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[64])==NDIS_STATUS_PAUSED);
+    CHECK(!TestQueue.Outstanding && TestAdapter.TxNblCompleted==CYW_TX_LIMIT && !TestAdapter.TxQueueFrames);
+    CHECK(TestAdapter.Traffic.Discards[1]==CYW_TX_LIMIT && TestAdapter.Traffic.Errors[1]==0);
+    for(i=0;i<CYW_TX_LIMIT;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_PAUSED);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[CYW_TX_LIMIT])==NDIS_STATUS_PAUSED);
 
     Init();Packet(&nbl[0],&nb[0],100,id);Credits=0;
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
@@ -140,8 +142,38 @@ int main(void)
     Init();Packet(&nbl[0],&nb[0],13,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
     nb[0].Length=1515;CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
     nbl[0].First=NULL;CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_INVALID_LENGTH);
-    for(i=0;i<65;i++){Packet(&nbl[i],&nb[i],100,id);if(i)nb[i-1].Next=&nb[i];}
+    for(i=0;i<=CYW_TX_LIMIT;i++){Packet(&nbl[i],&nb[i],100,id);if(i)nb[i-1].Next=&nb[i];}
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_RESOURCES && !TestQueue.Count);
+    CHECK(TestAdapter.TxOversizedNbl==1);
+
+    /* A whole multi-NB chain remains charged until its NBL completes. */
+    nb[CYW_TX_LIMIT-1].Next=NULL;Credits=CYW_TX_LIMIT;
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,1,&sent)==0 && sent==1 && !nbl[0].Completions);
+    CHECK(TestQueue.Frames==CYW_TX_LIMIT && TestQueue.Bytes==CYW_TX_LIMIT*100);
+    CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[CYW_TX_LIMIT])==NDIS_STATUS_RESOURCES);
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,CYW_TX_LIMIT,&sent)==0 && sent==CYW_TX_LIMIT-1 && nbl[0].Completions==1);
+    CHECK(!TestQueue.Frames && !TestQueue.Completing && !CywTxOutstanding(&TestQueue));
+
+    /* Full queue: completion can reenter with a replacement immediately.
+     * Regression: old Outstanding accounting rejected that replacement. */
+    Init();for(i=0;i<CYW_TX_LIMIT;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
+    Packet(&Reentrant,&ReentrantNb,100,id);Reenter=CheckCompleting=Poison=1;
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,1,&sent)==0 && sent==1);
+    CHECK(TestQueue.Outstanding==CYW_TX_LIMIT && TestQueue.Count==CYW_TX_LIMIT && !TestQueue.Completing);
+    CHECK(!TestAdapter.TxQueueFull && !Reentrant.Completions && nbl[0].Completions==1);
+    CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_LOW_POWER_STATE);
+    CHECK(!CywTxOutstanding(&TestQueue) && Reentrant.Completions==1);
+
+    /* 128-frame burst across the old 64-frame boundary, held through no
+     * credits, then drained in small chunks. No early/fake completion. */
+    Init();Credits=0;
+    for(i=0;i<128;i++){Packet(&nbl[i],&nb[i],1514,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && !sent && !nbl[0].Completions);
+    CHECK(!TestAdapter.TxQueueFull && TestAdapter.TxBurstAdmissions==64 && TestQueue.Bytes==128*1514);
+    for(i=0;i<64;i++){Credits=2;CHECK(CywTxPump(&TestAdapter,&TestQueue,2,&sent)==0 && sent==2);}
+    for(i=0;i<128;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_SUCCESS);
+    CHECK(!CywTxOutstanding(&TestQueue) && !TestAdapter.TxErrors && !TestQueue.Bytes);
 
     Init();Packet(&nbl[0],&nb[0],100,id);Packet(&Reentrant,&ReentrantNb,100,id);
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);Reenter=1;

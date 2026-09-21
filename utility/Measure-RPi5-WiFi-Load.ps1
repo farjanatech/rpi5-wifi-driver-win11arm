@@ -44,6 +44,7 @@ try {
         # These are periodic (~30s), non-atomic snapshots, NOT live queue depths.
         $fields=@('SnapshotTimeUtc','NetworkPhase','NetworkStatus','TxPackets','RxPackets',
             'TxErrors','RxErrors','RxNoBuffer','TxQueueHighWater','TxQueueFull','TxQueueMaxDelayMs',
+            'TxQueueLimit','TxQueueFrames','TxBurstAdmissions','TxOversizedNbl','TxInterleavedPackets',
             'TxCreditWaits','TxCreditSequence','TxCreditMaximum','TxFlowMask',
             'RuntimeCmd53CommandSleeps','RuntimeCmd53BufferSleeps','RuntimeCmd53CompleteSleeps',
             'RuntimeCmd53SleepMs','BpWindowCacheHits','BpWindowSelections')

@@ -1,4 +1,10 @@
-# Latest: standalone performance utility 0.6.14.1
+# Latest driver: exp0.6.15 candidate
+
+See [exp0.6.15 instructions and acceptance criteria](EXP0.6.15.md). This driver
+candidate requires one installation and restart, then the included performance
+utility. The standalone utility instructions below apply when keeping .14.
+
+# Previous: standalone performance utility 0.6.14.1
 
 If exp0.6.14 is already installed, do **not** reinstall or reboot for the new
 measurement tool. Follow [standalone instructions](PERFORMANCE-0.6.14.1.md).

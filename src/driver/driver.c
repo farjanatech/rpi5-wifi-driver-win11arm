@@ -121,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 14);
+    SET_DWORD(L"DiagVersion", 15);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -212,6 +212,11 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"Cmd53Timeouts", Adapter->Cmd53Timeouts);
     SET_DWORD(L"TxQueueHighWater", Adapter->TxQueueHighWater);
     SET_DWORD(L"TxQueueFull", Adapter->TxQueueFull);
+    SET_DWORD(L"TxQueueLimit", RPI5CYW_TX_LIMIT);
+    SET_DWORD(L"TxQueueFrames", Adapter->TxQueueFrames);
+    SET_DWORD(L"TxBurstAdmissions", Adapter->TxBurstAdmissions);
+    SET_DWORD(L"TxOversizedNbl", Adapter->TxOversizedNbl);
+    SET_DWORD(L"TxInterleavedPackets", Adapter->TxInterleavedPackets);
     SET_DWORD(L"TxNblAccepted", Adapter->TxNblAccepted);
     SET_DWORD(L"TxNblCompleted", Adapter->TxNblCompleted);
     SET_DWORD(L"TxCancelled", Adapter->TxCancelled);
@@ -608,7 +613,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x0006000e;
+            Data.Ulong = 0x0006000f;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

@@ -2,7 +2,11 @@
 /* Bounded pending-NBL ownership. Only the bus worker removes entries or
  * completes accepted NBLs; submission/cancellation use Lock. No NBL/NB chain
  * is modified except the NBL next link, detached by the send callback. */
-#define CYW_TX_LIMIT 64u
+#define CYW_TX_BASELINE 64u
+/* Bounded host burst queue, NOT the chip's SDPCM credit window. Retain at
+ * most 256 Ethernet frames (387584 payload bytes) and 256 NBLs. No allocation
+ * or copying on admission, and completion still waits for the bus transfer. */
+#define CYW_TX_LIMIT RPI5CYW_TX_LIMIT
 #define CYW_TX_MAX_AGE 300000000ULL /* 30 seconds, interrupt-time units */
 typedef struct _CYW_PENDING_SEND {
     PNET_BUFFER_LIST Nbl;
@@ -15,7 +19,7 @@ typedef struct _CYW_PENDING_SEND {
 typedef struct _CYW_TX_STATE {
     KSPIN_LOCK Lock;
     NDIS_STATUS Gate;
-    ULONG Count, Frames, Bytes, Outstanding;
+    ULONG Count, Frames, Bytes, Outstanding, Completing;
     CYW_PENDING_SEND Entries[CYW_TX_LIMIT];
     /* Nonpaged, worker-only staging buffer, including BCDC header. */
     UCHAR Frame[1518];
