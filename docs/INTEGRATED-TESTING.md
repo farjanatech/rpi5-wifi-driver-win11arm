@@ -1,4 +1,17 @@
-# exp0.6.10: one-reboot, one-utility performance check
+# exp0.6.13: one-reboot, one-utility performance check
+
+Keep the working exp0.6.12 package for rollback. This update changes only
+operating-bus CMD53 short-poll budgeting and performance observations; firmware,
+country, UEFI, queue size and credentials behavior are unchanged. A passing
+simulation/build is not proof of faster physical Wi-Fi.
+
+DiagVersion=13 adds RuntimeCmd53CommandSleeps, RuntimeCmd53BufferSleeps,
+RuntimeCmd53CompleteSleeps, RuntimeF1WaitSleeps, RuntimeF2WaitSleeps and
+RuntimeCmd53SleepMs (elapsed scheduler wait, not CPU busy time). These exclude
+slow-mode firmware upload. Compare deltas against packet counts, queue-full
+rejections, maximum queue age, ping loss and HTTPS/download results. The tool
+waits for a snapshot newer than the end of its tests and labels timeout; values
+are still periodic/non-atomic. Do not report download speed if DNS/download fails.
 
 1. Extract the entire new package into a new folder on the Pi. Run the included
    installer, then restart once. Do not install on the development PC.

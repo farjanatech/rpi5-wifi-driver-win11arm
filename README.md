@@ -4,6 +4,27 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Integrated exp0.6.13 candidate — phase-aware operating-bus polling
+
+The exp0.6.12 Pi test established browsing and HTTPS, with zero observed bad
+checksums and matching MAC readback, but remaining ping loss, full TX queues and
+intermittent DNS failure. This update targets a source-level latency hazard:
+one 40-us allowance was shared across command, buffer-ready and completion.
+Each phase now gets up to 50 us of short polling on the verified operating bus,
+then yields; the transaction can request at most 150 us of stalls total.
+Tests independently delay the three events, rather than reporting all at once.
+Timeout, cancellation, firmware upload, slow recovery, 4-bit/25 MHz mode,
+pending-send ownership and the 64-frame limit are unchanged. No UEFI changes.
+
+Runtime counters identify remaining sleeps by phase/function and elapsed sleep
+time. The performance tool tests the download hostname's DNS, reports HTTPS
+timings and requests a snapshot after the tests finish. No DNS settings change.
+Retains editable private configuration/startup support; never edit the hashed
+public example. See [auto-connect](docs/AUTO-CONNECT.md).
+
+This candidate is not yet hardware-validated. Keep exp0.6.12 for rollback.
+Install, reboot once and run **Test-RPi5-WiFi-Performance.cmd** on the Pi.
+
 ### Integrated exp0.6.10 candidate — verified 4-bit/25 MHz operating mode
 
 The exp0.6.9 hardware capture still filled all 64 pending slots with 920

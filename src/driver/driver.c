@@ -113,7 +113,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 12);
+    SET_DWORD(L"DiagVersion", 13);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -162,6 +162,12 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"MacReadbackStatus", Adapter->MacReadbackStatus);
     SET_DWORD(L"MacReadbackMatches", Adapter->MacReadbackMatches);
     SET_DWORD(L"RuntimeF1FastPolls", Adapter->RuntimeF1FastPolls);
+    SET_DWORD(L"RuntimeCmd53CommandSleeps", Adapter->RuntimeCmd53SleepPhase[0]);
+    SET_DWORD(L"RuntimeCmd53BufferSleeps", Adapter->RuntimeCmd53SleepPhase[1]);
+    SET_DWORD(L"RuntimeCmd53CompleteSleeps", Adapter->RuntimeCmd53SleepPhase[2]);
+    SET_DWORD(L"RuntimeF1WaitSleeps", Adapter->RuntimeF1WaitSleeps);
+    SET_DWORD(L"RuntimeF2WaitSleeps", Adapter->RuntimeF2WaitSleeps);
+    SET_DWORD(L"RuntimeCmd53SleepMs", Adapter->RuntimeCmd53Sleep100ns / 10000ULL);
     SET_DWORD(L"TxQueueMaxDelayMs", Adapter->TxQueueMaxDelayMs);
     SET_DWORD(L"TxIpv4ChecksumBad", Adapter->PacketProbe.TxIpBad);
     SET_DWORD(L"RxIpv4ChecksumBad", Adapter->PacketProbe.RxIpBad);

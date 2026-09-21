@@ -11,6 +11,8 @@ static ULONG FifoWrites, WriteWords[128], DiscoveryMode, Fail53At;
 static ULONG64 SimTime, ReadyAt;
 static ULONG SleepUs, SleepCount, StallUs, StopOnSleep;
 static ULONG BusClockFault,BusHostFault;
+static ULONG PhaseMode, PhaseUs[3], ScheduledEvent, PhaseWords, StopOnStall;
+static ULONG64 PhaseDue;
 static PRPI5CYW_ADAPTER ActiveAdapter;
 static const ULONG Erom[] = {
     0x4BF80001, 0x01080001, 0x18000005, 0x18100085,
@@ -28,6 +30,9 @@ UCHAR READ_REGISTER_UCHAR(PUCHAR Address) { return *Address; }
 USHORT READ_REGISTER_USHORT(PUSHORT Address) { return *Address; }
 ULONG READ_REGISTER_ULONG(PULONG Address)
 {
+    if (Offset(Address) == SDHCI_INT_STATUS && ScheduledEvent && SimTime >= PhaseDue) {
+        *Address |= ScheduledEvent;ScheduledEvent=0;
+    }
     if (Offset(Address) == SDHCI_INT_STATUS && ReadyAt && SimTime >= ReadyAt)
     {
         *Address |= Command53Events;
@@ -36,6 +41,9 @@ ULONG READ_REGISTER_ULONG(PULONG Address)
     if (Offset(Address) == SDHCI_BUFFER)
     {
         FifoReads++;
+        if (PhaseMode && --PhaseWords == 0) {
+            ScheduledEvent=SDHCI_INT_XFER_COMPLETE;PhaseDue=SimTime+(ULONG64)PhaseUs[2]*10;
+        }
         if (Fault == 10) Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_XFER_COMPLETE;
         if (Fault == 11) Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_DATA_CRC;
         return Fifo;
@@ -58,11 +66,21 @@ void WRITE_REGISTER_ULONG(PULONG Address, ULONG Value)
     {
         CHECK(FifoWrites < 128);
         if (FifoWrites < 128) WriteWords[FifoWrites++] = Value;
+        if (PhaseMode && --PhaseWords == 0) {
+            ScheduledEvent=SDHCI_INT_XFER_COMPLETE;PhaseDue=SimTime+(ULONG64)PhaseUs[2]*10;
+        }
         if (Fault == 10) Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_XFER_COMPLETE;
         if (Fault == 11) Registers[SDHCI_INT_STATUS / 4] |= SDHCI_INT_DATA_CRC;
         return;
     }
-    if (Offset(Address) == SDHCI_INT_STATUS) *Address &= ~Value;
+    if (Offset(Address) == SDHCI_INT_STATUS) {
+        *Address &= ~Value;
+        if (PhaseMode && Value == SDHCI_INT_CMD_COMPLETE) {
+            ScheduledEvent=(Registers[SDHCI_ARGUMENT/4]&0x80000000UL)?
+                SDHCI_INT_BUFFER_WRITE_READY:SDHCI_INT_BUFFER_READ_READY;
+            PhaseDue=SimTime+(ULONG64)PhaseUs[1]*10;
+        }
+    }
     else *Address = Value;
 }
 void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
@@ -120,6 +138,12 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
             Response = 0x1100;
             Registers[SDHCI_INT_STATUS / 4] = 0x11;
         }
+        if (PhaseMode) {
+            Registers[SDHCI_INT_STATUS/4]=0;
+            ScheduledEvent=SDHCI_INT_CMD_COMPLETE;PhaseDue=SimTime+(ULONG64)PhaseUs[0]*10;
+            PhaseWords=(Registers[SDHCI_BLOCK_SIZE/4]&0xfff)+3;
+            PhaseWords/=4;
+        }
     }
     else if (Command == 52)
     {
@@ -142,7 +166,10 @@ Complete:
 }
 ULONG64 KeQueryInterruptTime(void) { return SimTime; }
 void KeStallExecutionProcessor(ULONG Microseconds)
-{ SimTime+=(ULONG64)Microseconds*10; StallUs+=Microseconds; Ticks++; }
+{
+    SimTime+=(ULONG64)Microseconds*10; StallUs+=Microseconds; Ticks++;
+    if(StopOnStall)ActiveAdapter->IoStopped=1;
+}
 NTSTATUS KeDelayExecutionThread(int Mode, BOOLEAN Alertable, LARGE_INTEGER *Delay)
 {
     (void)Mode; (void)Alertable; (void)Delay;
@@ -171,6 +198,8 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     SimTime=ReadyAt=0;SleepUs=1000;SleepCount=StallUs=StopOnSleep=0;
     ActiveAdapter=Adapter;
     BusClockFault=BusHostFault=0;
+    PhaseMode=ScheduledEvent=PhaseWords=StopOnStall=0;PhaseDue=0;
+    memset(PhaseUs,0,sizeof(PhaseUs));
     Card[1][CYW_F1_WINDOW_LOW] = 0x80;
     Card[1][CYW_F1_WINDOW_LOW + 1] = 0x12;
     Card[1][CYW_F1_WINDOW_LOW + 2] = 0x18;
@@ -188,6 +217,49 @@ static void CheckRestored(void)
 #include "erom_tests.h"
 #include "bus_mode_tests.h"
 
+static void RunPhasePollingTests(void)
+{
+    RPI5CYW_ADAPTER a;UCHAR b[512]={0};ULONG write,phase;
+    /* Independent event timings reproduce the shared-budget defect. Original
+     * tests made all three events ready together and could not detect it. */
+    for(write=0;write<2;++write) {
+        Init(&a);PhaseMode=1;PhaseUs[0]=20;PhaseUs[1]=PhaseUs[2]=40;SleepUs=16000;
+        CHECK(SdioFifoTransfer(&a,b,sizeof(b),(BOOLEAN)write)==0);
+        CHECK(StallUs==40 && SleepCount==2); /* unchanged startup F2 */
+        Init(&a);PhaseMode=1;PhaseUs[0]=20;PhaseUs[1]=PhaseUs[2]=40;SleepUs=16000;
+        a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=25000;
+        CHECK(SdioFifoTransfer(&a,b,sizeof(b),(BOOLEAN)write)==0);
+        CHECK(StallUs==100 && SleepCount==0 && a.Cmd53BytesTransferred==512);
+        /* Full phase budgets, including the ~41us wire-time boundary. */
+        Init(&a);PhaseMode=1;PhaseUs[0]=PhaseUs[1]=PhaseUs[2]=50;
+        a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=25000;
+        CHECK(SdioFifoTransfer(&a,b,sizeof(b),(BOOLEAN)write)==0);
+        CHECK(StallUs==150 && SleepCount==0);
+    }
+    for(phase=0;phase<3;++phase) {
+        Init(&a);PhaseMode=1;PhaseUs[phase]=1000;SleepUs=16000;
+        a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=25000;
+        CHECK(SdioFifoTransfer(&a,b,sizeof(b),FALSE)==0);
+        CHECK(StallUs==50 && SleepCount==1 && a.RuntimeCmd53SleepPhase[phase]==1);
+        CHECK(a.RuntimeF2WaitSleeps==1 && a.RuntimeF1WaitSleeps==0);
+        CHECK(a.RuntimeCmd53Sleep100ns==160000ULL);
+        Init(&a);PhaseMode=1;PhaseUs[phase]=1000000;SleepUs=16000;
+        a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=25000;
+        CHECK(SdioFifoTransfer(&a,b,sizeof(b),FALSE)==STATUS_IO_TIMEOUT);
+        CHECK(StallUs==50 && SleepCount==16 && ResetCount==1);
+        CHECK(a.RuntimeCmd53SleepPhase[phase]==16 && a.Cmd53Timeouts==1);
+        CHECK(SimTime<2700000);
+    }
+    Init(&a);PhaseMode=1;PhaseUs[0]=10;StopOnStall=1;
+    a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=25000;
+    CHECK(SdioFifoTransfer(&a,b,sizeof(b),FALSE)==STATUS_INVALID_DEVICE_STATE);
+    CHECK(StallUs==10 && SleepCount==0 && FifoReads==0);
+    /* Restored slow mode must not inherit runtime fast polling. */
+    Init(&a);PhaseMode=1;PhaseUs[0]=20;a.BusModeStage=90;a.BusWidth=1;a.BusActualKhz=400;
+    CHECK(SdioCmd53Read(&a,1,0x8000,b,4)==0);
+    CHECK(StallUs==0 && SleepCount==1 && a.RuntimeF1WaitSleeps==0);
+}
+
 int main(void)
 {
     RPI5CYW_ADAPTER Adapter;
@@ -198,6 +270,7 @@ int main(void)
     C_ASSERT(sizeof(NTSTATUS) == 4);
     RunEromTests();
     RunBusModeTests();
+    RunPhasePollingTests();
     /* Actual F2 completion polling: immediate, short-ready, slow scheduler,
      * timeout and cancellation. No MMIO or driver loaded on this host. */
     Init(&Adapter);
@@ -216,11 +289,12 @@ int main(void)
     Init(&Adapter);ReadyAt=10000;SleepUs=16000;
     Adapter.BusModeStage=6;Adapter.BusWidth=4;Adapter.BusActualKhz=25000;
     CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,4)==0);
-    CHECK(SleepCount==1 && StallUs==40); /* Never spin until ready. */
+    CHECK(SleepCount==1 && StallUs==50); /* Never spin until ready. */
+    CHECK(Adapter.RuntimeF1WaitSleeps==1 && Adapter.RuntimeCmd53SleepPhase[0]==1);
     Init(&Adapter);Fault=1;SleepUs=16000;
     Adapter.BusModeStage=6;Adapter.BusWidth=4;Adapter.BusActualKhz=25000;
     CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,4)==STATUS_IO_TIMEOUT);
-    CHECK(SleepCount==16 && StallUs==40 && Adapter.Cmd53Timeouts==1);
+    CHECK(SleepCount==16 && StallUs==50 && Adapter.Cmd53Timeouts==1);
     Init(&Adapter);ReadyAt=10000;
     CHECK(SdioFifoTransfer(&Adapter,FifoBuffer,64,FALSE)==0);
     CHECK(SleepCount==1 && StallUs==40 && Adapter.Cmd53WaitSleeps==1);

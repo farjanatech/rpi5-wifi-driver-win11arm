@@ -581,14 +581,19 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
     const ULONG Events[3] = { SDHCI_INT_CMD_COMPLETE,
         Write ? SDHCI_INT_BUFFER_WRITE_READY : SDHCI_INT_BUFFER_READ_READY,
         SDHCI_INT_XFER_COMPLETE };
-    ULONG Phase, FastPolls = 0;
-    ULONG64 Deadline;
+    ULONG Phase, FastPolls = 0, FastLimit;
+    ULONG64 Deadline, SleepStart;
+    BOOLEAN OperatingBus;
 
     if (Adapter == NULL || Adapter->RegisterBase == NULL || Buffer == NULL ||
         Function > 7 || Address > 0x1FFFF || Length == 0 || Length > 512 ||
         (Increment && !SdioIsValidByteRead(Function, Address, Length)))
         return STATUS_INVALID_PARAMETER;
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) return STATUS_INVALID_DEVICE_STATE;
+    OperatingBus = (Function == 1 || Function == 2) &&
+        Adapter->BusModeStage == 6 && Adapter->BusWidth == 4 &&
+        Adapter->BusActualKhz > 400 && Adapter->BusActualKhz <= 25000;
+    FastLimit = OperatingBus ? 5 : (Function == 2 ? 4 : 0);
     if (!Write) RtlZeroMemory(Buffer, Length);
     Adapter->Cmd53BytesTransferred = 0;
     Adapter->Cmd53ResetStatus = STATUS_SUCCESS;
@@ -613,10 +618,15 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
 
     for (Phase = 0; Phase < 3; Phase++)
     {
-        /* Real elapsed-time deadline: 250 one-ms sleeps can take much longer
-         * than 250 ms under scheduler load. F2 gets at most 40 us TOTAL of
-         * short polling per transaction, then yields. F1 startup is unchanged
-         * except for the bounded elapsed-time timeout. No clock/bus changes. */
+        /* Command, buffer-ready and transfer-complete are separate hardware
+         * waits. Replenish the short-poll allowance only on phase progress,
+         * never after a sleep. At 4-bit/25 MHz a 512-byte payload alone takes
+         * ~41 us: a 40 us allowance shared by all phases can force a scheduler
+         * sleep on every normal packet. Verified operating mode allows up to
+         * 50 us per phase (150 us per transaction, ten-us individual stalls).
+         * Startup/recovery retain F1 sleep / F2 40-us-total behavior. These
+         * PASSIVE_LEVEL waits remain cancellable, with 250 ms phase deadlines. */
+        if (OperatingBus) FastPolls = 0;
         Deadline = KeQueryInterruptTime() + 2500000ULL;
         for (Poll = 0; Poll < 254; Poll++)
         {
@@ -630,22 +640,24 @@ SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
             }
             if ((InterruptStatus & Events[Phase]) != 0) break;
             if (KeQueryInterruptTime() >= Deadline) break;
-            /* Runtime F1 interrupt/mailbox reads share the same worker as F2
-             * packets. Do not impose a scheduler sleep on each short register
-             * transfer after the operating bus has been verified. Startup,
-             * upload and recovery keep their original conservative behavior. */
-            if ((Function == 2 || (Function == 1 && Adapter->BusModeStage == 6 &&
-                 Adapter->BusWidth == 4 && Adapter->BusActualKhz > 400)) && FastPolls < 4)
+            if (FastPolls < FastLimit)
             {
                 KeStallExecutionProcessor(10);
                 FastPolls++;
                 Adapter->Cmd53FastPolls++;
-                if (Function == 1) Adapter->RuntimeF1FastPolls++;
+                if (Function == 1 && OperatingBus) Adapter->RuntimeF1FastPolls++;
             }
             else
             {
                 Adapter->Cmd53WaitSleeps++;
+                SleepStart = KeQueryInterruptTime();
                 SdioDelayMilliseconds(1);
+                if (OperatingBus) {
+                    Adapter->RuntimeCmd53SleepPhase[Phase]++;
+                    if (Function == 1) Adapter->RuntimeF1WaitSleeps++;
+                    else Adapter->RuntimeF2WaitSleeps++;
+                    Adapter->RuntimeCmd53Sleep100ns += KeQueryInterruptTime() - SleepStart;
+                }
             }
         }
         if ((InterruptStatus & Events[Phase]) == 0)

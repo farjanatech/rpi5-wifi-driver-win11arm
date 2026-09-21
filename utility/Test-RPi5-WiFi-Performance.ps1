@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 function Get-Rpi5BusAssessment {
     param($Diagnostic)
     if ($null -eq $Diagnostic -or -not $Diagnostic.PSObject.Properties['BusModeStage']) {
-        return 'Updated runtime diagnostics missing. Restart after installing exp0.6.12.'
+        return 'Updated runtime diagnostics missing. Restart after installing exp0.6.13.'
     }
     if ($Diagnostic.DiagVersion -ge 10 -and $Diagnostic.BusModeStage -eq 6 -and
         $Diagnostic.BusWidth -eq 4 -and $Diagnostic.BusActualKhz -gt 400 -and
@@ -21,6 +21,11 @@ function Test-Rpi5ExclusiveRoute {
     return $Routes.Count -gt 0 -and @($Routes | Where-Object {
         $_.InterfaceIndex -ne $InterfaceIndex
     }).Count -eq 0
+}
+function Test-Rpi5NewerSnapshot {
+    param($Snapshot, [long]$EndStamp)
+    return $null -ne $Snapshot -and $null -ne $Snapshot.PSObject.Properties['SnapshotTimeUtc'] -and
+        [long]$Snapshot.SnapshotTimeUtc -gt $EndStamp
 }
 function Invoke-Rpi5BoundedProcess {
     param([string]$File, [string[]]$Arguments, [int]$Seconds)
@@ -56,7 +61,7 @@ try {
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Output 'exp0.6.12: connection, bus, packet-path counters, gateway, DNS, HTTPS and bounded download test.'
+    Write-Output 'exp0.6.13: connection, bus, packet-path counters, gateway, DNS, HTTPS and bounded download test.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
     Write-Output 'The test requests example.com and about 1 MiB from speed.cloudflare.com. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
@@ -95,7 +100,7 @@ try {
         } catch { Write-Report "TEST ERROR: $($_.Exception.Message)" }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "exp0.6.12 performance report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "exp0.6.13 performance report; UTC=$([datetime]::UtcNow.ToString('o'))"
     Write-Report 'Counters are cumulative periodic driver snapshots, not atomic per-test measurements.'
     $before = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
     $before | Format-List * | Out-String -Width 500 | Set-Content (Join-Path $resultDirectory 'driver-before.txt')
@@ -136,8 +141,9 @@ try {
         Save-Step 'Gateway latency/loss (8 requests)' (Join-Path $system 'ping.exe') @('-4','-n','8','-w','1000',$gateway) 25
         Save-Step 'Internet IPv4 latency/loss (8 requests)' (Join-Path $system 'ping.exe') @('-4','-n','8','-w','1000','1.1.1.1') 25
         if ($dns) { Save-Step 'Configured DNS server, A query' (Join-Path $system 'nslookup.exe') @('-type=A','-timeout=2','-retry=1','example.com',$dns) 15 }
+        if ($dns) { Save-Step 'Download hostname, configured DNS server, A query' (Join-Path $system 'nslookup.exe') @('-type=A','-timeout=2','-retry=1','speed.cloudflare.com',$dns) 15 }
         $common = @('-4','--noproxy','*','--interface',$ip.IPAddress,'--connect-timeout','10','--silent','--show-error')
-        Save-Step 'HTTPS headers; certificate verification enabled' (Join-Path $system 'curl.exe') ($common + @('--max-time','25','-I','https://example.com')) 30
+        Save-Step 'HTTPS headers; certificate verification enabled' (Join-Path $system 'curl.exe') ($common + @('--max-time','25','-I','-w','dns_seconds=%{time_namelookup} tcp_seconds=%{time_connect} tls_seconds=%{time_appconnect} first_byte_seconds=%{time_starttransfer} total_seconds=%{time_total}','https://example.com')) 30
         Save-Step '1 MiB bounded HTTPS download; bytes/sec is application throughput' (Join-Path $system 'curl.exe') ($common + @('--max-time','45','--fail','-o','NUL','-w','http=%{http_code} bytes=%{size_download} bytes_per_second=%{speed_download} total_seconds=%{time_total}','https://speed.cloudflare.com/__down?bytes=1048576')) 50
     } catch { Write-Report "PERFORMANCE INCOMPLETE: $($_.Exception.Message)" }
     try {
@@ -145,13 +151,18 @@ try {
         $protocolAfter | Format-List * | Out-String -Width 500 |
             Set-Content (Join-Path $resultDirectory 'windows-protocol-after.txt')
     } catch { Write-Report 'Optional Windows protocol counters were unavailable.' }
-    Write-Report 'Waiting up to 35 seconds for a later driver snapshot (no device restart).'
-    $stamp = if ($null -ne $before) { $before.SnapshotTimeUtc } else { 0 }
+    Write-Report 'Waiting up to 35 seconds for a driver snapshot newer than the END of the tests (no device restart).'
+    # Comparing against the pre-test stamp can accept a snapshot taken halfway
+    # through the tests and omit the download's congestion/errors.
+    $endSnapshot = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
+    $stamp = if ($null -ne $endSnapshot) { $endSnapshot.SnapshotTimeUtc } else { 0 }
+    $freshSnapshot = $false
     for ($attempt=0; $attempt -lt 35; $attempt++) {
         $after = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
-        if ($null -ne $after -and $after.SnapshotTimeUtc -ne $stamp) { break }
+        if (Test-Rpi5NewerSnapshot $after $stamp) { $freshSnapshot = $true; break }
         Start-Sleep -Seconds 1
     }
+    Write-Report "Post-test driver snapshot refreshed=$freshSnapshot. Counters remain periodic/non-atomic."
     $after | Format-List * | Out-String -Width 500 | Set-Content (Join-Path $resultDirectory 'driver-after.txt')
     try {
         $collection = Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Collect-RPi5-WiFi-Diagnostics.ps1'),'-NoPause','-OutputDirectory',$resultDirectory) 180

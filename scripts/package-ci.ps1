@@ -94,16 +94,19 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.12 extends the bounded 40-microsecond fast-poll budget to verified
-runtime F1 transfers. Runtime interrupt/mailbox backplane reads previously used
-the startup sleep path. Startup/upload/recovery behavior is unchanged.
-Adds software IPv4 and ICMP/TCP/UDP checksum observations, validated ICMP echo
-request/reply matching and bus-transfer-to-reply timing, and maximum TX queue age.
-The bounded in-memory echo ring is never exported; reports contain counts only.
-Checks do not modify packets, bypass Windows validation or claim checksum offload.
-This is a targeted latency candidate, not a hardware-proven Internet fix.
-exp0.6.11 confirmed MAC readback matched and ICMP packets reached the Windows
-indication boundary, but all pings timed out. Type/checksum/timing was unknown.
+Driver exp0.6.13 gives each of the three CMD53 phases its own bounded short-poll
+budget on the verified operating bus: at most 50 us per phase / 150 us total,
+in individual 10-us stalls, then yielding. The previous shared 40-us allowance
+could be exhausted before buffer/transfer completion. No unbounded busy waits.
+Startup/upload/recovery, cancellation and 250-ms phase deadlines are retained.
+New counters separate runtime command/buffer/completion sleeps and F1/F2 waits,
+and record cumulative scheduler sleep time. The performance tool adds download
+hostname DNS and HTTPS phase timings, and waits for a post-test driver snapshot.
+exp0.6.12 confirmed browsing and HTTPS, but still showed queue congestion,
+ping timeouts and DNS failure for the download. This is a targeted latency
+candidate, NOT a hardware-proven speed or reliability fix. Keep .12 for rollback.
+Existing checksum observations and validated ICMP echo matching are retained;
+they never modify packets or export the private in-memory echo ring.
 UEFI, firmware, country, MAC generation, bus mode and queue size are unchanged.
 Retained exp0.6.11 features: optional editable local credentials/startup connection,
 packet-path counters, firmware MAC readback and explicit RX NBL initialization.

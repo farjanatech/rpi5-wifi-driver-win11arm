@@ -13,6 +13,12 @@ if ((Get-Rpi5BusAssessment $null) -notlike '*Restart*') { throw 'Missing runtime
 if (-not (Test-Rpi5ExclusiveRoute @([pscustomobject]@{InterfaceIndex=6}) 6)) { throw 'Correct route rejected.' }
 if (Test-Rpi5ExclusiveRoute @([pscustomobject]@{InterfaceIndex=6},[pscustomobject]@{InterfaceIndex=15}) 6) { throw 'Competing route accepted.' }
 if (Test-Rpi5ExclusiveRoute @() 6) { throw 'Absent route accepted.' }
+$stamp=134344762239466275L
+if (Test-Rpi5NewerSnapshot $null $stamp) { throw 'Absent snapshot accepted.' }
+if (Test-Rpi5NewerSnapshot ([pscustomobject]@{}) $stamp) { throw 'Missing timestamp accepted.' }
+if (Test-Rpi5NewerSnapshot ([pscustomobject]@{SnapshotTimeUtc=$stamp}) $stamp) { throw 'Same end-of-test snapshot accepted.' }
+if (Test-Rpi5NewerSnapshot ([pscustomobject]@{SnapshotTimeUtc=$stamp-1}) $stamp) { throw 'Older/mid-test snapshot accepted.' }
+if (-not (Test-Rpi5NewerSnapshot ([pscustomobject]@{SnapshotTimeUtc=$stamp+1}) $stamp)) { throw 'New post-test snapshot rejected.' }
 $r=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-Command','Write-Output 123; exit 7') 10
 if ($r.ExitCode -ne 7 -or $r.TimedOut -or $r.Output -notmatch '123') { throw 'Native output/exit capture failed.' }
 $r=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-Command','Start-Sleep -Seconds 20') 1
