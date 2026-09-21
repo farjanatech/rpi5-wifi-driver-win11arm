@@ -1,0 +1,43 @@
+name: Validate and package standalone performance utility
+on:
+  push:
+    branches: [bringup/cyw43455-sdio-arm64]
+    paths:
+      - 'utility/**'
+      - 'tests/performance_utility_tests.ps1'
+      - 'scripts/package-performance.ps1'
+      - 'docs/PERFORMANCE-0.6.14.1.md'
+      - '.github/workflows/performance-utility.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Analyze scripts
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
+          $issues = @('utility/Test-RPi5-WiFi-Performance.ps1','utility/Measure-RPi5-WiFi-Load.ps1','tests/performance_utility_tests.ps1','scripts/package-performance.ps1') | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
+          }
+          $issues | Format-Table -AutoSize
+          if ($issues) { throw 'Script analysis failed.' }
+      - name: Windows PowerShell 5.1 tests (mocked requests, no hardware)
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_utility_tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package allowlisted utility
+        shell: pwsh
+        run: ./scripts/package-performance.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpi5-wifi-performance-0.6.14.1
+          path: |
+            artifacts/RPi5-WiFi-Performance-0.6.14.1.zip
+            artifacts/PERFORMANCE-SHA256SUMS.txt
+          if-no-files-found: error

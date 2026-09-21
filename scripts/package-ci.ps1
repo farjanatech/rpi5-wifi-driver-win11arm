@@ -48,6 +48,8 @@ foreach ($name in @('Set-RPi5-WiFi-Autoconnect.ps1', 'Enable-RPi5-WiFi-Autoconne
 Copy-Item (Join-Path $root 'docs\AUTO-CONNECT.md') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.cmd') $stage
+Copy-Item (Join-Path $root 'utility\Measure-RPi5-WiFi-Load.ps1') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.14.1.md') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -102,8 +104,10 @@ owns the cache; no concurrency, clock, firmware or wire-format changes.
 Adds locked 64-bit Ethernet byte/frame/error/discard statistics and the standard
 NDIS OID_GEN_STATISTICS interface for Windows traffic graphs. Bytes count actual
 chip transfers / host receive indications, not queued work or a fabricated rate.
-The utility adds a bounded 16 MiB download with concurrent router ping, plus
-Windows adapter statistics. It transfers up to 17 MiB total and uploads no logs.
+Performance utility 0.6.14.1 replaces the rejected large request with sequential
+1 MiB downloads (90s or 128 requests), independent router ping and traffic
+sampling. Up to 129 MiB total payload; see PERFORMANCE-0.6.14.1.md for limits.
+It uploads no logs. HTTP rejection is inconclusive, not a zero-speed result.
 This is a throughput candidate, not a guaranteed or hardware-validated speedup.
 Keep exp0.6.13 for rollback; its Pi test measured 3.17 Mbps and no ping loss.
 

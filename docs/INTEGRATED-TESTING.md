@@ -1,4 +1,12 @@
-# exp0.6.14: one-reboot, one-utility performance check
+# Latest: standalone performance utility 0.6.14.1
+
+If exp0.6.14 is already installed, do **not** reinstall or reboot for the new
+measurement tool. Follow [standalone instructions](PERFORMANCE-0.6.14.1.md).
+It replaces the old 16 MiB test below, which returned HTTP 403 on the Pi, with
+bounded repeated 1 MiB requests and independently sampled latency/counters.
+The old workload below describes the original exp0.6.14 release only.
+
+# exp0.6.14: original one-reboot, one-utility performance check
 
 Keep exp0.6.13 for rollback. This candidate removes redundant runtime window
 selection commands and adds genuine 64-bit Windows traffic statistics. It does

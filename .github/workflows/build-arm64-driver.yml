@@ -111,6 +111,7 @@ jobs:
             '.\utility\Set-RPi5-WiFi-Autoconnect.ps1',
             '.\tests\autoconnect_utility_tests.ps1',
             '.\utility\Test-RPi5-WiFi-Performance.ps1',
+            '.\utility\Measure-RPi5-WiFi-Load.ps1',
             '.\tests\performance_utility_tests.ps1',
             '.\tests\firmware_package_tests.ps1',
             '.\scripts\fetch-firmware.ps1'

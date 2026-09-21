@@ -4,6 +4,15 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
+### Performance utility 0.6.14.1 — keep driver exp0.6.14 installed
+
+The latest Pi capture measured a 16.8 Mbps **short** download and working Windows
+traffic counters. The large test received HTTP 403, so sustained performance
+remains unverified. A standalone utility now runs bounded repeated 1 MiB requests
+with independent router-ping/traffic sampling, clear server-error handling and
+timestamped records. No driver, firmware or UEFI change, and no reinstall/reboot.
+Read [instructions and data limits](docs/PERFORMANCE-0.6.14.1.md).
+
 ### Integrated exp0.6.14 candidate — fewer bus commands and Windows traffic counters
 
 exp0.6.13 measured 3.17 Mbps, all 16 ping replies, zero queue-full rejections and

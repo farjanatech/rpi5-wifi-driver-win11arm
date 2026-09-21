@@ -46,6 +46,54 @@ function Invoke-Rpi5BoundedProcess {
             Output=($stdout.GetAwaiter().GetResult() + $stderr.GetAwaiter().GetResult()) }
     } finally { $process.Dispose() }
 }
+function ConvertFrom-Rpi5DownloadResult {
+    param($Result, [long]$ExpectedBytes = 1048576)
+    $http = 0; $bytes = 0L; $seconds = 0.0
+    $valid = $Result.Output -match 'RPI5_METRIC\|(\d{3})\|(\d+)\|([0-9.]+)'
+    if ($valid) {
+        $http = [int]$Matches[1]; $bytes = [long]$Matches[2]
+        $seconds = [double]::Parse($Matches[3], [Globalization.CultureInfo]::InvariantCulture)
+    }
+    $outcome = if ($http -ge 400) { 'ServerRejected' }
+        elseif ($Result.TimedOut -or $Result.ExitCode -ne 0) { 'TransportFailed' }
+        elseif (-not $valid -or $http -ne 200 -or $bytes -ne $ExpectedBytes -or $seconds -le 0) { 'InvalidResponse' }
+        else { 'Complete' }
+    [pscustomobject]@{ Outcome=$outcome; Http=$http; Bytes=$bytes; TransferSeconds=$seconds;
+        ExitCode=$Result.ExitCode; TimedOut=$Result.TimedOut }
+}
+function Invoke-Rpi5RepeatedDownload {
+    param([scriptblock]$Request, [scriptblock]$OnSample, [scriptblock]$Now,
+        [int]$DurationSeconds=90, [int]$MaxRequests=128)
+    # Fixed 1 MiB requests, sequential, with no retry of HTTP denial/rate limits.
+    # Effective Mbps includes DNS/TLS, failed attempts and observation overhead.
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    if ($null -eq $Now) { $Now = { $watch.Elapsed.TotalSeconds }.GetNewClosure() }
+    $start = & $Now; $attempt = 0; $completed = 0; $failures = 0; $consecutive = 0
+    $verifiedBytes = 0L; $reason = 'TimeLimit'
+    while ($attempt -lt $MaxRequests) {
+        $elapsed = (& $Now) - $start
+        $remaining = [math]::Floor($DurationSeconds - $elapsed)
+        if ($remaining -lt 1) { break }
+        $attempt++
+        $result = & $Request ([int][math]::Min(15, $remaining))
+        $sample = ConvertFrom-Rpi5DownloadResult $result
+        $sample | Add-Member -NotePropertyName Attempt -NotePropertyValue $attempt
+        $sample | Add-Member -NotePropertyName StartSeconds -NotePropertyValue $elapsed
+        $sample | Add-Member -NotePropertyName EndSeconds -NotePropertyValue ((& $Now) - $start)
+        if ($sample.Outcome -eq 'Complete') {
+            $completed++; $consecutive=0; $verifiedBytes += $sample.Bytes
+        } else { $failures++; $consecutive++ }
+        if ($null -ne $OnSample) { & $OnSample $sample }
+        if ($sample.Outcome -in @('ServerRejected','InvalidResponse')) { $reason=$sample.Outcome; break }
+        if ($consecutive -ge 3) { $reason='RepeatedTransportFailure'; break }
+        if ($attempt -eq $MaxRequests) { $reason='RequestByteCap' }
+    }
+    $elapsed = (& $Now) - $start
+    $rate = if ($completed -gt 0 -and $elapsed -gt 0) { $verifiedBytes * 8 / $elapsed / 1000000 } else { $null }
+    [pscustomobject]@{ StopReason=$reason; ElapsedSeconds=$elapsed; Attempts=$attempt;
+        Completed=$completed; Failed=$failures; VerifiedBytes=$verifiedBytes; EffectiveMbps=$rate;
+        Measurement='Sequential HTTPS workload; includes connection/setup overhead. Not PHY rate.' }
+}
 if ($LibraryOnly) { return }
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
@@ -61,9 +109,9 @@ try {
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Output 'exp0.6.14: connection, bus, traffic counters, latency under load, DNS and HTTPS downloads.'
+    Write-Output 'Performance utility 0.6.14.1 for installed exp0.6.14: no driver reinstall required.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
-    Write-Output 'The test requests example.com and up to 17 MiB from speed.cloudflare.com, including a loaded-latency test. No logs are uploaded.'
+    Write-Output 'The test requests example.com and up to 129 MiB of download payload from speed.cloudflare.com (plus protocol overhead). Repeated-download stage: up to 90 seconds. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
     # prompts/clearing; all saved performance output starts after it returns.
     try { & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') }
@@ -100,7 +148,7 @@ try {
         } catch { Write-Report "TEST ERROR: $($_.Exception.Message)" }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "exp0.6.14 performance report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "Performance utility 0.6.14.1 report; UTC=$([datetime]::UtcNow.ToString('o'))"
     Write-Report 'Counters are cumulative periodic driver snapshots, not atomic per-test measurements.'
     $before = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
     $before | Format-List * | Out-String -Width 500 | Set-Content (Join-Path $resultDirectory 'driver-before.txt')
@@ -145,16 +193,41 @@ try {
         $common = @('-4','--noproxy','*','--interface',$ip.IPAddress,'--connect-timeout','10','--silent','--show-error')
         Save-Step 'HTTPS headers; certificate verification enabled' (Join-Path $system 'curl.exe') ($common + @('--max-time','25','-I','-w','dns_seconds=%{time_namelookup} tcp_seconds=%{time_connect} tls_seconds=%{time_appconnect} first_byte_seconds=%{time_starttransfer} total_seconds=%{time_total}','https://example.com')) 30
         Save-Step '1 MiB bounded HTTPS download; bytes/sec is application throughput' (Join-Path $system 'curl.exe') ($common + @('--max-time','45','--fail','-o','NUL','-w','http=%{http_code} bytes=%{size_download} bytes_per_second=%{speed_download} total_seconds=%{time_total}','https://speed.cloudflare.com/__down?bytes=1048576')) 50
-        # A separate bounded ping process measures router latency under load.
-        # Only this process is stopped on timeout; no adapters/settings change.
-        $loadedPing = $null
+        # Sampling is independent of curl so long requests cannot hide pauses.
+        # The sampler is read-only and has its own parent/lifetime guards.
+        $sampler = $null
         try {
-            $loadedPing = Start-Process -FilePath (Join-Path $system 'ping.exe') -ArgumentList @('-4','-n','60','-w','1000',$gateway) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $resultDirectory 'gateway-under-load.txt') -RedirectStandardError (Join-Path $resultDirectory 'gateway-under-load-errors.txt')
-            Save-Step '16 MiB sustained HTTPS download (60s cap); router ping runs concurrently' (Join-Path $system 'curl.exe') ($common + @('--max-time','60','--fail','-o','NUL','-w','http=%{http_code} bytes=%{size_download} bytes_per_second=%{speed_download} total_seconds=%{time_total}','https://speed.cloudflare.com/__down?bytes=16777216')) 65
+            $samplerArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f (Join-Path $PSScriptRoot 'Measure-RPi5-WiFi-Load.ps1')),
+                '-InterfaceIndex',$adapter.ifIndex,'-Gateway',$gateway,'-OutputDirectory',('"{0}"' -f $resultDirectory),
+                '-OwnerPid',$PID,'-OwnerStartTicks',(Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks)
+            $sampler = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $samplerArgs -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $resultDirectory 'sampler-output.txt') -RedirectStandardError (Join-Path $resultDirectory 'sampler-errors.txt')
+            for ($wait=0; $wait -lt 10; $wait++) {
+                if ((Test-Path -LiteralPath (Join-Path $resultDirectory 'sampling.ready')) -or $sampler.HasExited) { break }
+                Start-Sleep -Seconds 1
+            }
+            if (-not (Test-Path -LiteralPath (Join-Path $resultDirectory 'sampling.ready'))) { throw 'Load sampler did not start. See sampler-errors.txt; no sustained speed result.' }
+            Write-Report "Repeated-download START UTC=$([datetime]::UtcNow.ToString('o')); 1 MiB/request, 90s or 128 requests, whichever comes first."
+            $request = {
+                param($seconds)
+                Invoke-Rpi5BoundedProcess (Join-Path $system 'curl.exe') ($common + @('--max-time',"$seconds",'--max-filesize','1048576','--fail','-o','NUL','-w','RPI5_METRIC|%{http_code}|%{size_download}|%{time_total}','https://speed.cloudflare.com/__down?bytes=1048576')) ($seconds + 1)
+            }
+            $observe = {
+                param($sample)
+                $sample | Add-Member -NotePropertyName EndUtc -NotePropertyValue ([datetime]::UtcNow.ToString('o'))
+                $sample | Export-Csv -LiteralPath (Join-Path $resultDirectory 'download-samples.csv') -NoTypeInformation -Append -Encoding UTF8
+                Write-Host ("Download {0}: {1}, HTTP {2}, {3} bytes, {4:N2}s" -f $sample.Attempt,$sample.Outcome,$sample.Http,$sample.Bytes,$sample.TransferSeconds)
+            }
+            $summary = Invoke-Rpi5RepeatedDownload -Request $request -OnSample $observe
+            $summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $resultDirectory 'load-summary.json') -Encoding UTF8
+            Write-Report ($summary | Format-List * | Out-String)
+            Write-Report "Repeated-download END UTC=$([datetime]::UtcNow.ToString('o'))"
+            Write-Report 'HTTP rejection is a server response, not a measured Wi-Fi speed failure. Partial/failed bodies do not contribute to verified-byte throughput. A short/failed workload does not establish sustained stability.'
         } finally {
-            if ($null -ne $loadedPing) {
-                if (-not $loadedPing.WaitForExit(5000)) { $loadedPing.Kill(); $loadedPing.WaitForExit(); Write-Report 'Loaded ping stopped at collection deadline; partial replies saved.' }
-                $loadedPing.Dispose()
+            if ($null -ne $sampler) {
+                'stop' | Set-Content -LiteralPath (Join-Path $resultDirectory 'sampling.stop')
+                if (-not $sampler.WaitForExit(5000)) { $sampler.Kill(); $sampler.WaitForExit(); Write-Report 'Load sampler stopped at deadline; partial samples saved.' }
+                Write-Report "Load sampler exit=$($sampler.ExitCode)"
+                $sampler.Dispose()
             }
         }
         try {
