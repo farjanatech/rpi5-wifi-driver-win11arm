@@ -1,8 +1,10 @@
-# Latest driver: exp0.6.15 candidate
+# Latest driver: exp0.6.16 focused candidate
 
-See [exp0.6.15 instructions and acceptance criteria](EXP0.6.15.md). This driver
+See [exp0.6.16 instructions and acceptance criteria](EXP0.6.16.md). This driver
 candidate requires one installation and restart, then the included performance
 utility. The standalone utility instructions below apply when keeping .14.
+The .15 hardware run regressed; .16 restores .14 scheduling and queue capacity
+and isolates the completion-accounting fix.
 
 # Previous: standalone performance utility 0.6.14.1
 

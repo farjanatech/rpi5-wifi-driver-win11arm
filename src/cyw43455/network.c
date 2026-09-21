@@ -243,13 +243,12 @@ static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
 Exit: if(clm)ExFreePoolWithTag(clm,RPI5CYW_TAG);return Status;
 }
 #include "connection.h"
-#include "worker_io.h"
 static VOID CywWorker(PVOID Context)
 {
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
     CYW_CONNECT_REQUEST request;
-    KIRQL irql;ULONG op,lastPhase=0,sent,received;
-    ULONGLONG nextSnapshot=0;
+    KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0,sentBefore,sentAfter;
+    ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
     N->Thread=PsGetCurrentThread();ObReferenceObject(N->Thread);
     KeSetEvent(&N->ThreadStarted,0,FALSE);
@@ -284,13 +283,22 @@ static VOID CywWorker(PVOID Context)
             A->NetworkStatus=Status;Rpi5CywWriteDiagnostics(A,120,Status);
             CywRefreshTxGate(A);
         }
-        Status=CywServiceIo(A,N,&sent,&received);
+        Status=CywTxPump(A,&N->Sends,4,&sentBefore);
         if(!NT_SUCCESS(Status))goto Failed;
+        rxStart=KeQueryInterruptTime();
+        for(i=0;CywReceiveBudget(i,KeQueryInterruptTime()-rxStart) && !N->Stop && !N->Paused;++i) {
+            Status=CywPoll(A,&channel,&off,&len);
+            if(Status==STATUS_NO_MORE_ENTRIES)break;
+            if(!NT_SUCCESS(Status))goto Failed;
+        }
+        if(i && !CywReceiveBudget(i,KeQueryInterruptTime()-rxStart))A->RxBatchYields++;
         if(A->NetworkPhase!=lastPhase || KeQueryInterruptTime()>=nextSnapshot) {
             Rpi5CywWriteDiagnostics(A,120,A->NetworkStatus);
             lastPhase=A->NetworkPhase;nextSnapshot=KeQueryInterruptTime()+300000000ULL;
         }
-        if(!received && !sent)
+        Status=CywTxPump(A,&N->Sends,4,&sentAfter);
+        if(!NT_SUCCESS(Status))goto Failed;
+        if(!i && !sentBefore && !sentAfter)
             KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);
     }
     goto Exit;

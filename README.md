@@ -4,7 +4,22 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6.15 candidate — burst admission and credit-aware scheduling
+### Integrated exp0.6.16 — focused completion-accounting candidate
+
+exp0.6.15's hardware test regressed (three completed downloads, then three
+timeouts). This candidate restores exp0.6.14's worker source **exactly** and
+its 64-frame admission limit. The only functional driver change versus .14 is
+completion accounting: free an admission slot before the NDIS callback, while
+tracking a separate callback-in-progress reference for pause safety. Retained
+diagnostics/version changes are checked separately. A GitHub scope test rejects
+any other driver-source changes versus the pinned .14 commit.
+
+This is not a promise of restored speed or zero queue errors. Keep .14 for
+rollback, install .16 on the Pi, reboot once and run the included sustained test.
+See [exp0.6.16 instructions](docs/EXP0.6.16.md). Firmware, UEFI/fan, 25 MHz bus
+settings, country and private configuration handling are unchanged.
+
+### Previous exp0.6.15 candidate — hardware test regressed; do not prefer it
 
 The exp0.6.14 sustained test completed 128 MiB at 14.7 Mbps over 73 seconds,
 but recorded queue-full rejections and four `NoResources` router probes. This

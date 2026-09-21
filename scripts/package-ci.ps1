@@ -51,7 +51,7 @@ Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.cmd') $stage
 Copy-Item (Join-Path $root 'utility\Measure-RPi5-WiFi-Load.ps1') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.14.1.md') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.15.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.16.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -97,12 +97,13 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.15 targets the sustained test's transmit queue rejections: release
-admission before reentrant completion, retain a bounded 256-frame host burst
-queue, and service two sends after each RX frame/credit update. It keeps pending
-ownership, cancellation, expiry, stop/pause and the chip credit window intact.
-See EXP0.6.15.md. A larger queue can add delay: hardware testing must compare
-latency/rejections as well as throughput. Keep exp0.6.14 for rollback.
+Driver exp0.6.16 restores exp0.6.14's exact worker scheduling and 64-frame cap.
+Only the completion-accounting behavior is changed versus .14: release admission
+before the NDIS callback, retaining a separate callback reference for pause.
+Read-only diagnostics and version metadata are retained. GitHub verifies this
+focused source scope; the .15 per-frame interleaving/256-frame burst are removed.
+See EXP0.6.16.md. The .15 run regressed; recovery still needs a physical test.
+Compare timeouts/latency and speed, not only rejects. Keep .14 for rollback.
 Install on the Pi, restart once, then run Test-RPi5-WiFi-Performance.cmd.
 No firmware, country, UEFI/fan or bus-mode changes. No guaranteed speed claim.
 

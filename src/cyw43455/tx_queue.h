@@ -39,7 +39,6 @@ static NDIS_STATUS CywTxSubmit(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LI
             item->Frames=item->HeldFrames=frames;item->Bytes=bytes;item->Submitted=KeQueryInterruptTime();
             Q->Frames+=frames;Q->Bytes+=bytes;Q->Outstanding++;
             A->TxQueueFrames=Q->Frames;
-            if(Q->Frames>CYW_TX_BASELINE)A->TxBurstAdmissions++;
             if(Q->Frames>A->TxQueueHighWater)A->TxQueueHighWater=Q->Frames;
             A->TxNblAccepted++;status=NDIS_STATUS_PENDING;
         }

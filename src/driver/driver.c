@@ -121,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 15);
+    SET_DWORD(L"DiagVersion", 16);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -613,7 +613,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x0006000f;
+            Data.Ulong = 0x00060010;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

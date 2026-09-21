@@ -24,6 +24,14 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Enforce focused exp0.6.14 baseline scope
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/focused_scope_tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
@@ -82,7 +90,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
-          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_tests.exe && ci-logs\tx_queue_tests.exe && cl /nologo /W4 /WX /TC /std:c17 tests\worker_schedule_tests.c /Fe:ci-logs\worker_schedule_tests.exe && ci-logs\worker_schedule_tests.exe' -f $vcvars
+          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_tests.exe && ci-logs\tx_queue_tests.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\tx-queue-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -113,6 +121,7 @@ jobs:
             '.\utility\Test-RPi5-WiFi-Performance.ps1',
             '.\utility\Measure-RPi5-WiFi-Load.ps1',
             '.\tests\performance_utility_tests.ps1',
+            '.\tests\focused_scope_tests.ps1',
             '.\tests\firmware_package_tests.ps1',
             '.\scripts\fetch-firmware.ps1'
           ) | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning }
@@ -224,7 +233,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.15
+          name: rpi5-wifi-one-click-diagnostics-v0.6.16
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

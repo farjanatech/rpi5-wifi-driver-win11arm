@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.15'
+$script:UtilityVersion = '0.6.16'
 
 function Invoke-Rpi5ReadOnlyCapture {
     param([Parameter(Mandatory=$true)][scriptblock]$Command)
