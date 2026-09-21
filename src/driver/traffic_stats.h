@@ -3,11 +3,12 @@
  * Callers serialize all updates/snapshots. Header bytes count; SDPCM/BCDC do not.
  */
 #pragma once
-#include <stdint.h>
-#include <stddef.h>
+#include "../cyw43455/network_protocol.h"
+/* Reuse the kernel-safe wire types; never include user-mode CRT headers in WDK. */
+typedef unsigned long long CYW_TRAFFIC_U64;
 typedef struct CYW_TRAFFIC_STATS {
-    uint64_t Frames[2][3], Bytes[2][3]; /* RX/TX; unicast/multicast/broadcast */
-    uint64_t Discards[2], Errors[2];
+    CYW_TRAFFIC_U64 Frames[2][3], Bytes[2][3]; /* RX/TX; unicast/multicast/broadcast */
+    CYW_TRAFFIC_U64 Discards[2], Errors[2];
 } CYW_TRAFFIC_STATS;
 static __inline void CywTrafficFrame(CYW_TRAFFIC_STATS *s,unsigned tx,const uint8_t *p,size_t n)
 {
@@ -18,5 +19,5 @@ static __inline void CywTrafficFrame(CYW_TRAFFIC_STATS *s,unsigned tx,const uint
     }
     s->Frames[tx][group]++;s->Bytes[tx][group]+=n;
 }
-static __inline uint64_t CywTrafficTotal(const uint64_t *v)
+static __inline CYW_TRAFFIC_U64 CywTrafficTotal(const CYW_TRAFFIC_U64 *v)
 {return v[0]+v[1]+v[2];}
