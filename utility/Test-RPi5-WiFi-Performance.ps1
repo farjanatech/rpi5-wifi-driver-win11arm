@@ -68,6 +68,18 @@ try {
     $resultDirectory = Join-Path $desktop ('RPI5-WIFI-PERFORMANCE-' + (Get-Date -Format yyyyMMdd-HHmmss) + '-' + [guid]::NewGuid().ToString('N').Substring(0,6))
     [void](New-Item -ItemType Directory -Path $resultDirectory)
     $report = Join-Path $resultDirectory 'performance.txt'
+    # Machine-wide counters, not a payload capture. Before/after helps locate
+    # packets discarded after the miniport indication boundary. Other traffic
+    # can contribute; never label these as exclusively this test's counters.
+    try {
+        $protocolBefore = Invoke-Rpi5BoundedProcess (Join-Path $env:windir 'System32\netstat.exe') @('-s') 10
+        $protocolBefore | Format-List * | Out-String -Width 500 |
+            Set-Content (Join-Path $resultDirectory 'windows-protocol-before.txt')
+        Get-NetAdapter | Where-Object InterfaceDescription -like '*CYW43455*' |
+            Get-NetAdapterBinding | Select-Object Name,DisplayName,ComponentID,Enabled |
+            Format-Table -AutoSize | Out-String -Width 500 |
+            Set-Content (Join-Path $resultDirectory 'adapter-bindings.txt')
+    } catch { Write-Warning 'Optional Windows protocol/binding snapshot was unavailable.' }
     function Write-Report {
         param([string]$Text)
         $Text | Add-Content -LiteralPath $report -Encoding UTF8
@@ -128,6 +140,11 @@ try {
         Save-Step 'HTTPS headers; certificate verification enabled' (Join-Path $system 'curl.exe') ($common + @('--max-time','25','-I','https://example.com')) 30
         Save-Step '1 MiB bounded HTTPS download; bytes/sec is application throughput' (Join-Path $system 'curl.exe') ($common + @('--max-time','45','--fail','-o','NUL','-w','http=%{http_code} bytes=%{size_download} bytes_per_second=%{speed_download} total_seconds=%{time_total}','https://speed.cloudflare.com/__down?bytes=1048576')) 50
     } catch { Write-Report "PERFORMANCE INCOMPLETE: $($_.Exception.Message)" }
+    try {
+        $protocolAfter = Invoke-Rpi5BoundedProcess (Join-Path $env:windir 'System32\netstat.exe') @('-s') 10
+        $protocolAfter | Format-List * | Out-String -Width 500 |
+            Set-Content (Join-Path $resultDirectory 'windows-protocol-after.txt')
+    } catch { Write-Report 'Optional Windows protocol counters were unavailable.' }
     Write-Report 'Waiting up to 35 seconds for a later driver snapshot (no device restart).'
     $stamp = if ($null -ne $before) { $before.SnapshotTimeUtc } else { 0 }
     for ($attempt=0; $attempt -lt 35; $attempt++) {
