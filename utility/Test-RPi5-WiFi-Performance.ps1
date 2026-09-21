@@ -215,7 +215,7 @@ try {
                 param($sample)
                 $sample | Add-Member -NotePropertyName EndUtc -NotePropertyValue ([datetime]::UtcNow.ToString('o'))
                 $sample | Export-Csv -LiteralPath (Join-Path $resultDirectory 'download-samples.csv') -NoTypeInformation -Append -Encoding UTF8
-                Write-Host ("Download {0}: {1}, HTTP {2}, {3} bytes, {4:N2}s" -f $sample.Attempt,$sample.Outcome,$sample.Http,$sample.Bytes,$sample.TransferSeconds)
+                Write-Information ("Download {0}: {1}, HTTP {2}, {3} bytes, {4:N2}s" -f $sample.Attempt,$sample.Outcome,$sample.Http,$sample.Bytes,$sample.TransferSeconds) -InformationAction Continue
             }
             $summary = Invoke-Rpi5RepeatedDownload -Request $request -OnSample $observe
             $summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $resultDirectory 'load-summary.json') -Encoding UTF8

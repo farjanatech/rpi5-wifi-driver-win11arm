@@ -27,17 +27,17 @@ $source=Get-Content -LiteralPath $path -Raw
 if ($source -match '(?i)Start-Transcript|Set-DnsClient|Disable-NetAdapter|--insecure|bcdedit') { throw 'Unexpected mutation or credential capture.' }
 Write-Output 'PASS: performance assessment, competing routes, native output, deadline, no unsafe network edits.'
 
-function New-DownloadResult {
+function Get-DownloadFixture {
     param([string]$Metric='RPI5_METRIC|200|1048576|0.5', [int]$Code=0, [bool]$Timeout=$false)
     [pscustomobject]@{ Output=$Metric; ExitCode=$Code; TimedOut=$Timeout }
 }
-if ((ConvertFrom-Rpi5DownloadResult (New-DownloadResult)).Outcome -ne 'Complete') { throw 'Valid chunk rejected.' }
-if ((ConvertFrom-Rpi5DownloadResult (New-DownloadResult 'RPI5_METRIC|403|0|0.07' 22)).Outcome -ne 'ServerRejected') { throw '403 misclassified as a driver speed failure.' }
-if ((ConvertFrom-Rpi5DownloadResult (New-DownloadResult 'RPI5_METRIC|429|0|0.07' 22)).Outcome -ne 'ServerRejected') { throw '429 must not be retried.' }
-if ((ConvertFrom-Rpi5DownloadResult (New-DownloadResult 'RPI5_METRIC|200|512|15' 28)).Outcome -ne 'TransportFailed') { throw 'Partial timeout accepted.' }
-if ((ConvertFrom-Rpi5DownloadResult (New-DownloadResult 'RPI5_METRIC|200|512|0.1')).Outcome -ne 'InvalidResponse') { throw 'Short body accepted.' }
-if ((ConvertFrom-Rpi5DownloadResult (New-DownloadResult 'RPI5_METRIC|302|0|0.1')).Outcome -ne 'InvalidResponse') { throw 'Redirect accepted.' }
-if ((ConvertFrom-Rpi5DownloadResult (New-DownloadResult 'no metrics')).Outcome -ne 'InvalidResponse') { throw 'Missing metadata accepted.' }
+if ((ConvertFrom-Rpi5DownloadResult (Get-DownloadFixture)).Outcome -ne 'Complete') { throw 'Valid chunk rejected.' }
+if ((ConvertFrom-Rpi5DownloadResult (Get-DownloadFixture 'RPI5_METRIC|403|0|0.07' 22)).Outcome -ne 'ServerRejected') { throw '403 misclassified as a driver speed failure.' }
+if ((ConvertFrom-Rpi5DownloadResult (Get-DownloadFixture 'RPI5_METRIC|429|0|0.07' 22)).Outcome -ne 'ServerRejected') { throw '429 must not be retried.' }
+if ((ConvertFrom-Rpi5DownloadResult (Get-DownloadFixture 'RPI5_METRIC|200|512|15' 28)).Outcome -ne 'TransportFailed') { throw 'Partial timeout accepted.' }
+if ((ConvertFrom-Rpi5DownloadResult (Get-DownloadFixture 'RPI5_METRIC|200|512|0.1')).Outcome -ne 'InvalidResponse') { throw 'Short body accepted.' }
+if ((ConvertFrom-Rpi5DownloadResult (Get-DownloadFixture 'RPI5_METRIC|302|0|0.1')).Outcome -ne 'InvalidResponse') { throw 'Redirect accepted.' }
+if ((ConvertFrom-Rpi5DownloadResult (Get-DownloadFixture 'no metrics')).Outcome -ne 'InvalidResponse') { throw 'Missing metadata accepted.' }
 
 # Simulate the real loop without network, wall-clock delays or driver installation.
 $state=@{ Time=0.0; Calls=0; Rows=[Collections.Generic.List[object]]::new(); Outcome='ok' }
@@ -45,9 +45,9 @@ $now={ $state.Time }
 $request={
     param($seconds)
     $state.Calls++; $state.Time += [math]::Min(2,$seconds)
-    if ($state.Outcome -eq '403') { return (New-DownloadResult 'RPI5_METRIC|403|0|0.1' 22) }
-    if ($state.Outcome -eq 'timeout') { return (New-DownloadResult 'RPI5_METRIC|000|0|2' 28 $true) }
-    return (New-DownloadResult)
+    if ($state.Outcome -eq '403') { return (Get-DownloadFixture 'RPI5_METRIC|403|0|0.1' 22) }
+    if ($state.Outcome -eq 'timeout') { return (Get-DownloadFixture 'RPI5_METRIC|000|0|2' 28 $true) }
+    return (Get-DownloadFixture)
 }
 $observe={ param($sample) $state.Rows.Add($sample) }
 $r=Invoke-Rpi5RepeatedDownload -Request $request -Now $now -OnSample $observe -DurationSeconds 90 -MaxRequests 3
