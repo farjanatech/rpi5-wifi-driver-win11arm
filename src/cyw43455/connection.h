@@ -3,6 +3,7 @@
  * harness. Firmware operations are supplied by the includer; no separate worker.
  * Country policy follows Linux v6.12 brcmfmac cfg80211.c (ISC Broadcom).
  */
+#include "join_preference.h"
 static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
 {
     UCHAR country[12]={0},clm[4]={0},pmk[132]={0},ssid[36]={0},countries[1024]={0};
@@ -11,6 +12,7 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
     NTSTATUS Status;
     A->Network->Associated=A->Network->Authorized=FALSE;CywLink(A,FALSE);
     A->NetworkPhase=510;A->NetworkStatus=STATUS_SUCCESS;
+    A->JoinPreferenceAccepted=0;A->JoinPreferenceError=0;A->JoinPreferenceStatus=(NTSTATUS)0x103;
     A->CountryRequested=(ULONG)R->Country[0]|((ULONG)R->Country[1]<<8);
     A->CountryApplied=0;A->CountryRevision=0xffffffffUL;
     A->CountryBefore=0;A->CountryBeforeRevision=0xffffffffUL;
@@ -83,6 +85,7 @@ CountryVerified:
     CywPut16(pmk,32);RtlCopyMemory(pmk+4,R->Pmk,32);
     STEP(11,CywFirmwareCommand(A,268,TRUE,pmk,sizeof(pmk)));
     STEP(12,CywCmdInt(A,2,0));
+    STEP(18,CywApplyJoinPreference(A));
     CywPut32(ssid,R->SsidLength);RtlCopyMemory(ssid+4,R->Ssid,R->SsidLength);
     STEP(13,CywFirmwareCommand(A,26,TRUE,ssid,sizeof(ssid)));
     A->NetworkPhase=520;

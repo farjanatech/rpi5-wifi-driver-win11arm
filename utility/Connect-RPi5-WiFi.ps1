@@ -46,8 +46,26 @@ function Get-Rpi5ConnectStepName {
         11 { 'PMK' } 12 { 'radio-up' } 13 { 'join-SSID' }
         14 { 'country-initial-read' } 15 { 'regulatory-data-status' } 16 { 'country-full-auto-revision' }
         17 { 'supported-country-query' }
+        18 { 'automatic-band-preference' }
         default { 'not-recorded' }
     }
+}
+function Get-Rpi5JoinPreferenceSummary {
+    param($Snapshot)
+    foreach ($name in @('DiagVersion','JoinPreferenceAccepted','JoinPreferenceStatus','JoinPreferenceError')) {
+        if ($null -eq $Snapshot -or -not $Snapshot.PSObject.Properties[$name]) {
+            return 'Automatic band preference: diagnostic status unavailable.'
+        }
+    }
+    if ($Snapshot.DiagVersion -lt 20) { return 'Automatic band preference: not provided by this driver version.' }
+    if ($Snapshot.JoinPreferenceAccepted -eq 1 -and $Snapshot.JoinPreferenceStatus -eq 0) {
+        return 'Automatic band preference accepted: signal-based selection with an 8 dB preference for 5 GHz; 2.4 GHz remains eligible. Actual band is shown by the radio/performance report.'
+    }
+    if (([int64]$Snapshot.JoinPreferenceError -band 0xffffffffL) -eq 4294967273 -and
+        ([int64]$Snapshot.JoinPreferenceStatus -band 0xffffffffL) -eq 3221225473) {
+        return 'Automatic band preference is unsupported by firmware; default firmware selection is in use. No band has been forced.'
+    }
+    return 'Automatic band preference: not confirmed. Inspect diagnostics; do not assume 5 GHz.'
 }
 function Get-Rpi5DriverFailure {
     param([byte[]]$State)
@@ -278,6 +296,8 @@ for ($attempt = 0; $attempt -lt $limit; $attempt++) {
     if ($connected -or $errorCode -ne 0) { break }
     if ($attempt + 1 -lt $limit) { Start-Sleep -Seconds 2 }
 }
+$joinSnapshot = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Rpi5CywDirectDiag' -ErrorAction SilentlyContinue
+Write-Output (Get-Rpi5JoinPreferenceSummary $joinSnapshot)
 Get-NetAdapter | Where-Object InterfaceDescription -like '*CYW43455*' |
     Get-NetIPConfiguration | Format-List InterfaceAlias, IPv4Address, IPv4DefaultGateway
 Write-Output 'If association failed, collect diagnostics. Do not change UEFI or reinstall Windows.'

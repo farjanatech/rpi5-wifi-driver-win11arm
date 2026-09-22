@@ -5,6 +5,18 @@ $tokens = $null; $errors = $null
 [void][Management.Automation.Language.Parser]::ParseFile($sourcePath, [ref]$tokens, [ref]$errors)
 if ($errors.Count) { throw 'Connection utility has syntax errors.' }
 . $sourcePath -LibraryOnly
+if ((Get-Rpi5ConnectStepName 18) -ne 'automatic-band-preference') { throw 'Band preference step missing.' }
+if ((Get-Rpi5JoinPreferenceSummary $null) -notmatch 'unavailable') { throw 'Missing snapshot must be unknown.' }
+$join = [pscustomobject]@{DiagVersion=20;JoinPreferenceAccepted=1;JoinPreferenceStatus=0;JoinPreferenceError=0}
+if ((Get-Rpi5JoinPreferenceSummary $join) -notmatch '8 dB preference.*2.4 GHz remains eligible') { throw 'Accepted preference missing.' }
+$join.JoinPreferenceAccepted=0;$join.JoinPreferenceStatus=3221225473;$join.JoinPreferenceError=4294967273
+if ((Get-Rpi5JoinPreferenceSummary $join) -notmatch 'unsupported') { throw 'Unsupported preference hidden.' }
+$join.JoinPreferenceError=-23;$join.JoinPreferenceStatus=-1073741823
+if ((Get-Rpi5JoinPreferenceSummary $join) -notmatch 'unsupported') { throw 'Signed registry status mishandled.' }
+$join.JoinPreferenceError=-2
+if ((Get-Rpi5JoinPreferenceSummary $join) -notmatch 'not confirmed') { throw 'Failed preference falsely accepted.' }
+$join.JoinPreferenceStatus=259;$join.JoinPreferenceError=0
+if ((Get-Rpi5JoinPreferenceSummary $join) -notmatch 'not confirmed') { throw 'Pending preference falsely accepted.' }
 $state = [byte[]]::new(48)
 [BitConverter]::GetBytes([uint32]2).CopyTo($state, 0)
 [BitConverter]::GetBytes([uint32]510).CopyTo($state, 4)

@@ -65,7 +65,7 @@
   <ItemGroup>
     <ClInclude Include="src\driver\driver.h" />
     <ClInclude Include="src\sdio\sdio.h" />
-    <ClInclude Include="src\sdio\cmd52_wait.h" />
+    <ClInclude Include="src\cyw43455\join_preference.h" />
     <ClInclude Include="src\cyw43455\connection.h" />
     <ClInclude Include="src\cyw43455\control.h" />
     <ClInclude Include="src\cyw43455\radio.h" />

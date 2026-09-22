@@ -2,6 +2,13 @@
 
 ## Integrated candidate 0.6 references and redistributed firmware
 
+exp0.6.20 join preference follows Linux v6.12 brcmfmac/common.c
+`brcmf_c_set_joinpref_default`, `fwil_types.h` join preference TLVs, and
+include/brcmu_wifi.h constants: RSSI_DELTA +8 on WLC_BAND_5G, followed by RSSI.
+These Broadcom ISC sources are covered by the notice below. The bounded
+connection integration and explicit unsupported/error diagnostics are local.
+This ranks candidates; it does not change transmit power or country limits.
+
 exp0.6.10 operating-speed sequencing was informed by the user-supplied
 `sdio-operating-speed (1).patch` from the shared Claude discussion. The mode
 implementation is rewritten with explicit startup synchronization, failure

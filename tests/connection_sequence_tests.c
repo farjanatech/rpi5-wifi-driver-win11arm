@@ -12,6 +12,7 @@ struct _CYW_NETWORK { BOOLEAN Associated,Authorized; };
 static unsigned Failures,Calls,FailStep,WrongCountry,ShortReply,RadioUp,Joined;
 static unsigned AutoCalls,SetCalls,RejectExplicit,RejectAuto,ClmBad,ClmUnsupported,CountryReads;
 static unsigned ListMode,NegativeRevision;
+static unsigned PreferenceCalls,PreferenceFault;
 static ULONG ExplicitError;
 static NTSTATUS ExplicitStatus;
 static UCHAR Country[12];
@@ -54,6 +55,15 @@ static NTSTATUS CywIovar(PRPI5CYW_ADAPTER A,const char *Name,BOOLEAN Set,PUCHAR 
             if(WrongCountry && CountryReads>1)Data[8]='U';
             A->FirmwareReplyLength=ShortReply==A->ConnectStep?10:12;
         }
+    } else if(strcmp(Name,"join_pref")==0) {
+        const UCHAR expected[8]={4,2,8,1,1,2,0,0};
+        CHECK(Set && Length==8 && !memcmp(Data,expected,8));
+        CHECK(RadioUp && !Joined && A->CountryApplied==0x4442 && A->ConnectStep==18);
+        PreferenceCalls++;
+        if(PreferenceFault==1){A->FirmwareError=0xffffffe9;return STATUS_UNSUCCESSFUL;}
+        if(PreferenceFault==2){A->FirmwareError=0xfffffffe;return STATUS_UNSUCCESSFUL;}
+        if(PreferenceFault==3)return STATUS_IO_TIMEOUT;
+        if(PreferenceFault==4)return STATUS_IO_DEVICE_ERROR;
     } else CHECK(Set && strcmp(Name,"wpaie")==0 && Length==22);
     return 0;
 }
@@ -85,6 +95,7 @@ static void Init(PRPI5CYW_ADAPTER A,struct _CYW_NETWORK *N)
     Calls=FailStep=WrongCountry=ShortReply=RadioUp=Joined=0;memset(Country,0,sizeof(Country));
     AutoCalls=SetCalls=RejectExplicit=RejectAuto=ClmBad=ClmUnsupported=CountryReads=0;
     ListMode=NegativeRevision=0;
+    PreferenceCalls=PreferenceFault=0;
     ExplicitError=0xfffffffe;
     ExplicitStatus=STATUS_UNSUCCESSFUL;
 }
@@ -93,7 +104,8 @@ int main(void)
     RPI5CYW_ADAPTER a;struct _CYW_NETWORK n;CYW_CONNECT_REQUEST r={0};unsigned i;
     r.Version=1;r.Country[0]='B';r.Country[1]='D';r.SsidLength=4;memcpy(r.Ssid,"test",4);
     Init(&a,&n);CHECK(CywConnect(&a,&r)==0);
-    CHECK(Calls==16 && Joined && a.NetworkPhase==520 && a.CountryRequested==0x4442 && a.CountrySetMode==2);
+    CHECK(Calls==17 && Joined && a.NetworkPhase==520 && a.CountryRequested==0x4442 && a.CountrySetMode==2);
+    CHECK(PreferenceCalls==1 && a.JoinPreferenceAccepted==1 && !a.JoinPreferenceStatus && !a.JoinPreferenceError);
     CHECK(a.CountryListStatus==0 && a.CountryListCount==2 && a.CountryListMembership==1);
     for(i=1;i<=16;++i) {
         if(i==2)continue; /* BADARG here is the single intentional fallback. */
@@ -137,6 +149,18 @@ int main(void)
     CHECK(CywConnect(&a,&r)==STATUS_DEVICE_DATA_ERROR && !SetCalls && !RadioUp && a.ClmLoadStatus==1);
     Init(&a,&n);ClmUnsupported=1;
     CHECK(CywConnect(&a,&r)==0 && Joined && a.ClmLoadStatus==0xffffffff && a.ClmQueryStatus==STATUS_UNSUCCESSFUL);
+    Init(&a,&n);PreferenceFault=1;
+    CHECK(CywConnect(&a,&r)==0 && Joined && !a.JoinPreferenceAccepted && PreferenceCalls==1);
+    CHECK(a.JoinPreferenceStatus==STATUS_UNSUCCESSFUL && a.JoinPreferenceError==0xffffffe9);
+    for(i=2;i<=4;i++) {
+        NTSTATUS expected=i==2?STATUS_UNSUCCESSFUL:(i==3?STATUS_IO_TIMEOUT:STATUS_IO_DEVICE_ERROR);
+        Init(&a,&n);PreferenceFault=i;
+        CHECK(CywConnect(&a,&r)==expected && !Joined && !a.JoinPreferenceAccepted);
+        CHECK(a.ConnectStep==18 && a.JoinPreferenceStatus==expected && PreferenceCalls==1);
+    }
+    Init(&a,&n);CHECK(CywConnect(&a,&r)==0 && a.JoinPreferenceAccepted);
+    FailStep=1;CHECK(CywConnect(&a,&r)==STATUS_UNSUCCESSFUL);
+    CHECK(!a.JoinPreferenceAccepted && a.JoinPreferenceStatus==0x103 && !a.JoinPreferenceError);
     if(Failures)return 1;
     puts("PASS: actual connection sequence, existing country reuse, same-country revision fallback, CLM checks, fail-closed readback");
     return 0;

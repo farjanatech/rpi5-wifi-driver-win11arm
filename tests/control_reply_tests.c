@@ -19,6 +19,7 @@ typedef struct _CYW_NETWORK {
 #define TRY(x) do {Status=(x);if(!NT_SUCCESS(Status))goto Exit;}while(0)
 static unsigned Failures,Outstanding,AllocCalls,FailAlloc,Sent,Polls,Mode,Fault,RadioUp,Joined;
 static unsigned RadioCase;
+static unsigned PreferenceFault,PreferenceCalls;
 static ULONG PayloadLength,DeclaredLength,ReplyError,RequestCommand,RequestFlags,RequestCapacity;
 static ULONG ActualOffset,ActualLength,ClmValue;
 static ULONGLONG Clock;
@@ -78,6 +79,14 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG 
             CHECK(CywLe32(data+28)==0 || CywLe32(data+28)==0xffffffff);
             if(CywLe32(data+28)==0 && Fault==8)error=0xfffffffe;
             else {CHECK(CywCountryRequest(data+24,Country));if(CywLe32(data+28)==0xffffffff)CywPut32(Country+4,7);}
+        } else if(RequestCommand==263 && strcmp((char*)data+16,"join_pref")==0){
+            const UCHAR expected[8]={4,2,8,1,1,2,0,0};
+            CHECK(RadioUp && !Joined && A->CountryApplied==0x4442);
+            CHECK((RequestFlags&2) && RequestCapacity==18 && !memcmp(data+26,expected,8));
+            PreferenceCalls++;
+            if(PreferenceFault==1)error=0xffffffe9UL;
+            if(PreferenceFault==2)error=0xfffffffeUL;
+            if(PreferenceFault==3)return STATUS_IO_DEVICE_ERROR;
         } else if(RequestCommand==2){RadioUp=1;CHECK(A->CountryApplied==0x4442);}
         else if(RequestCommand==26){Joined=1;CHECK(RadioUp);}
     }
@@ -107,6 +116,7 @@ static void Init(PRPI5CYW_ADAPTER A,CYW_NETWORK *N)
 {
     CHECK(!Outstanding);memset(A,0,sizeof(*A));memset(N,0,sizeof(*N));A->Network=N;N->Rx=Rx;N->TxMax=1;
     AllocCalls=FailAlloc=Sent=Polls=Mode=Fault=RadioUp=Joined=RadioCase=0;Clock=0;
+    PreferenceFault=PreferenceCalls=0;
     PayloadLength=DeclaredLength=4;ReplyError=ClmValue=0;memset(Value,0,sizeof(Value));memset(Country,0,12);
 }
 int main(void)
@@ -151,6 +161,7 @@ int main(void)
     /* Integration: actual transport, actual IOVAR and actual connection checks. */
     request.Version=1;request.Country[0]='B';request.Country[1]='D';request.SsidLength=4;memcpy(request.Ssid,"test",4);
     Init(&a,&n);Mode=1;CHECK(CywConnect(&a,&request)==0 && Joined && RadioUp && a.ClmLoadStatus==0);
+    CHECK(PreferenceCalls==1 && a.JoinPreferenceAccepted==1 && !a.JoinPreferenceStatus);
     CHECK(a.CountryListMembership==1 && a.CountryListCount==2 && a.CountryListReplyLength==24);
     Init(&a,&n);Mode=1;Fault=8;CHECK(CywConnect(&a,&request)==0 && Joined && a.CountrySetMode==4 && a.CountryRevision==7);
     Init(&a,&n);Mode=1;Fault=9;CHECK(CywConnect(&a,&request)==0 && Joined && !a.CountryListMembership && a.CountryListError==0xffffffe9);
@@ -159,6 +170,13 @@ int main(void)
     CHECK(CywConnect(&a,&request)==STATUS_DEVICE_DATA_ERROR && !RadioUp && !Joined && a.ClmLoadStatus==1);
     Init(&a,&n);Mode=1;Fault=7;
     CHECK(CywConnect(&a,&request)==STATUS_DEVICE_DATA_ERROR && !RadioUp && !Joined && a.ConnectStep==15);
+    Init(&a,&n);Mode=1;PreferenceFault=1;
+    CHECK(CywConnect(&a,&request)==0 && Joined && !a.JoinPreferenceAccepted && PreferenceCalls==1);
+    CHECK(a.JoinPreferenceStatus==STATUS_UNSUCCESSFUL && a.JoinPreferenceError==0xffffffe9UL);
+    Init(&a,&n);Mode=1;PreferenceFault=2;
+    CHECK(CywConnect(&a,&request)==STATUS_UNSUCCESSFUL && !Joined && a.ConnectStep==18 && !a.JoinPreferenceAccepted);
+    Init(&a,&n);Mode=1;PreferenceFault=3;
+    CHECK(CywConnect(&a,&request)==STATUS_IO_DEVICE_ERROR && !Joined && a.ConnectStep==18);
     CHECK(!Outstanding);if(Failures)return 1;
     puts("PASS: actual control/IOVAR/connection integration, padded replies, truncation, matching, bounds, errors and allocation cleanup");
     return 0;

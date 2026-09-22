@@ -121,11 +121,15 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 19);
-    SET_DWORD(L"RuntimeCmd52Commands", Adapter->RuntimeCmd52Commands);
-    SET_DWORD(L"RuntimeCmd52FastPolls", Adapter->RuntimeCmd52FastPolls);
-    SET_DWORD(L"RuntimeCmd52WaitSleeps", Adapter->RuntimeCmd52WaitSleeps);
-    SET_DWORD(L"RuntimeCmd52Timeouts", Adapter->RuntimeCmd52Timeouts);
+    SET_DWORD(L"DiagVersion", 20);
+    SET_DWORD(L"JoinPreferenceAccepted", Adapter->JoinPreferenceAccepted);
+    SET_DWORD(L"JoinPreferenceStatus", Adapter->JoinPreferenceStatus);
+    SET_DWORD(L"JoinPreferenceError", Adapter->JoinPreferenceError);
+    /* Retire .19-only counters so persistent registry values cannot look live. */
+    SET_DWORD(L"RuntimeCmd52Commands", 0);
+    SET_DWORD(L"RuntimeCmd52FastPolls", 0);
+    SET_DWORD(L"RuntimeCmd52WaitSleeps", 0);
+    SET_DWORD(L"RuntimeCmd52Timeouts", 0);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -632,7 +636,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00060013;
+            Data.Ulong = 0x00060014;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

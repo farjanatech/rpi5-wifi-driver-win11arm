@@ -4,7 +4,24 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6.19 — reduce runtime CMD52 polling delay
+### Integrated exp0.6.20 — automatic band preference, restored .18 transfer path
+
+No router rename is needed. Before each connection, the firmware receives the
+Linux brcmfmac default join policy: rank by signal strength with an 8 dB bonus
+for 5 GHz. Both bands remain eligible under your existing SSID. This is a
+ranking preference, not increased transmit power, a band lock or a speed test.
+The utility distinguishes accepted policy from unsupported/default selection;
+the performance report shows the actual connected band.
+
+The .19 run used 2.4 GHz and fell to 4.02 Mbps with four incomplete downloads;
+it had no queue rejections or SDIO timeouts, so the cause is not isolated.
+.20 restores .18's exact SDIO code, queue and worker scheduling, removing the
+unproven CMD52 fast-poll change. .18 scored 17.09 Mbps on 5 GHz; .16 scored
+18.55 Mbps with the same packet scheduler and no recorded band. Neither is a
+guarantee for a future run. See [exp0.6.20 instructions](docs/EXP0.6.20.md).
+Keep .18 as the tested fallback. Firmware, UEFI/fan and BD country remain intact.
+
+### Previous exp0.6.19 — poor 2.4 GHz hardware run; not the preferred candidate
 
 .18 recovered to 17.09 Mbps with 128/128 completed downloads, 63 ms maximum
 recorded queue delay, but 774 queue-full rejections and one NoResources ping.

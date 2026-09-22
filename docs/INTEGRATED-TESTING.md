@@ -1,10 +1,11 @@
-# Latest driver: exp0.6.19 candidate
+# Latest driver: exp0.6.20 candidate
 
-See [exp0.6.19 instructions and acceptance criteria](EXP0.6.19.md). This driver
+See [exp0.6.20 instructions and acceptance criteria](EXP0.6.20.md). This driver
 candidate requires one installation and restart, then the included performance
 utility. The standalone utility instructions below apply when keeping .14.
-The .18 hardware run reached 17.09 Mbps with no failed downloads. .19 targets
-runtime CMD52 wait granularity, retaining .18's cap, scheduler and radio tools.
+The .18 hardware run reached 17.09 Mbps with no failed downloads. .20 restores
+its exact transport/scheduler and adds automatic signal-based 5 GHz preference.
+Both bands remain eligible under the existing SSID; no router rename is needed.
 Keep .18 for rollback; compare latency and errors as well as throughput.
 
 # Previous: standalone performance utility 0.6.14.1
