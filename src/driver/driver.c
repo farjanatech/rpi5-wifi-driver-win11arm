@@ -121,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 21);
+    SET_DWORD(L"DiagVersion", 22);
     SET_DWORD(L"JoinPreferenceAccepted", Adapter->JoinPreferenceAccepted);
     SET_DWORD(L"JoinPreferenceStatus", Adapter->JoinPreferenceStatus);
     SET_DWORD(L"JoinPreferenceError", Adapter->JoinPreferenceError);
@@ -249,12 +249,12 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"TxCreditMaximum", Adapter->TxCreditMaximum);
     SET_DWORD(L"TxFlowMask", Adapter->TxFlowMask);
     SET_DWORD(L"RxBatchYields", Adapter->RxBatchYields);
-    SET_DWORD(L"RxHeaderReads", Adapter->RxHeaderReads);
-    SET_DWORD(L"RxReadAheadAttempts", Adapter->RxReadAheadAttempts);
-    SET_DWORD(L"RxReadAheadFrames", Adapter->RxReadAheadFrames);
-    SET_DWORD(L"RxReadAheadSavedCommands", Adapter->RxReadAheadSavedCommands);
-    SET_DWORD(L"RxReadAheadMismatch", Adapter->RxReadAheadMismatch);
-    SET_DWORD(L"RxReadAheadHintIgnored", Adapter->RxReadAheadHintIgnored);
+    SET_DWORD(L"RxHeaderReads", 0);
+    SET_DWORD(L"RxReadAheadAttempts", 0);
+    SET_DWORD(L"RxReadAheadFrames", 0);
+    SET_DWORD(L"RxReadAheadSavedCommands", 0);
+    SET_DWORD(L"RxReadAheadMismatch", 0);
+    SET_DWORD(L"RxReadAheadHintIgnored", 0);
     {
         LARGE_INTEGER Now;
         KeQuerySystemTime(&Now);
@@ -642,7 +642,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00060015;
+            Data.Ulong = 0x00060016;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:
@@ -1114,4 +1114,23 @@ DriverEntry(
         }
     }
     return (NTSTATUS)Status;
+}
+
+/* Worker-owned metrics: one registry value is a coherent, fixed-layout snapshot.
+ * This routine never runs from an NDIS callback and never performs SDIO I/O. */
+VOID Rpi5CywWriteTimingDiagnostics(PRPI5CYW_ADAPTER Adapter)
+{
+    OBJECT_ATTRIBUTES Attributes;UNICODE_STRING KeyName,ValueName;HANDLE Key;
+    CYW_TIMING_SNAPSHOT Snapshot;
+    if(!Adapter->Timing.Enabled || KeGetCurrentIrql()!=PASSIVE_LEVEL)return;
+    C_ASSERT(sizeof(CYW_TIMING_BUCKET)==40);
+    C_ASSERT(sizeof(CYW_TIMING_SNAPSHOT)==40+40*CywTimeCount);
+    Snapshot=Adapter->Timing.Snapshot;
+    Snapshot.SnapshotQpc=(uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
+    RtlInitUnicodeString(&KeyName,L"\\Registry\\Machine\\SOFTWARE\\Rpi5CywDirectDiag");
+    InitializeObjectAttributes(&Attributes,&KeyName,OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE,NULL,NULL);
+    if(!NT_SUCCESS(ZwOpenKey(&Key,KEY_SET_VALUE,&Attributes)))return;
+    RtlInitUnicodeString(&ValueName,L"TimingV1");
+    (VOID)ZwSetValueKey(Key,&ValueName,0,REG_BINARY,&Snapshot,sizeof(Snapshot));
+    ZwClose(Key);
 }

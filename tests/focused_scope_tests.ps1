@@ -1,37 +1,46 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $baseline='8b3d5d557150cfadcc3bdb289a528e40157096ff'
+$proven='c0a22eb8a572ae6ee678fa6835e98c37ba750917'
 $root=Split-Path -Parent $PSScriptRoot
 function Get-ScopeSource {
-    param([string]$Path,[switch]$BaselineSource)
-    if ($BaselineSource) {
-        $lines = & git -C $root show "${baseline}:$Path"
+    param([string]$Path,[string]$Revision)
+    if ($Revision) {
+        $lines = & git -C $root show ($Revision+':'+$Path)
         if ($LASTEXITCODE -ne 0) { throw "Cannot read baseline $Path" }
-        return ($lines -join "`n").TrimEnd()
+        return ($lines -join [Environment]::NewLine).TrimEnd()
     }
-    return (Get-Content -LiteralPath (Join-Path $root $Path) -Raw).Replace("`r`n","`n").TrimEnd()
+    return (Get-Content -LiteralPath (Join-Path $root $Path) -Raw).TrimEnd()
 }
 function ConvertTo-ScopeToken {
     param([string]$Text)
     return [regex]::Replace([regex]::Replace($Text,'/\*.*?\*/|//[^\r\n]*','',[Text.RegularExpressions.RegexOptions]::Singleline),'\s+','')
 }
-$changed=@(& git -C $root diff --name-only $baseline -- src)
-if ($LASTEXITCODE -ne 0) { throw 'Cannot compare source scope.' }
-$allowed=@('src/cyw43455/network.c','src/cyw43455/rx_poll.h','src/driver/driver.c','src/driver/driver.h')
-foreach($file in $changed) { if($file -notin $allowed) { throw "Unexpected driver-source change versus exp0.6.20: $file" } }
-foreach($file in @('src/sdio/sdio.c','tests/sdio_host_tests.c','src/cyw43455/network_protocol.h','src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/control.h','src/cyw43455/connection.h','src/cyw43455/join_preference.h','src/cyw43455/radio.h','src/cyw43455/firmware.c','utility/Connect-RPi5-WiFi.ps1','utility/Get-RPi5-WiFi-Radio.ps1','utility/Get-RPi5-WiFi-Radio.cmd','utility/Test-RPi5-WiFi-Performance.ps1','utility/Measure-RPi5-WiFi-Load.ps1','utility/Set-RPi5-WiFi-Autoconnect.ps1','utility/WiFi.config.example.json','scripts/fetch-firmware.ps1')) {
-    if((Get-ScopeSource $file) -cne (Get-ScopeSource $file -BaselineSource)){throw "Preserved baseline changed: $file"}
+function Remove-TimingInstrumentation {
+    param([string]$Text)
+    return [regex]::Replace($Text,'/\* TIMING-BEGIN \*/.*?/\* TIMING-END \*/','',[Text.RegularExpressions.RegexOptions]::Singleline)
 }
-$expected=Get-ScopeSource 'src/driver/driver.h' -BaselineSource
-$actual=(Get-ScopeSource 'src/driver/driver.h') -replace '(?m)^\s*ULONG RxHeaderReads, RxReadAheadAttempts, RxReadAheadFrames;\n','' -replace '(?m)^\s*ULONG RxReadAheadSavedCommands, RxReadAheadMismatch, RxReadAheadHintIgnored;\n',''
-if((ConvertTo-ScopeToken $actual) -cne (ConvertTo-ScopeToken $expected)){throw 'Unexpected adapter/cap change.'}
-$expected=(Get-ScopeSource 'src/driver/driver.c' -BaselineSource).Replace('SET_DWORD(L"DiagVersion", 20);','SET_DWORD(L"DiagVersion", 21);').Replace('Data.Ulong = 0x00060014;','Data.Ulong = 0x00060015;')
-$actual=(Get-ScopeSource 'src/driver/driver.c') -replace '(?m)^\s*SET_DWORD\(L"Rx(?:HeaderReads|ReadAhead\w+)", Adapter->Rx(?:HeaderReads|ReadAhead\w+)\);\n',''
-if((ConvertTo-ScopeToken $actual) -cne (ConvertTo-ScopeToken $expected)){throw 'Unexpected driver-core behavior.'}
-$expected=(Get-ScopeSource 'src/cyw43455/network.c' -BaselineSource) -replace '(?ms)^/\* STATUS_NO_MORE_ENTRIES.*?^}\n',('#include "rx_poll.h"'+"`n")
-$actual=(Get-ScopeSource 'src/cyw43455/network.c') -replace '(?m)^\s*ULONG RxNextLength;[^\n]*\n','' -replace '(?m)^\s*N->RxNextLength=0;\n',''
-$actual=$actual.Replace('CywPollFrame(A,&channel,&off,&len,TRUE)','CywPoll(A,&channel,&off,&len)')
-if((ConvertTo-ScopeToken $actual) -cne (ConvertTo-ScopeToken $expected)){throw 'Unexpected worker, NDIS ownership, or TX scheduling change.'}
-$poll=Get-ScopeSource 'src/cyw43455/rx_poll.h'
-if($poll -match 'KeStall|KeDelay|CywSendFrame|CywTxPump|ExAllocate|NdisAllocate|while\s*\('){throw 'Receive poller must not add waits, TX work, allocations or loops.'}
-Write-Output 'PASS: .20 transport/queue/scheduler/country/band policy preserved; only bounded RX read-ahead and diagnostics added.'
+function Assert-SameSource {
+    param([string]$Actual,[string]$Expected,[string]$Label)
+    if((ConvertTo-ScopeToken $Actual) -cne (ConvertTo-ScopeToken $Expected)){throw "Unexpected change: $Label"}
+}
+# .20 retained .16's SDIO, queue and processing budgets; check both anchors.
+foreach($file in @('src/sdio/sdio.c','src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/network_protocol.h','src/cyw43455/control.h','src/cyw43455/firmware.c')) {
+    Assert-SameSource (Get-ScopeSource $file $baseline) (Get-ScopeSource $file $proven) "$file .16 anchor"
+}
+foreach($file in @('src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/network_protocol.h','src/cyw43455/control.h','src/cyw43455/connection.h','src/cyw43455/join_preference.h','src/cyw43455/radio.h','src/cyw43455/firmware.c','utility/Connect-RPi5-WiFi.ps1','utility/Get-RPi5-WiFi-Radio.ps1','utility/Measure-RPi5-WiFi-Load.ps1','utility/Set-RPi5-WiFi-Autoconnect.ps1','utility/WiFi.config.example.json','scripts/fetch-firmware.ps1')) {
+    Assert-SameSource (Get-ScopeSource $file) (Get-ScopeSource $file $baseline) $file
+}
+$sdio=Remove-TimingInstrumentation (Get-ScopeSource 'src/sdio/sdio.c')
+$sdio=$sdio.Replace('SdioSendCommandRaw(', 'SdioSendCommand(').Replace('SdioCmd53TransferRaw(', 'SdioCmd53Transfer(')
+Assert-SameSource $sdio (Get-ScopeSource 'src/sdio/sdio.c' $proven) 'Actual SDIO engine'
+$network=Remove-TimingInstrumentation (Get-ScopeSource 'src/cyw43455/network.c')
+$network=$network.Replace('CywMeasuredTxPump(', 'CywTxPump(').Replace('CywMeasuredDiagnostics(', 'Rpi5CywWriteDiagnostics(')
+$network=$network -replace '(?s)(if\(!i && !sentBefore && !sentAfter\))\s*\{\s*(KeWaitForSingleObject\([^;]+;)\s*\}', '$1 $2'
+Assert-SameSource $network (Get-ScopeSource 'src/cyw43455/network.c' $baseline) 'Worker/receive/NDIS processing'
+if(Test-Path (Join-Path $root 'src/cyw43455/rx_poll.h')){throw 'Retired read-ahead remains.'}
+$header=Get-ScopeSource 'src/driver/driver.h'
+if($header -notmatch '#define RPI5CYW_TX_LIMIT 64u'){throw 'Queue limit changed.'}
+$driver=Get-ScopeSource 'src/driver/driver.c'
+if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 22\)'){throw 'Diagnostic version incorrect.'}
+Write-Output 'PASS: .16 packet engine/queue/budgets unchanged; .20 radio/join policy retained; only timing surrounds runtime work.'

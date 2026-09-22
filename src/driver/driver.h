@@ -11,6 +11,7 @@
 
 #include "../cyw43455/packet_probe.h"
 #include "traffic_stats.h"
+#include "timing.h"
 
 #ifndef ETH_LENGTH_OF_ADDRESS
 #define ETH_LENGTH_OF_ADDRESS 6
@@ -84,8 +85,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG64 RxNoBuffer;
     ULONG Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts;
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
-    ULONG RxHeaderReads, RxReadAheadAttempts, RxReadAheadFrames;
-    ULONG RxReadAheadSavedCommands, RxReadAheadMismatch, RxReadAheadHintIgnored;
+    CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     ULONG TxQueueFrames, TxBurstAdmissions, TxOversizedNbl, TxInterleavedPackets;
     ULONG RadioReport[20]; /* Versioned, explicit-request-only firmware GET snapshot. */
     ULONG TxNblAccepted, TxNblCompleted, TxCancelled, TxExpired, TxCreditWaits;
@@ -228,3 +228,6 @@ Rpi5CywWriteDiagnostics(
     _In_ ULONG Stage,
     _In_ NTSTATUS Status
     );
+
+/* Only the runtime worker calls this atomic binary snapshot writer. */
+VOID Rpi5CywWriteTimingDiagnostics(PRPI5CYW_ADAPTER Adapter);

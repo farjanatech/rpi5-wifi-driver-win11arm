@@ -2,6 +2,7 @@
 param([switch]$LibraryOnly, [switch]$NoPause)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Timing.ps1') -TimingLibraryOnly
 
 function Get-Rpi5BusAssessment {
     param($Diagnostic)
@@ -262,14 +263,31 @@ try {
     # through the tests and omit the download's congestion/errors.
     $endSnapshot = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
     $stamp = if ($null -ne $endSnapshot) { $endSnapshot.SnapshotTimeUtc } else { 0 }
+    $timingEndStamp=0
+    try { $timingEndStamp=(ConvertFrom-Rpi5Timing $endSnapshot).SnapshotQpc } catch { $timingEndStamp=0 }
     $freshSnapshot = $false
     for ($attempt=0; $attempt -lt 35; $attempt++) {
         $after = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
-        if (Test-Rpi5NewerSnapshot $after $stamp) { $freshSnapshot = $true; break }
+        if (Test-Rpi5NewerSnapshot $after $stamp) {
+            $timingFresh=$true
+            if($after.DiagVersion -ge 22){
+                try { $timingFresh=(ConvertFrom-Rpi5Timing $after).SnapshotQpc -gt $timingEndStamp }
+                catch { $timingFresh=$false }
+            }
+            if($timingFresh){$freshSnapshot = $true; break}
+        }
         Start-Sleep -Seconds 1
     }
     Write-Report "Post-test driver snapshot refreshed=$freshSnapshot. Counters remain periodic/non-atomic."
     $after | Format-List * | Out-String -Width 500 | Set-Content (Join-Path $resultDirectory 'driver-after.txt')
+    try {
+        $timing=Get-Rpi5TimingReport -Before $before -After $after
+        $timing | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $resultDirectory 'timing-report.json') -Encoding UTF8
+        $timing.Rows | Format-Table -AutoSize | Out-String -Width 500 |
+            Set-Content (Join-Path $resultDirectory 'timing-report.txt')
+        Write-Report $timing.Notice
+        Write-Report "Timing snapshots comparable=$($timing.ComparableSnapshots); see timing-report.json."
+    } catch { Write-Report "Optional runtime timing unavailable: $($_.Exception.Message)" }
     try {
         $collection = Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Collect-RPi5-WiFi-Diagnostics.ps1'),'-NoPause','-OutputDirectory',$resultDirectory) 180
         Write-Report "Diagnostic collection: ExitCode=$($collection.ExitCode) TimedOut=$($collection.TimedOut)"

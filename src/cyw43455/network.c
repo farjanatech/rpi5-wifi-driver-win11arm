@@ -9,6 +9,9 @@
 #include "network.h"
 #include "../sdio/sdio.h"
 #include "tx_types.h"
+/* TIMING-BEGIN */
+#include "../driver/timing_clock.h"
+/* TIMING-END */
 
 #define TRY(x) do { Status=(x); if(!NT_SUCCESS(Status)) goto Exit; } while(0)
 #define CYW_IOCTL_CONNECT CTL_CODE(FILE_DEVICE_NETWORK,0x800,METHOD_BUFFERED,FILE_WRITE_DATA)
@@ -25,7 +28,6 @@ struct _CYW_NETWORK {
     volatile BOOLEAN Ready, Associated, Authorized, Published;
     BOOLEAN RxPending, Powered, RadioBusy;
     ULONG Request;
-    ULONG RxNextLength; /* worker-local hint; never retained across RX batches */
     CYW_CONNECT_REQUEST Connect;
     CYW_TX_STATE Sends;
     UCHAR TxSeq, TxMax, TxFlow;
@@ -122,13 +124,58 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
         NET_BUFFER_LIST_STATUS(Nbl)=NDIS_STATUS_SUCCESS;
         NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;
         Rpi5CywTrafficFrame(A,FALSE,p+off,(ULONG)len);
+/* TIMING-BEGIN */
+        uint64_t indicationStart=CywTimingBegin(&A->Timing);
+/* TIMING-END */
         NdisMIndicateReceiveNetBufferLists(A->MiniportHandle,Nbl,0,1,NDIS_RECEIVE_FLAGS_RESOURCES);
+/* TIMING-BEGIN */
+        CywTimingEnd(&A->Timing,CywTimeReceiveIndication,indicationStart);
+/* TIMING-END */
+
         A->PacketRxHost[kind]++;
         NdisFreeNetBufferList(Nbl);A->RxPackets++;
     } else {A->RxNoBuffer++;Rpi5CywTrafficDrop(A,FALSE,1,FALSE);}
     IoFreeMdl(Mdl);
 }
-#include "rx_poll.h"
+/* STATUS_NO_MORE_ENTRIES is not an I/O error: there is no frame this poll. */
+static NTSTATUS CywPoll(PRPI5CYW_ADAPTER A, PULONG Channel, PULONG Offset, PULONG Length)
+{
+    CYW_NETWORK *N=A->Network;
+    UCHAR pending; ULONG ist,mail; uint32_t len,off;
+    NTSTATUS Status;
+    if(N->Stop)return STATUS_CANCELLED;
+    TRY(SdioCmd52Read(A,0,5,&pending));
+    if(!N->RxPending && !(pending&6))return STATUS_NO_MORE_ENTRIES;
+    TRY(CywBpRead(A,A->SdioCoreBase+0x20,&ist));
+    ist&=0x200000f0;
+    if(ist)TRY(CywBpWrite(A,A->SdioCoreBase+0x20,ist));
+    if(ist&0x80) {
+        TRY(CywBpRead(A,A->SdioCoreBase+0x4c,&mail));
+        TRY(CywBpWrite(A,A->SdioCoreBase+0x40,2));
+        UNREFERENCED_PARAMETER(mail);
+    }
+    TRY(SdioFifoTransfer(A,N->Rx,64,FALSE));
+    if(CywLe32(N->Rx)==0) {N->RxPending=FALSE;return STATUS_NO_MORE_ENTRIES;}
+    if(!CywSdpcmHeader(N->Rx,64,&len,&off)) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
+    if(len>64)TRY(SdioFifoTransfer(A,N->Rx+64,(len-64+3)&~3UL,FALSE));
+    N->RxPending=TRUE;
+    if((UCHAR)(N->Rx[9]-N->TxSeq)<=0x40)N->TxMax=N->Rx[9];
+    N->TxFlow=N->Rx[8];
+    *Channel=N->Rx[5]&15;*Offset=off;*Length=len;
+    /* rxglom is explicitly disabled during configuration. Unknown/glom
+     * frames fail closed instead of parsing untrusted nested lengths. */
+    if(*Channel==3 || (N->Rx[5]&0x80))return STATUS_NOT_SUPPORTED;
+    if(*Channel==1)CywEvent(A,N->Rx+off,len-off);
+    if(*Channel==2)CywReceive(A,N->Rx+off,len-off);
+    return STATUS_SUCCESS;
+Exit:
+    N->RxPending=FALSE;
+    /* Terminate bad FIFO frame. A failed transaction is not silently retried
+     * as if the next read were aligned with a fresh SDPCM header. */
+    (void)SdioCmd52Write(A,0,6,2,0);
+    (void)SdioCmd52Write(A,1,0x1000d,2,0);
+    return Status;
+}
 static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULONG Length)
 {
     CYW_NETWORK *N=A->Network;
@@ -209,6 +256,23 @@ Exit: if(clm)ExFreePoolWithTag(clm,RPI5CYW_TAG);return Status;
 }
 #include "connection.h"
 #include "radio.h"
+/* TIMING-BEGIN */
+static VOID CywMeasuredDiagnostics(PRPI5CYW_ADAPTER A,ULONG Stage,NTSTATUS Status)
+{
+    uint64_t Start=CywTimingBegin(&A->Timing);
+    Rpi5CywWriteDiagnostics(A,Stage,Status);
+    Rpi5CywWriteTimingDiagnostics(A);
+    CywTimingEnd(&A->Timing,CywTimeDiagnostics,Start);
+}
+static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *S,ULONG Budget,PULONG Sent)
+{
+    uint64_t Start=CywTimingBegin(&A->Timing);
+    NTSTATUS Status=CywTxPump(A,S,Budget,Sent);
+    CywTimingEnd(&A->Timing,CywTimeTxPump,Start);
+    return Status;
+}
+/* TIMING-END */
+
 static VOID CywRadioRequest(PRPI5CYW_ADAPTER A)
 {
     CYW_NETWORK *N=A->Network;ULONG report[20];KIRQL irql;
@@ -222,7 +286,7 @@ static VOID CywRadioRequest(PRPI5CYW_ADAPTER A)
     report[1]=A->RadioReport[1]+1;
     RtlCopyMemory(A->RadioReport,report,sizeof(report));N->RadioBusy=FALSE;
     KeReleaseSpinLock(&N->Lock,irql);
-    Rpi5CywWriteDiagnostics(A,120,A->NetworkStatus);
+    CywMeasuredDiagnostics(A,120,A->NetworkStatus);
 }
 static VOID CywWorker(PVOID Context)
 {
@@ -231,6 +295,12 @@ static VOID CywWorker(PVOID Context)
     KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0,sentBefore,sentAfter;
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
+/* TIMING-BEGIN */
+    uint64_t cycleStart,previousCycle=0,partStart,controlStart;
+    ULONG creditBefore;BOOLEAN haveCycle=FALSE,previousBlocked=FALSE;
+    RtlZeroMemory(&A->Timing,sizeof(A->Timing));
+/* TIMING-END */
+
     N->Thread=PsGetCurrentThread();ObReferenceObject(N->Thread);
     KeSetEvent(&N->ThreadStarted,0,FALSE);
     wait.QuadPart=-100000; /* 10 ms polling, no DISPATCH_LEVEL busy wait */
@@ -241,18 +311,35 @@ static VOID CywWorker(PVOID Context)
     if(!NT_SUCCESS(Status))goto Failed;
     if(N->Stop)goto Exit;
     N->Ready=TRUE;A->NetworkStatus=STATUS_SUCCESS;
+/* TIMING-BEGIN */
+    CywTimingStart(&A->Timing);
+/* TIMING-END */
+
     CywRefreshTxGate(A);
-    Rpi5CywWriteDiagnostics(A,120,STATUS_SUCCESS);
+    CywMeasuredDiagnostics(A,120,STATUS_SUCCESS);
     while(!N->Stop) {
         if(N->Paused) {
+/* TIMING-BEGIN */
+            haveCycle=FALSE;previousBlocked=FALSE;
+/* TIMING-END */
+
             CywTxFlush(A,&N->Sends,NDIS_STATUS_PAUSED);
             KeSetEvent(&N->PauseAck,0,FALSE);
             KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);continue;
         }
+/* TIMING-BEGIN */
+        cycleStart=CywTimingBegin(&A->Timing);
+        if(haveCycle)CywTimingRecord(&A->Timing,CywTimeWorkerInterval,previousCycle,cycleStart);
+        creditBefore=A->TxCreditWaits;
+/* TIMING-END */
         KeClearEvent(&N->PauseAck);
         KeAcquireSpinLock(&N->Lock,&irql);op=N->Request;N->Request=0;
         RtlCopyMemory(&request,&N->Connect,sizeof(request));RtlSecureZeroMemory(&N->Connect,sizeof(request));
         KeReleaseSpinLock(&N->Lock,irql);
+/* TIMING-BEGIN */
+        if(previousBlocked && !op)CywTimingRecord(&A->Timing,CywTimeCreditRecheck,previousCycle,cycleStart);
+        controlStart=CywTimingBegin(&A->Timing);
+/* TIMING-END */
         if(op==3)CywRadioRequest(A);
         else if(op) {
             CywTxFlush(A,&N->Sends,NDIS_STATUS_MEDIA_DISCONNECTED);
@@ -262,36 +349,57 @@ static VOID CywWorker(PVOID Context)
                 N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
                 if(op==2 && NT_SUCCESS(Status))A->NetworkPhase=500;
             }
-            A->NetworkStatus=Status;Rpi5CywWriteDiagnostics(A,120,Status);
+            A->NetworkStatus=Status;CywMeasuredDiagnostics(A,120,Status);
             CywRefreshTxGate(A);
         }
-        Status=CywTxPump(A,&N->Sends,4,&sentBefore);
+/* TIMING-BEGIN */
+        if(op)CywTimingEnd(&A->Timing,CywTimeControl,controlStart);
+/* TIMING-END */
+        Status=CywMeasuredTxPump(A,&N->Sends,4,&sentBefore);
         if(!NT_SUCCESS(Status))goto Failed;
+/* TIMING-BEGIN */
+        partStart=CywTimingBegin(&A->Timing);
+/* TIMING-END */
         rxStart=KeQueryInterruptTime();
-        N->RxNextLength=0;
         for(i=0;CywReceiveBudget(i,KeQueryInterruptTime()-rxStart) && !N->Stop && !N->Paused;++i) {
-            Status=CywPollFrame(A,&channel,&off,&len,TRUE);
+            Status=CywPoll(A,&channel,&off,&len);
             if(Status==STATUS_NO_MORE_ENTRIES)break;
             if(!NT_SUCCESS(Status))goto Failed;
         }
-        N->RxNextLength=0;
+/* TIMING-BEGIN */
+        CywTimingEnd(&A->Timing,CywTimeRxBatch,partStart);
+/* TIMING-END */
         if(i && !CywReceiveBudget(i,KeQueryInterruptTime()-rxStart))A->RxBatchYields++;
         if(A->NetworkPhase!=lastPhase || KeQueryInterruptTime()>=nextSnapshot) {
-            Rpi5CywWriteDiagnostics(A,120,A->NetworkStatus);
+            CywMeasuredDiagnostics(A,120,A->NetworkStatus);
             lastPhase=A->NetworkPhase;nextSnapshot=KeQueryInterruptTime()+300000000ULL;
         }
-        Status=CywTxPump(A,&N->Sends,4,&sentAfter);
+        Status=CywMeasuredTxPump(A,&N->Sends,4,&sentAfter);
         if(!NT_SUCCESS(Status))goto Failed;
-        if(!i && !sentBefore && !sentAfter)
+/* TIMING-BEGIN */
+        CywTimingEnd(&A->Timing,CywTimeWorkerWork,cycleStart);
+        previousCycle=cycleStart;haveCycle=TRUE;previousBlocked=A->TxCreditWaits!=creditBefore;
+/* TIMING-END */
+        if(!i && !sentBefore && !sentAfter) {
+/* TIMING-BEGIN */
+            partStart=CywTimingBegin(&A->Timing);
+/* TIMING-END */
             KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);
+/* TIMING-BEGIN */
+            CywTimingEnd(&A->Timing,CywTimeIdleWait,partStart);
+/* TIMING-END */
+        }
     }
     goto Exit;
 Failed:
     A->NetworkStatus=Status;N->Ready=FALSE;
     N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
-    Rpi5CywWriteDiagnostics(A,120,Status);
+    CywMeasuredDiagnostics(A,120,Status);
     CywFirmwareStop(A);
 Exit:
+/* TIMING-BEGIN */
+    A->Timing.Enabled=0;
+/* TIMING-END */
     RtlSecureZeroMemory(&request,sizeof(request));
     N->Ready=FALSE;
     CywTxFlush(A,&N->Sends,A->IoStopped?NDIS_STATUS_LOW_POWER_STATE:NDIS_STATUS_MEDIA_DISCONNECTED);

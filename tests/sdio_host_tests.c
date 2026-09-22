@@ -9,6 +9,13 @@ static ULONG Fifo, FifoReads, ResetCount, CommandCount, Ticks, Command53Count;
 static ULONG Fault, Fail52At, Commands52, ReadbackMismatch, Command53Events;
 static ULONG FifoWrites, WriteWords[128], DiscoveryMode, Fail53At;
 static ULONG64 SimTime, ReadyAt;
+static ULONG QpcReads;
+LARGE_INTEGER KeQueryPerformanceCounter(LARGE_INTEGER *Frequency)
+{
+    LARGE_INTEGER Now;Now.QuadPart=(LONGLONG)SimTime;++QpcReads;
+    if(Frequency)Frequency->QuadPart=10000000;
+    return Now;
+}
 static ULONG SleepUs, SleepCount, StallUs, StopOnSleep;
 static ULONG BusClockFault,BusHostFault;
 static ULONG PhaseMode, PhaseUs[3], ScheduledEvent, PhaseWords, StopOnStall;
@@ -467,6 +474,37 @@ int main(void)
     CHECK(Cyw43455Probe(&Adapter) == STATUS_DEVICE_CONFIGURATION_ERROR);
     CHECK(Adapter.Cmd53ReadCount == 16 && !Adapter.CoreInventoryComplete);
     CheckRestored();
+    /* Real wrappers must retain return codes and resets even on failure. */
+    for(Mode=0;Mode<=5;++Mode) {
+        ULONG RawResets;NTSTATUS RawStatus;
+        Init(&Adapter);Fault=Mode;
+        RawStatus=SdioCmd53TransferRaw(&Adapter,1,0x8000,Buffer,64,FALSE,TRUE);
+        RawResets=ResetCount;
+        Init(&Adapter);Fault=Mode;CywTimingStart(&Adapter.Timing);
+        Status=SdioCmd53Read(&Adapter,1,0x8000,Buffer,64);
+        CHECK(Status==RawStatus && ResetCount==RawResets);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].Count==1);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Rx].Count==0);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].TotalTicks==SimTime);
+        Init(&Adapter);Fault=Mode;CywTimingStart(&Adapter.Timing);
+        Status=SdioFifoTransfer(&Adapter,Buffer,64,FALSE);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Rx].Count==1);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Tx].Count==0);
+        Init(&Adapter);Fault=Mode;CywTimingStart(&Adapter.Timing);
+        Status=SdioFifoTransfer(&Adapter,Buffer,64,TRUE);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Tx].Count==1);
+        Init(&Adapter);Fault=Mode;
+        RawStatus=SdioSendCommandRaw(&Adapter,52,0,SDHCI_CMD_RESP_48,NULL);
+        RawResets=ResetCount;
+        Init(&Adapter);Fault=Mode;CywTimingStart(&Adapter.Timing);
+        Status=SdioSendCommand(&Adapter,52,0,SDHCI_CMD_RESP_48,NULL);
+        CHECK(Status==RawStatus && ResetCount==RawResets);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd52].Count==1);
+    }
+    Init(&Adapter);QpcReads=0;
+    CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,64)==STATUS_SUCCESS);
+    CHECK(QpcReads==0 && Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].Count==0);
+    CHECK(SdioCmd53Transfer(NULL,1,0x8000,Buffer,64,FALSE,TRUE)==STATUS_INVALID_PARAMETER);
     if (Failures) { printf("%d failures\n", Failures); return 1; }
     puts("PASS: actual CMD52/CMD53 read/write + core probe, 512 lengths each, bounds, errors, timeouts, cleanup.");
     return 0;

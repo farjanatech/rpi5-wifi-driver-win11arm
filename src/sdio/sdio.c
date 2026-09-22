@@ -1,4 +1,8 @@
 #include "sdio.h"
+/* TIMING-BEGIN */
+#include "../driver/timing_clock.h"
+/* TIMING-END */
+
 #include "../cyw43455/chip.h"
 
 C_ASSERT(RPI5CYW_CMD5_MAX_ATTEMPTS == SDIO_CMD5_MAX_ATTEMPTS);
@@ -274,7 +278,7 @@ SdioWaitInhibitClear(
 }
 
 static NTSTATUS
-SdioSendCommand(
+SdioSendCommandRaw(
     _Inout_ PRPI5CYW_ADAPTER Adapter,
     _In_ UCHAR CommandIndex,
     _In_ ULONG Argument,
@@ -348,6 +352,17 @@ SdioSendCommand(
     return STATUS_SUCCESS;
 }
 
+/* TIMING-BEGIN */
+static NTSTATUS
+SdioSendCommand(PRPI5CYW_ADAPTER Adapter,UCHAR CommandIndex,ULONG Argument,
+                USHORT CommandFlags,PULONG Response)
+{
+    uint64_t Start=CywTimingBegin(&Adapter->Timing);
+    NTSTATUS Status=SdioSendCommandRaw(Adapter,CommandIndex,Argument,CommandFlags,Response);
+    if(CommandIndex==52)CywTimingEnd(&Adapter->Timing,CywTimeCmd52,Start);
+    return Status;
+}
+/* TIMING-END */
 static NTSTATUS
 SdioNegotiateOperatingConditionWithRetries(
     _Inout_ PRPI5CYW_ADAPTER Adapter,
@@ -575,7 +590,7 @@ SdioCmd52Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
  * them: the command-only path clears all status and cannot be reused here.
  */
 static NTSTATUS
-SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
+SdioCmd53TransferRaw(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
                   PUCHAR Buffer, ULONG Length, BOOLEAN Write, BOOLEAN Increment)
 {
     ULONG InterruptStatus = 0, Response, Offset, Word, Byte, Poll;
@@ -714,6 +729,19 @@ Failed:
     return Status;
 }
 
+/* TIMING-BEGIN */
+static NTSTATUS
+SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter,UCHAR Function,ULONG Address,
+                  PUCHAR Buffer,ULONG Length,BOOLEAN Write,BOOLEAN Increment)
+{
+    uint64_t Start=Adapter?CywTimingBegin(&Adapter->Timing):0;
+    NTSTATUS Status=SdioCmd53TransferRaw(Adapter,Function,Address,Buffer,Length,Write,Increment);
+    if(Adapter && (Function==1 || Function==2))
+        CywTimingEnd(&Adapter->Timing,Function==1?CywTimeCmd53F1:
+            (Write?CywTimeCmd53Tx:CywTimeCmd53Rx),Start);
+    return Status;
+}
+/* TIMING-END */
 NTSTATUS
 SdioCmd53Read(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
               PUCHAR Buffer, ULONG Length)

@@ -1,3 +1,9 @@
+> Current candidate: **exp0.6.22**, baseline packet-path restoration plus runtime
+> stall timing. See [EXP0.6.22](./EXP0.6.22.md).
+> It is not a hardware-proven speed improvement. Keep exp0.6.16 as the tested fallback.
+> The existing performance command automatically includes timing-report.json.
+> Historical version notes below are retained for traceability.
+
 # Latest driver: exp0.6.21 candidate
 
 See [exp0.6.21 instructions](EXP0.6.21.md). Install in a new folder on the Pi,

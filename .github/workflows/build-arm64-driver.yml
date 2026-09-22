@@ -27,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce focused exp0.6.20 baseline scope
+      - name: Enforce proven packet-path baseline and instrumentation-only scope
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/focused_scope_tests.ps1
@@ -114,14 +114,14 @@ jobs:
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\radio-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Test actual receive read-ahead and failure boundaries
+      - name: Test runtime timing helpers and snapshot ABI
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
-          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\rx_poll_tests.c /Fe:ci-logs\rx_poll_tests.exe && ci-logs\rx_poll_tests.exe' -f $vcvars
-          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\rx-poll-tests.log
+          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\timing_tests.c /Fe:ci-logs\timing_tests.exe && ci-logs\timing_tests.exe' -f $vcvars
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\timing-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Test one-click diagnostics utility
@@ -144,6 +144,8 @@ jobs:
             '.\tests\focused_scope_tests.ps1',
             '.\utility\Get-RPi5-WiFi-Radio.ps1',
             '.\tests\radio_utility_tests.ps1',
+            '.\utility\Get-RPi5-WiFi-Timing.ps1',
+            '.\tests\timing_utility_tests.ps1',
             '.\tests\firmware_package_tests.ps1',
             '.\scripts\fetch-firmware.ps1'
           ) | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning }
@@ -168,6 +170,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\radio_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\radio-utility-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\timing_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\timing-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Simulate actual firmware startup with bus failures
@@ -258,7 +264,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.21
+          name: rpi5-wifi-one-click-diagnostics-v0.6.22
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90
