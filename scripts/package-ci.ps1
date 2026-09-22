@@ -53,7 +53,7 @@ Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.cmd') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.14.1.md') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.20.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.21.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -99,12 +99,13 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.20 restores the exact .18 transport/scheduler and 64-frame cap.
-Before joining, firmware receives a signal-based preference for 5 GHz (+8 dB
-ranking only, not transmit power). Both bands stay eligible under the same SSID.
+Driver exp0.6.21 retains .20's SDIO engine/scheduler and 64-frame cap and adds
+bounded, validated firmware-hinted receive read-ahead to reduce F2 commands.
+Before joining, firmware receives the existing signal-based preference for
+5 GHz (+8 dB ranking only, not transmit power). Both bands remain eligible.
 Explicit read-only radio queries report band/channel/RSSI/PM/MPC before tests,
 never automatically inside the download sampler. Unknown is not a guess.
-See EXP0.6.20.md. Band choice and speed require hardware validation.
+See EXP0.6.21.md. Band choice and speed require hardware validation.
 Compare timeouts/latency and speed, not only rejects. Keep .18 for rollback.
 Install on the Pi, restart once, then run Test-RPi5-WiFi-Performance.cmd.
 No firmware binary, country, UEFI/fan or bus-mode changes. No guaranteed speed claim.

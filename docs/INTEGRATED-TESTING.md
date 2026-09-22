@@ -1,4 +1,13 @@
-# Latest driver: exp0.6.20 candidate
+# Latest driver: exp0.6.21 candidate
+
+See [exp0.6.21 instructions](EXP0.6.21.md). Install in a new folder on the Pi,
+restart once, keep your existing private profile, then connect normally. No
+other device or router rename is required. Receive read-ahead reduces SDIO
+commands while preserving the .20 SDIO engine, queue, scheduler and band policy.
+Measured improvement is not yet established; the included performance tool is
+unchanged if you choose to capture a result. Keep .20/.18 for rollback.
+
+# Previous: exp0.6.20 candidate
 
 See [exp0.6.20 instructions and acceptance criteria](EXP0.6.20.md). This driver
 candidate requires one installation and restart, then the included performance

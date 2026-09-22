@@ -84,6 +84,8 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG64 RxNoBuffer;
     ULONG Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts;
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
+    ULONG RxHeaderReads, RxReadAheadAttempts, RxReadAheadFrames;
+    ULONG RxReadAheadSavedCommands, RxReadAheadMismatch, RxReadAheadHintIgnored;
     ULONG TxQueueFrames, TxBurstAdmissions, TxOversizedNbl, TxInterleavedPackets;
     ULONG RadioReport[20]; /* Versioned, explicit-request-only firmware GET snapshot. */
     ULONG TxNblAccepted, TxNblCompleted, TxCancelled, TxExpired, TxCreditWaits;

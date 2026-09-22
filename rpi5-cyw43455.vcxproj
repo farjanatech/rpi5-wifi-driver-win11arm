@@ -69,6 +69,7 @@
     <ClInclude Include="src\cyw43455\connection.h" />
     <ClInclude Include="src\cyw43455\control.h" />
     <ClInclude Include="src\cyw43455\radio.h" />
+    <ClInclude Include="src\cyw43455\rx_poll.h" />
     <ClInclude Include="src\cyw43455\tx_types.h" />
     <ClInclude Include="src\cyw43455\tx_queue.h" />
   </ItemGroup>

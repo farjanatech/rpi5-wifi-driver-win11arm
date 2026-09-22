@@ -4,7 +4,24 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6.20 — automatic band preference, restored .18 transfer path
+### Integrated exp0.6.21 — bounded receive read-ahead on the working baseline
+
+This candidate reduces per-packet SDIO command overhead using the firmware's
+validated next-frame length hint, following ReactOS and Linux brcmfmac. A typical
+full-size hinted frame needs three byte-mode CMD53 reads instead of four. Hints
+are used only within the existing four-frame/two-ms RX batch; control exchanges
+remain header-first. Malformed or mismatched frames never reach Windows.
+
+The proven SDIO engine, 25 MHz/four-bit bus, 64-frame queue, TX scheduling,
+firmware, BD handling and automatic shared-SSID band preference are preserved.
+No router rename or other-device experiment is required. .16 previously measured
+18.55 Mbps (band unknown), .18 17.09 Mbps on 5 GHz, and .20 14.50 Mbps on 2.4 GHz;
+these were not controlled same-band comparisons. Read-ahead targets identified
+host overhead, not a proven cause of every stall. Speed is not yet measured.
+See [exp0.6.21 install and technical notes](docs/EXP0.6.21.md). Keep .20/.18 for
+rollback. This remains an experimental, test-signed driver, not a certified one.
+
+### Previous exp0.6.20 — automatic band preference, restored .18 transfer path
 
 No router rename is needed. Before each connection, the firmware receives the
 Linux brcmfmac default join policy: rank by signal strength with an 8 dB bonus

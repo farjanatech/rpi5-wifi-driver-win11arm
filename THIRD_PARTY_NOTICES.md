@@ -2,6 +2,16 @@
 
 ## Integrated candidate 0.6 references and redistributed firmware
 
+exp0.6.21 receive read-ahead references Ahmed ARIF's `CywBusThread` in
+`drivers/network/dd/cyw43455/fwil.c` at
+`929bdd689d1e18d0ef71214741d4e16eec74409c`, Copyright 2026 Ahmed ARIF,
+GPL-2.0-or-later, and Linux v6.12 brcmfmac/sdio.c `brcmf_sdio_readframes`
+and `brcmf_sdio_hdparse`, covered by the Broadcom ISC notice below.
+The local adaptation limits hints to 64..2048 bytes inside existing RX batches,
+preserves header-first control transactions, and retains per-packet interrupt
+checks. It does not copy the ReactOS SD-bus companion, DMA/block-mode engine,
+glom implementation, thread priority, or per-frame TX scheduling.
+
 exp0.6.20 join preference follows Linux v6.12 brcmfmac/common.c
 `brcmf_c_set_joinpref_default`, `fwil_types.h` join preference TLVs, and
 include/brcmu_wifi.h constants: RSSI_DELTA +8 on WLC_BAND_5G, followed by RSSI.

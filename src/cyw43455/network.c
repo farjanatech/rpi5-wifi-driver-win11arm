@@ -25,6 +25,7 @@ struct _CYW_NETWORK {
     volatile BOOLEAN Ready, Associated, Authorized, Published;
     BOOLEAN RxPending, Powered, RadioBusy;
     ULONG Request;
+    ULONG RxNextLength; /* worker-local hint; never retained across RX batches */
     CYW_CONNECT_REQUEST Connect;
     CYW_TX_STATE Sends;
     UCHAR TxSeq, TxMax, TxFlow;
@@ -127,45 +128,7 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     } else {A->RxNoBuffer++;Rpi5CywTrafficDrop(A,FALSE,1,FALSE);}
     IoFreeMdl(Mdl);
 }
-/* STATUS_NO_MORE_ENTRIES is not an I/O error: there is no frame this poll. */
-static NTSTATUS CywPoll(PRPI5CYW_ADAPTER A, PULONG Channel, PULONG Offset, PULONG Length)
-{
-    CYW_NETWORK *N=A->Network;
-    UCHAR pending; ULONG ist,mail; uint32_t len,off;
-    NTSTATUS Status;
-    if(N->Stop)return STATUS_CANCELLED;
-    TRY(SdioCmd52Read(A,0,5,&pending));
-    if(!N->RxPending && !(pending&6))return STATUS_NO_MORE_ENTRIES;
-    TRY(CywBpRead(A,A->SdioCoreBase+0x20,&ist));
-    ist&=0x200000f0;
-    if(ist)TRY(CywBpWrite(A,A->SdioCoreBase+0x20,ist));
-    if(ist&0x80) {
-        TRY(CywBpRead(A,A->SdioCoreBase+0x4c,&mail));
-        TRY(CywBpWrite(A,A->SdioCoreBase+0x40,2));
-        UNREFERENCED_PARAMETER(mail);
-    }
-    TRY(SdioFifoTransfer(A,N->Rx,64,FALSE));
-    if(CywLe32(N->Rx)==0) {N->RxPending=FALSE;return STATUS_NO_MORE_ENTRIES;}
-    if(!CywSdpcmHeader(N->Rx,64,&len,&off)) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
-    if(len>64)TRY(SdioFifoTransfer(A,N->Rx+64,(len-64+3)&~3UL,FALSE));
-    N->RxPending=TRUE;
-    if((UCHAR)(N->Rx[9]-N->TxSeq)<=0x40)N->TxMax=N->Rx[9];
-    N->TxFlow=N->Rx[8];
-    *Channel=N->Rx[5]&15;*Offset=off;*Length=len;
-    /* rxglom is explicitly disabled during configuration. Unknown/glom
-     * frames fail closed instead of parsing untrusted nested lengths. */
-    if(*Channel==3 || (N->Rx[5]&0x80))return STATUS_NOT_SUPPORTED;
-    if(*Channel==1)CywEvent(A,N->Rx+off,len-off);
-    if(*Channel==2)CywReceive(A,N->Rx+off,len-off);
-    return STATUS_SUCCESS;
-Exit:
-    N->RxPending=FALSE;
-    /* Terminate bad FIFO frame. A failed transaction is not silently retried
-     * as if the next read were aligned with a fresh SDPCM header. */
-    (void)SdioCmd52Write(A,0,6,2,0);
-    (void)SdioCmd52Write(A,1,0x1000d,2,0);
-    return Status;
-}
+#include "rx_poll.h"
 static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULONG Length)
 {
     CYW_NETWORK *N=A->Network;
@@ -305,11 +268,13 @@ static VOID CywWorker(PVOID Context)
         Status=CywTxPump(A,&N->Sends,4,&sentBefore);
         if(!NT_SUCCESS(Status))goto Failed;
         rxStart=KeQueryInterruptTime();
+        N->RxNextLength=0;
         for(i=0;CywReceiveBudget(i,KeQueryInterruptTime()-rxStart) && !N->Stop && !N->Paused;++i) {
-            Status=CywPoll(A,&channel,&off,&len);
+            Status=CywPollFrame(A,&channel,&off,&len,TRUE);
             if(Status==STATUS_NO_MORE_ENTRIES)break;
             if(!NT_SUCCESS(Status))goto Failed;
         }
+        N->RxNextLength=0;
         if(i && !CywReceiveBudget(i,KeQueryInterruptTime()-rxStart))A->RxBatchYields++;
         if(A->NetworkPhase!=lastPhase || KeQueryInterruptTime()>=nextSnapshot) {
             Rpi5CywWriteDiagnostics(A,120,A->NetworkStatus);
