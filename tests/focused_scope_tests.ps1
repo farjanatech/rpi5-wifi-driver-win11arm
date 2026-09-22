@@ -77,6 +77,7 @@ $header=Get-ScopeSource 'src/driver/driver.h'
 if($header -notmatch '#define RPI5CYW_TX_LIMIT 64u'){throw 'Queue limit changed.'}
 $driver=Get-ScopeSource 'src/driver/driver.c'
 if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 23\)'){throw 'Diagnostic version incorrect.'}
+if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x00060017;'){throw 'NDIS vendor driver version incorrect.'}
 $project=Get-ScopeSource 'rpi5-cyw43455.vcxproj'
 $workflow=Get-ScopeSource '.github/workflows/build-arm64-driver.yml'
 if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or $workflow -notmatch 'Configuration: Release'){
