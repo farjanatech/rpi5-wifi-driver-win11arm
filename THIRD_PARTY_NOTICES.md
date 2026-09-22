@@ -125,12 +125,25 @@ country or arbitrary revision is selected when the requested locale is rejected.
 
 ## Linux brcmfmac register/clock-sequence reference
 
+exp0.6.23 also uses Linux v6.12 brcmfmac/sdio.c as the protocol reference for
+global flow-control state/change debounce, host mailbox fields, SDPCM receive
+sequence tracking, and read-frame termination. Its Windows bounded service and
+test helpers are maintained here. Radio GET command numbers, packet-count layout,
+and supported station-info prefixes are referenced to fwil.h, fwil_types.h and
+cfg80211.c. WMM precedence mapping is NOT assumed from a packet priority number.
+Unsupported firmware fields remain unknown; these references do not validate
+the new candidate on Raspberry Pi hardware.
+https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
+https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil.h
+https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
+
 Source: Linux v6.12, drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
 and sdio.h, and include/brcm_hw_ids.h. The new chip probe uses the documented
 F1 window, ALP clock sequence, and 4345 chip identifier. The Windows PIO and
 bounded startup/restore implementation is maintained in this repository.
 
 Copyright (c) 2010 Broadcom Corporation
+Copyright (c) 2012 Broadcom Corporation
 Copyright (c) 2014 Broadcom Corporation
 
 Driver 0.5 also references Linux v6.12 brcmfmac/chip.c EROM descriptor fields,

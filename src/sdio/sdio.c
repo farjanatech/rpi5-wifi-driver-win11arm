@@ -357,7 +357,8 @@ static NTSTATUS
 SdioSendCommand(PRPI5CYW_ADAPTER Adapter,UCHAR CommandIndex,ULONG Argument,
                 USHORT CommandFlags,PULONG Response)
 {
-    CYW_TIMING_U64 Start=CywTimingBegin(&Adapter->Timing);
+    CYW_TIMING_U64 Start=CommandIndex==52?
+        CywTimingBeginBucket(&Adapter->Timing,CywTimeCmd52):0;
     NTSTATUS Status=SdioSendCommandRaw(Adapter,CommandIndex,Argument,CommandFlags,Response);
     if(CommandIndex==52)CywTimingEnd(&Adapter->Timing,CywTimeCmd52,Start);
     return Status;
@@ -734,11 +735,12 @@ static NTSTATUS
 SdioCmd53Transfer(PRPI5CYW_ADAPTER Adapter,UCHAR Function,ULONG Address,
                   PUCHAR Buffer,ULONG Length,BOOLEAN Write,BOOLEAN Increment)
 {
-    CYW_TIMING_U64 Start=Adapter?CywTimingBegin(&Adapter->Timing):0;
+    unsigned Bucket=Function==1?CywTimeCmd53F1:(Write?CywTimeCmd53Tx:CywTimeCmd53Rx);
+    CYW_TIMING_U64 Start=Adapter && (Function==1 || Function==2)?
+        CywTimingBeginBucket(&Adapter->Timing,Bucket):0;
     NTSTATUS Status=SdioCmd53TransferRaw(Adapter,Function,Address,Buffer,Length,Write,Increment);
     if(Adapter && (Function==1 || Function==2))
-        CywTimingEnd(&Adapter->Timing,Function==1?CywTimeCmd53F1:
-            (Write?CywTimeCmd53Tx:CywTimeCmd53Rx),Start);
+        CywTimingEnd(&Adapter->Timing,Bucket,Start);
     return Status;
 }
 /* TIMING-END */

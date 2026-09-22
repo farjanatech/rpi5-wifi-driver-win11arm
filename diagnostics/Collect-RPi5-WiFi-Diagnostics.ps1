@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.22'
+$script:UtilityVersion = '0.6.23'
 
 function Invoke-Rpi5ReadOnlyCapture {
     param([Parameter(Mandatory=$true)][scriptblock]$Command)
@@ -377,6 +377,13 @@ function Invoke-Rpi5WiFiDiagnostic {
             } else {
                 'Driver diagnostic registry key was not found.'
             }
+        }
+        Write-Capture '06a-transport-evidence.txt' {
+            if ($diag -and $diag.PSObject.Properties['DiagVersion'] -and $diag.DiagVersion -ge 23) {
+                'Cumulative periodic observations; not an exact packet trace. Unknown priority mapping keeps conservative flow control.'
+                $diag.PSObject.Properties | Where-Object Name -like 'Transport*' |
+                    Select-Object Name,Value | Format-Table -AutoSize
+            } else { 'Transport evidence requires exp0.6.23. Missing values are unknown, not zero.' }
         }
         Write-Capture '07-driver-service.txt' {
             sc.exe query rpi5cyw

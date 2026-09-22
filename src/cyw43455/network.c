@@ -26,7 +26,7 @@ struct _CYW_NETWORK {
     PVOID Thread;
     volatile LONG Stop, Paused;
     volatile BOOLEAN Ready, Associated, Authorized, Published;
-    BOOLEAN RxPending, Powered, RadioBusy;
+    BOOLEAN RxPending, Powered, RadioBusy, RxBatch, RxBatchServiced;
     ULONG Request;
     CYW_CONNECT_REQUEST Connect;
     CYW_TX_STATE Sends;
@@ -125,7 +125,7 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
         NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;
         Rpi5CywTrafficFrame(A,FALSE,p+off,(ULONG)len);
 /* TIMING-BEGIN */
-        CYW_TIMING_U64 indicationStart=CywTimingBegin(&A->Timing);
+        CYW_TIMING_U64 indicationStart=CywTimingBeginBucket(&A->Timing,CywTimeReceiveIndication);
 /* TIMING-END */
         NdisMIndicateReceiveNetBufferLists(A->MiniportHandle,Nbl,0,1,NDIS_RECEIVE_FLAGS_RESOURCES);
 /* TIMING-BEGIN */
@@ -137,67 +137,16 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     } else {A->RxNoBuffer++;Rpi5CywTrafficDrop(A,FALSE,1,FALSE);}
     IoFreeMdl(Mdl);
 }
-/* STATUS_NO_MORE_ENTRIES is not an I/O error: there is no frame this poll. */
-static NTSTATUS CywPoll(PRPI5CYW_ADAPTER A, PULONG Channel, PULONG Offset, PULONG Length)
-{
-    CYW_NETWORK *N=A->Network;
-    UCHAR pending; ULONG ist,mail; uint32_t len,off;
-    NTSTATUS Status;
-    if(N->Stop)return STATUS_CANCELLED;
-    TRY(SdioCmd52Read(A,0,5,&pending));
-    if(!N->RxPending && !(pending&6))return STATUS_NO_MORE_ENTRIES;
-    TRY(CywBpRead(A,A->SdioCoreBase+0x20,&ist));
-    ist&=0x200000f0;
-    if(ist)TRY(CywBpWrite(A,A->SdioCoreBase+0x20,ist));
-    if(ist&0x80) {
-        TRY(CywBpRead(A,A->SdioCoreBase+0x4c,&mail));
-        TRY(CywBpWrite(A,A->SdioCoreBase+0x40,2));
-        UNREFERENCED_PARAMETER(mail);
-    }
-    TRY(SdioFifoTransfer(A,N->Rx,64,FALSE));
-    if(CywLe32(N->Rx)==0) {N->RxPending=FALSE;return STATUS_NO_MORE_ENTRIES;}
-    if(!CywSdpcmHeader(N->Rx,64,&len,&off)) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
-    if(len>64)TRY(SdioFifoTransfer(A,N->Rx+64,(len-64+3)&~3UL,FALSE));
-    N->RxPending=TRUE;
-    if((UCHAR)(N->Rx[9]-N->TxSeq)<=0x40)N->TxMax=N->Rx[9];
-    N->TxFlow=N->Rx[8];
-    *Channel=N->Rx[5]&15;*Offset=off;*Length=len;
-    /* rxglom is explicitly disabled during configuration. Unknown/glom
-     * frames fail closed instead of parsing untrusted nested lengths. */
-    if(*Channel==3 || (N->Rx[5]&0x80))return STATUS_NOT_SUPPORTED;
-    if(*Channel==1)CywEvent(A,N->Rx+off,len-off);
-    if(*Channel==2)CywReceive(A,N->Rx+off,len-off);
-    return STATUS_SUCCESS;
-Exit:
-    N->RxPending=FALSE;
-    /* Terminate bad FIFO frame. A failed transaction is not silently retried
-     * as if the next read were aligned with a fresh SDPCM header. */
-    (void)SdioCmd52Write(A,0,6,2,0);
-    (void)SdioCmd52Write(A,1,0x1000d,2,0);
-    return Status;
-}
-static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULONG Length)
-{
-    CYW_NETWORK *N=A->Network;
-    ULONG total=Length+12, padded=(total+3)&~3UL;
-    NTSTATUS Status;
-    if(Length>CYW_CONTROL_CAPACITY-12)return STATUS_INVALID_BUFFER_SIZE;
-    if(!CywTxCredit(N->TxSeq,N->TxMax,Channel==2?N->TxFlow:0))return STATUS_DEVICE_BUSY;
-    RtlZeroMemory(N->Tx,padded);
-    CywPut16(N->Tx,(USHORT)total);CywPut16(N->Tx+2,(USHORT)~total);
-    N->Tx[4]=N->TxSeq;N->Tx[5]=Channel;N->Tx[7]=12;
-    RtlCopyMemory(N->Tx+12,Data,Length);
-    Status=SdioFifoTransfer(A,N->Tx,padded,TRUE);
-    RtlSecureZeroMemory(N->Tx,padded);
-    if(NT_SUCCESS(Status))N->TxSeq++;
-    return Status;
-}
+#include "transport_service.h"
+#include "transport_poll.h"
+#include "transport_send.h"
 static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER A)
 {
     CYW_NETWORK *N=A->Network;
     A->TxCreditSequence=N->TxSeq;A->TxCreditMaximum=N->TxMax;A->TxFlowMask=N->TxFlow;
     return !A->IoStopped && !N->Stop && !N->Paused && N->Ready &&
-        N->Authorized && N->Associated && CywTxCredit(N->TxSeq,N->TxMax,N->TxFlow);
+        N->Authorized && N->Associated && CywTxCredit(N->TxSeq,N->TxMax,0) &&
+        CywTransportPriorityAllowed(&A->Transport,N->TxFlow);
 }
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
 {
@@ -275,13 +224,13 @@ static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *S,ULONG Budge
 
 static VOID CywRadioRequest(PRPI5CYW_ADAPTER A)
 {
-    CYW_NETWORK *N=A->Network;ULONG report[20];KIRQL irql;
+    CYW_NETWORK *N=A->Network;ULONG report[CYW_RADIO_REPORT_WORDS];KIRQL irql;
     if(!N->Associated || !N->Authorized || N->Stop || N->Paused) {
-        RtlZeroMemory(report,sizeof(report));report[0]=1;report[3]=(ULONG)STATUS_DEVICE_NOT_READY;
+        RtlZeroMemory(report,sizeof(report));report[0]=CYW_RADIO_REPORT_VERSION;report[3]=(ULONG)STATUS_DEVICE_NOT_READY;
     } else CywReadRadio(A,report);
     KeAcquireSpinLock(&N->Lock,&irql);
     if(!N->Associated || !N->Authorized || N->Stop || N->Paused) {
-        report[2]=0;report[3]=(ULONG)STATUS_DEVICE_NOT_READY;
+        report[2]=0;report[20]=0;report[3]=(ULONG)STATUS_DEVICE_NOT_READY;
     }
     report[1]=A->RadioReport[1]+1;
     RtlCopyMemory(A->RadioReport,report,sizeof(report));N->RadioBusy=FALSE;
@@ -295,6 +244,7 @@ static VOID CywWorker(PVOID Context)
     KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0,sentBefore,sentAfter;
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
+    RtlZeroMemory(&A->Transport,sizeof(A->Transport));
 /* TIMING-BEGIN */
     CYW_TIMING_U64 cycleStart,previousCycle=0,partStart,controlStart;
     ULONG creditBefore;BOOLEAN haveCycle=FALSE,previousBlocked=FALSE;
@@ -361,11 +311,13 @@ static VOID CywWorker(PVOID Context)
         partStart=CywTimingBegin(&A->Timing);
 /* TIMING-END */
         rxStart=KeQueryInterruptTime();
+        N->RxBatch=TRUE;N->RxBatchServiced=FALSE;
         for(i=0;CywReceiveBudget(i,KeQueryInterruptTime()-rxStart) && !N->Stop && !N->Paused;++i) {
             Status=CywPoll(A,&channel,&off,&len);
             if(Status==STATUS_NO_MORE_ENTRIES)break;
             if(!NT_SUCCESS(Status))goto Failed;
         }
+        N->RxBatch=FALSE;N->RxBatchServiced=FALSE;
 /* TIMING-BEGIN */
         CywTimingEnd(&A->Timing,CywTimeRxBatch,partStart);
 /* TIMING-END */
@@ -392,6 +344,7 @@ static VOID CywWorker(PVOID Context)
     }
     goto Exit;
 Failed:
+    N->RxBatch=FALSE;N->RxBatchServiced=FALSE;
     A->NetworkStatus=Status;N->Ready=FALSE;
     N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
     CywMeasuredDiagnostics(A,120,Status);
@@ -565,15 +518,19 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
                 out[20]=A->LastCommand;out[21]=A->LastArgument;
                 out[22]=A->LastResponse;out[23]=A->LastInterruptStatus;bytes=96;
             }
-        } else if(code==CYW_IOCTL_RADIO_STATUS && Stack->Parameters.DeviceIoControl.OutputBufferLength>=sizeof(A->RadioReport)) {
+        } else if(code==CYW_IOCTL_RADIO_STATUS && Stack->Parameters.DeviceIoControl.OutputBufferLength>=20*sizeof(ULONG)) {
             ULONG *out=Irp->AssociatedIrp.SystemBuffer;
+            ULONG reportBytes=Stack->Parameters.DeviceIoControl.OutputBufferLength>=sizeof(A->RadioReport)?
+                (ULONG)sizeof(A->RadioReport):20*(ULONG)sizeof(ULONG);
             KeAcquireSpinLockAtDpcLevel(&N->Lock);
-            RtlCopyMemory(out,A->RadioReport,sizeof(A->RadioReport));
+            RtlCopyMemory(out,A->RadioReport,reportBytes);
+            if(reportBytes==20*sizeof(ULONG))out[0]=1; /* Original 80-byte ABI. */
             if(!N->Ready || !N->Associated || !N->Authorized || N->Paused || N->Stop) {
                 out[2]=0;out[3]=(ULONG)STATUS_DEVICE_NOT_READY;
+                if(reportBytes>20*sizeof(ULONG))out[20]=0;
             }
             KeReleaseSpinLockFromDpcLevel(&N->Lock);
-            bytes=sizeof(A->RadioReport);Status=STATUS_SUCCESS;
+            bytes=reportBytes;Status=STATUS_SUCCESS;
         } else if(code==CYW_IOCTL_RADIO_REFRESH && Stack->Parameters.DeviceIoControl.InputBufferLength==0) {
             KeAcquireSpinLockAtDpcLevel(&N->Lock);
             if(!N->Ready || !N->Associated || !N->Authorized || N->Paused || N->Stop)Status=STATUS_DEVICE_NOT_READY;

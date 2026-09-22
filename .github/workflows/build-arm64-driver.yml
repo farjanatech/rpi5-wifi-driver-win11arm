@@ -18,7 +18,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 30
     env:
-      Configuration: Debug
+      Configuration: Release
       Platform: ARM64
 
     steps:
@@ -27,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce proven packet-path baseline and instrumentation-only scope
+      - name: Enforce unchanged SDIO engine, queue, firmware and bounded scheduling
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/focused_scope_tests.ps1
@@ -72,6 +72,16 @@ jobs:
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
           $command = 'call "{0}" && cl /nologo /W4 /WX /TC tests\network_protocol_tests.c /Fe:ci-logs\network_protocol_tests.exe && ci-logs\network_protocol_tests.exe && cl /nologo /W4 /WX /TC /std:c17 tests\connection_sequence_tests.c /Fe:ci-logs\connection_sequence_tests.exe && ci-logs\connection_sequence_tests.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\network-protocol-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test production transport flow control, receive batching and recovery
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $command = 'call "{0}" && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\transport_tests.c /Fe:ci-logs\transport_tests.exe && ci-logs\transport_tests.exe' -f $vcvars
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\transport-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Test traffic counters and actual NDIS statistics mapping
@@ -120,7 +130,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
-          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\timing_tests.c /Fe:ci-logs\timing_tests.exe && ci-logs\timing_tests.exe' -f $vcvars
+          $command = 'call "{0}" && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\timing_tests.c /Fe:ci-logs\timing_tests.exe && ci-logs\timing_tests.exe && cl /nologo /O2 /W4 /WX /TC /std:c17 /DRPI5CYW_DETAILED_TIMING=1 tests\timing_tests.c /Fe:ci-logs\timing_detail_tests.exe && ci-logs\timing_detail_tests.exe && cl /nologo /O2 /W4 /WX /TC /std:c17 /DRPI5CYW_DETAILED_TIMING=1 tests\sdio_host_tests.c /Fe:ci-logs\sdio_detail_tests.exe && ci-logs\sdio_detail_tests.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\timing-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -210,7 +220,7 @@ jobs:
             Tee-Object -FilePath ci-logs/nuget-restore.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build Debug ARM64
+      - name: Build optimized Release ARM64 with symbols
         id: build
         continue-on-error: true
         shell: pwsh
@@ -255,7 +265,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ndis-arm64-debug
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-release
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
@@ -264,7 +274,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.22
+          name: rpi5-wifi-one-click-diagnostics-v0.6.23
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

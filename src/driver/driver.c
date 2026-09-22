@@ -121,7 +121,13 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 22);
+    SET_DWORD(L"DiagVersion", 23);
+    /* Remove stale prior-session timing evidence while firmware is starting.
+     * A zero-size snapshot is deliberately invalid to all timing readers. */
+    if(!Adapter->Timing.Enabled) {
+        RtlInitUnicodeString(&ValueName,L"TimingV2");
+        (VOID)ZwSetValueKey(KeyHandle,&ValueName,0,REG_BINARY,NULL,0);
+    }
     SET_DWORD(L"JoinPreferenceAccepted", Adapter->JoinPreferenceAccepted);
     SET_DWORD(L"JoinPreferenceStatus", Adapter->JoinPreferenceStatus);
     SET_DWORD(L"JoinPreferenceError", Adapter->JoinPreferenceError);
@@ -248,6 +254,50 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"TxCreditSequence", Adapter->TxCreditSequence);
     SET_DWORD(L"TxCreditMaximum", Adapter->TxCreditMaximum);
     SET_DWORD(L"TxFlowMask", Adapter->TxFlowMask);
+    {
+        const CYW_TRANSPORT_STATE *T=&Adapter->Transport;
+        ULONG64 Now=KeQueryInterruptTime(),Blocked;
+        SET_DWORD(L"TransportGlobalFlow",T->GlobalFlow);
+        SET_DWORD(L"TransportLastInterrupt",T->LastInterrupt);
+        SET_DWORD(L"TransportLastMailbox",T->LastMailbox);
+        SET_DWORD(L"TransportMailboxVersion",T->MailboxVersion);
+        SET_DWORD(L"TransportFirmwareHalted",T->Halted);
+        SET_DWORD(L"TransportPendingReads",T->PendingReads);
+        SET_DWORD(L"TransportStatusReads",T->StatusReads);
+        SET_DWORD(L"TransportStatusAcks",T->StatusAcks);
+        SET_DWORD(L"TransportFcChanges",T->FcChanges);
+        SET_DWORD(L"TransportFcRaces",T->FcRaces);
+        SET_DWORD(L"TransportFcStops",T->FcStops);
+        SET_DWORD(L"TransportMailboxReads",T->MailReads);
+        SET_DWORD(L"TransportMailboxUnknown",T->MailUnknown);
+        SET_DWORD(L"TransportFirmwareHalts",T->FirmwareHalts);
+        SET_DWORD(L"TransportRxSequenceValid",T->SequenceValid);
+        SET_DWORD(L"TransportRxSequenceExpected",T->SequenceExpected);
+        SET_DWORD(L"TransportRxSequenceLast",T->SequenceLast);
+        SET_DWORD(L"TransportRxSequenceMismatches",T->SequenceMismatches);
+        SET_DWORD(L"TransportRxSequenceDuplicates",T->SequenceDuplicates);
+        SET_DWORD(L"TransportRxFrames",T->Frames);
+        SET_DWORD(L"TransportRxEmptyReads",T->EmptyReads);
+        SET_DWORD(L"TransportServiceErrors",T->ServiceErrors);
+        SET_DWORD(L"TransportRxAbortFailures",T->RxAbortFailures);
+        SET_DWORD(L"TransportPriorityStops",T->PriorityStops);
+        SET_DWORD(L"TransportTxStatusChecks",T->TxStatusChecks);
+        SET_DWORD(L"TransportPriorityMaskKnown",T->PriorityMaskKnown);
+        SET_DWORD(L"TransportPriorityMask",T->PriorityMask);
+        SET_DWORD(L"TransportPriorityFlow",T->PriorityFlow);
+        SET_DWORD(L"TransportPriorityBlocked",T->PriorityBlocked);
+        Blocked=CywTransportBlockedTicks(T,1,Now)/10000ULL;
+        RtlInitUnicodeString(&ValueName,L"TransportGlobalBlockedMs");
+        (VOID)ZwSetValueKey(KeyHandle,&ValueName,0,REG_QWORD,&Blocked,sizeof(Blocked));
+        Blocked=CywTransportBlockedTicks(T,0,Now)/10000ULL;
+        RtlInitUnicodeString(&ValueName,L"TransportPriorityBlockedMs");
+        (VOID)ZwSetValueKey(KeyHandle,&ValueName,0,REG_QWORD,&Blocked,sizeof(Blocked));
+    }
+    /* Worker publishes one complete explicit-query report. Unsupported
+     * extension fields remain invalid, never inferred from stale registry data. */
+    RtlInitUnicodeString(&ValueName,L"RadioReportV2");
+    (VOID)ZwSetValueKey(KeyHandle,&ValueName,0,REG_BINARY,
+                        Adapter->RadioReport,sizeof(Adapter->RadioReport));
     SET_DWORD(L"RxBatchYields", Adapter->RxBatchYields);
     SET_DWORD(L"RxHeaderReads", 0);
     SET_DWORD(L"RxReadAheadAttempts", 0);
@@ -1124,13 +1174,13 @@ VOID Rpi5CywWriteTimingDiagnostics(PRPI5CYW_ADAPTER Adapter)
     CYW_TIMING_SNAPSHOT Snapshot;
     if(!Adapter->Timing.Enabled || KeGetCurrentIrql()!=PASSIVE_LEVEL)return;
     C_ASSERT(sizeof(CYW_TIMING_BUCKET)==40);
-    C_ASSERT(sizeof(CYW_TIMING_SNAPSHOT)==40+40*CywTimeCount);
+    C_ASSERT(sizeof(CYW_TIMING_SNAPSHOT)==48+40*CywTimeCount);
     Snapshot=Adapter->Timing.Snapshot;
     Snapshot.SnapshotQpc=(CYW_TIMING_U64)KeQueryPerformanceCounter(NULL).QuadPart;
     RtlInitUnicodeString(&KeyName,L"\\Registry\\Machine\\SOFTWARE\\Rpi5CywDirectDiag");
     InitializeObjectAttributes(&Attributes,&KeyName,OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE,NULL,NULL);
     if(!NT_SUCCESS(ZwOpenKey(&Key,KEY_SET_VALUE,&Attributes)))return;
-    RtlInitUnicodeString(&ValueName,L"TimingV1");
+    RtlInitUnicodeString(&ValueName,L"TimingV2");
     (VOID)ZwSetValueKey(Key,&ValueName,0,REG_BINARY,&Snapshot,sizeof(Snapshot));
     ZwClose(Key);
 }

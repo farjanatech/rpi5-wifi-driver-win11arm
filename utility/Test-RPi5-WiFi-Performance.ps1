@@ -110,7 +110,7 @@ try {
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Output 'Performance utility 0.6.22 for installed exp0.6.14 or newer. This utility does not install drivers.'
+    Write-Output 'Performance utility 0.6.23 for installed exp0.6.14 or newer. This utility does not install drivers.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
     Write-Output 'The test requests example.com and up to 129 MiB of download payload from speed.cloudflare.com (plus protocol overhead). Repeated-download stage: up to 90 seconds. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
@@ -149,19 +149,27 @@ try {
         } catch { Write-Report "TEST ERROR: $($_.Exception.Message)" }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "Performance utility 0.6.22 report; UTC=$([datetime]::UtcNow.ToString('o'))"
-    # One explicit radio GET snapshot BEFORE the measured workload, never from
-    # the one-second sampler or during downloads. Older drivers remain usable.
+    Write-Report "Performance utility 0.6.23 report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    # Explicit radio GET snapshots BEFORE and AFTER the measured workload,
+    # never from the sampler or during downloads. Older drivers remain usable.
     $radioTool=Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Radio.ps1'
     $radioReady=$true
     $radioDriver=Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
-    if ((Test-Path -LiteralPath $radioTool) -and $null -ne $radioDriver -and
-        $radioDriver.PSObject.Properties['DiagVersion'] -and $radioDriver.DiagVersion -ge 17) {
+    $radioSupported=(Test-Path -LiteralPath $radioTool) -and $null -ne $radioDriver -and
+        $radioDriver.PSObject.Properties['DiagVersion'] -and $radioDriver.DiagVersion -ge 17
+    $radioArguments=@('-NoProfile','-ExecutionPolicy','Bypass','-File',$radioTool)
+    if ($radioSupported -and $radioDriver.DiagVersion -ge 23) { $radioArguments += '-AsJson' }
+    if ($radioSupported) {
         Write-Report 'Read-only radio snapshot before load:'
         try {
-            $radioResult=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',$radioTool) 30
+            $radioResult=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') $radioArguments 30
+            $radioResult.Output | Set-Content (Join-Path $resultDirectory 'radio-before.txt') -Encoding UTF8
             Write-Report $radioResult.Output
             $radioReady= -not $radioResult.TimedOut -and $radioResult.ExitCode -eq 0
+            if ($radioReady -and $radioDriver.DiagVersion -ge 23) {
+                $radioResult.Output | ConvertFrom-Json | ConvertTo-Json -Depth 8 |
+                    Set-Content (Join-Path $resultDirectory 'radio-before.json') -Encoding UTF8
+            }
         } catch { $radioReady=$false;Write-Report "Radio query failed: $($_.Exception.Message)" }
     } else {
         Write-Report 'Radio snapshot unavailable: requires exp0.6.17+ and its radio utility. No band is assumed.'
@@ -258,6 +266,20 @@ try {
         $protocolAfter | Format-List * | Out-String -Width 500 |
             Set-Content (Join-Path $resultDirectory 'windows-protocol-after.txt')
     } catch { Write-Report 'Optional Windows protocol counters were unavailable.' }
+    # This is after the measured workload AND sampler termination. Do not move
+    # optional firmware queries into the download loop; they share its bus worker.
+    if ($radioSupported -and $radioReady) {
+        Write-Report 'Read-only radio/firmware snapshot after load (not included in workload timing):'
+        try {
+            $radioAfter=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') $radioArguments 30
+            $radioAfter.Output | Set-Content (Join-Path $resultDirectory 'radio-after.txt') -Encoding UTF8
+            Write-Report $radioAfter.Output
+            if (-not $radioAfter.TimedOut -and $radioAfter.ExitCode -eq 0 -and $radioDriver.DiagVersion -ge 23) {
+                $radioAfter.Output | ConvertFrom-Json | ConvertTo-Json -Depth 8 |
+                    Set-Content (Join-Path $resultDirectory 'radio-after.json') -Encoding UTF8
+            } else { Write-Report 'Optional after-load firmware evidence unavailable or legacy text only; unknown is not zero.' }
+        } catch { Write-Report "Optional after-load radio query failed: $($_.Exception.Message)" }
+    }
     Write-Report 'Waiting up to 35 seconds for a driver snapshot newer than the END of the tests (no device restart).'
     # Comparing against the pre-test stamp can accept a snapshot taken halfway
     # through the tests and omit the download's congestion/errors.

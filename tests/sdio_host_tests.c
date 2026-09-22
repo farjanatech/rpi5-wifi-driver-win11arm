@@ -483,23 +483,23 @@ int main(void)
         Init(&Adapter);Fault=Mode;CywTimingStart(&Adapter.Timing);
         Status=SdioCmd53Read(&Adapter,1,0x8000,Buffer,64);
         CHECK(Status==RawStatus && ResetCount==RawResets);
-        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].Count==1);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].Count==(RPI5CYW_DETAILED_TIMING?1ULL:0ULL));
         CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Rx].Count==0);
-        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].TotalTicks==SimTime);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].TotalTicks==(RPI5CYW_DETAILED_TIMING?SimTime:0ULL));
         Init(&Adapter);Fault=Mode;CywTimingStart(&Adapter.Timing);
         Status=SdioFifoTransfer(&Adapter,Buffer,64,FALSE);
-        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Rx].Count==1);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Rx].Count==(RPI5CYW_DETAILED_TIMING?1ULL:0ULL));
         CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Tx].Count==0);
         Init(&Adapter);Fault=Mode;CywTimingStart(&Adapter.Timing);
         Status=SdioFifoTransfer(&Adapter,Buffer,64,TRUE);
-        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Tx].Count==1);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd53Tx].Count==(RPI5CYW_DETAILED_TIMING?1ULL:0ULL));
         Init(&Adapter);Fault=Mode;
         RawStatus=SdioSendCommandRaw(&Adapter,52,0,SDHCI_CMD_RESP_48,NULL);
         RawResets=ResetCount;
         Init(&Adapter);Fault=Mode;CywTimingStart(&Adapter.Timing);
         Status=SdioSendCommand(&Adapter,52,0,SDHCI_CMD_RESP_48,NULL);
         CHECK(Status==RawStatus && ResetCount==RawResets);
-        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd52].Count==1);
+        CHECK(Adapter.Timing.Snapshot.Bucket[CywTimeCmd52].Count==(RPI5CYW_DETAILED_TIMING?1ULL:0ULL));
     }
     Init(&Adapter);QpcReads=0;
     CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,64)==STATUS_SUCCESS);

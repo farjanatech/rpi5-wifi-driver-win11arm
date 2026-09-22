@@ -10,6 +10,8 @@
 #endif
 
 #include "../cyw43455/packet_probe.h"
+#include "../cyw43455/transport_protocol.h"
+#include "../cyw43455/radio_protocol.h"
 #include "traffic_stats.h"
 #include "timing.h"
 
@@ -86,8 +88,9 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts;
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
+    CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */
     ULONG TxQueueFrames, TxBurstAdmissions, TxOversizedNbl, TxInterleavedPackets;
-    ULONG RadioReport[20]; /* Versioned, explicit-request-only firmware GET snapshot. */
+    ULONG RadioReport[CYW_RADIO_REPORT_WORDS]; /* Explicit-request-only firmware GET snapshot. */
     ULONG TxNblAccepted, TxNblCompleted, TxCancelled, TxExpired, TxCreditWaits;
     ULONG TxCreditSequence, TxCreditMaximum, TxFlowMask;
     ULONG PacketTx[7], PacketRxWire[7], PacketRxHost[7];

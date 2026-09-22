@@ -8,7 +8,7 @@ on:
       - 'tests/radio_utility_tests.ps1'
       - 'tests/timing_utility_tests.ps1'
       - 'scripts/package-performance.ps1'
-      - 'docs/PERFORMANCE-0.6.22.md'
+      - 'docs/PERFORMANCE-0.6.23.md'
       - '.github/workflows/performance-utility.yml'
   workflow_dispatch:
 permissions:
@@ -42,8 +42,8 @@ jobs:
         run: ./scripts/package-performance.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-performance-0.6.22
+          name: rpi5-wifi-performance-0.6.23
           path: |
-            artifacts/RPi5-WiFi-Performance-0.6.22.zip
+            artifacts/RPi5-WiFi-Performance-0.6.23.zip
             artifacts/PERFORMANCE-SHA256SUMS.txt
           if-no-files-found: error

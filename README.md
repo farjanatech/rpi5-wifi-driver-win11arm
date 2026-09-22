@@ -1,14 +1,16 @@
-> Current candidate: **exp0.6.22**, baseline packet-path restoration plus runtime
-> stall timing. See [EXP0.6.22](./docs/EXP0.6.22.md).
+> Current candidate: **exp0.6.23**, firmware flow-control corrections, bounded
+> receive-status batching and optimized ARM64 build. See [EXP0.6.23](./docs/EXP0.6.23.md).
 > It is not a hardware-proven speed improvement. Keep exp0.6.16 as the tested fallback.
-> The existing performance command automatically includes timing-report.json.
+> The existing performance command automatically includes firmware/radio evidence
+> before and after load plus timing-report.json. Unknown WMM mapping retains safe
+> priority-flow fallback; no guessed flow-control bypass.
 > Historical version notes below are retained for traceability.
 
 # Raspberry Pi 5 CYW43455 Wi-Fi driver for Windows 11 ARM64
 
 Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineon/Cypress CYW43455 Wi-Fi controller.
 
-## Current milestone
+## Historical milestones
 
 ### Integrated exp0.6.21 — bounded receive read-ahead on the working baseline
 

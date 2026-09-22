@@ -40,13 +40,24 @@
 
   <PropertyGroup>
     <TargetName>rpi5cyw</TargetName>
+    <Rpi5DetailedTiming Condition="'$(Rpi5DetailedTiming)'==''">0</Rpi5DetailedTiming>
   </PropertyGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
 
   <ItemDefinitionGroup>
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <PreprocessorDefinitions>NDIS630_MINIPORT=1;NDIS_MINIPORT_DRIVER=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDIS630_MINIPORT=1;NDIS_MINIPORT_DRIVER=1;RPI5CYW_DETAILED_TIMING=$(Rpi5DetailedTiming);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)src\driver;$(ProjectDir)src\sdio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -69,6 +80,11 @@
     <ClInclude Include="src\cyw43455\connection.h" />
     <ClInclude Include="src\cyw43455\control.h" />
     <ClInclude Include="src\cyw43455\radio.h" />
+    <ClInclude Include="src\cyw43455\radio_protocol.h" />
+    <ClInclude Include="src\cyw43455\transport_protocol.h" />
+    <ClInclude Include="src\cyw43455\transport_service.h" />
+    <ClInclude Include="src\cyw43455\transport_poll.h" />
+    <ClInclude Include="src\cyw43455\transport_send.h" />
     <ClInclude Include="src\driver\timing.h" />
     <ClInclude Include="src\driver\timing_clock.h" />
     <ClInclude Include="src\cyw43455\tx_types.h" />
