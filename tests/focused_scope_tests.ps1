@@ -80,7 +80,9 @@ if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 23\)'){throw 'Diagnostic versio
 if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x00060017;'){throw 'NDIS vendor driver version incorrect.'}
 $project=Get-ScopeSource 'rpi5-cyw43455.vcxproj'
 $workflow=Get-ScopeSource '.github/workflows/build-arm64-driver.yml'
-if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or $workflow -notmatch 'Configuration: Release'){
+if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or
+   $project -notmatch '<FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>' -or
+   $workflow -notmatch 'Configuration: Release'){
     throw 'Optimized Release build is not configured.'
 }
 Write-Output 'PASS: proven SDIO/queue/firmware/NDIS receive/budgets and workload unchanged; scoped transport fixes, radio evidence, optimized build and masked timing.'

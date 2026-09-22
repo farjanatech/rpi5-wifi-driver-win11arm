@@ -230,7 +230,18 @@ jobs:
             /p:Platform=$env:Platform `
             /bl:ci-logs\build.binlog `
             /fl "/flp:logfile=ci-logs\build.log;verbosity=diagnostic"
-          exit $LASTEXITCODE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Verify effective flags, not only project intent: WDK defaults can
+          # otherwise append /Os after /O2 and favor code size over speed.
+          $commands = @(Select-String -LiteralPath ci-logs/build.log -Pattern '\bCL\.exe /c ' | ForEach-Object Line)
+          if (-not $commands.Count) { throw 'No compiler commands found for optimization verification.' }
+          foreach ($command in $commands) {
+            if ($command -notmatch '\s/O2\s' -or $command -notmatch '\s/Ot\s' -or
+                $command -match '\s/(Od|Os)\s' -or $command -notmatch 'RPI5CYW_DETAILED_TIMING=0\s') {
+              throw 'Effective compiler flags do not match the optimized, low-overhead release policy.'
+            }
+          }
+          Write-Host 'Verified effective /O2 /Ot Release flags and detailed timing disabled.'
 
       - name: Inventory build outputs
         if: always()
