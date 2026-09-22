@@ -16,7 +16,7 @@ function ConvertTo-ScopeToken {
     param([string]$Text)
     return [regex]::Replace([regex]::Replace($Text,'/\*.*?\*/|//[^\r\n]*','',[Text.RegularExpressions.RegexOptions]::Singleline),'\s+','')
 }
-function Remove-TimingInstrumentation {
+function ConvertFrom-TimingInstrumentation {
     param([string]$Text)
     return [regex]::Replace($Text,'/\* TIMING-BEGIN \*/.*?/\* TIMING-END \*/','',[Text.RegularExpressions.RegexOptions]::Singleline)
 }
@@ -31,10 +31,10 @@ foreach($file in @('src/sdio/sdio.c','src/cyw43455/tx_queue.h','src/cyw43455/tx_
 foreach($file in @('src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/network_protocol.h','src/cyw43455/control.h','src/cyw43455/connection.h','src/cyw43455/join_preference.h','src/cyw43455/radio.h','src/cyw43455/firmware.c','utility/Connect-RPi5-WiFi.ps1','utility/Get-RPi5-WiFi-Radio.ps1','utility/Measure-RPi5-WiFi-Load.ps1','utility/Set-RPi5-WiFi-Autoconnect.ps1','utility/WiFi.config.example.json','scripts/fetch-firmware.ps1')) {
     Assert-SameSource (Get-ScopeSource $file) (Get-ScopeSource $file $baseline) $file
 }
-$sdio=Remove-TimingInstrumentation (Get-ScopeSource 'src/sdio/sdio.c')
+$sdio=ConvertFrom-TimingInstrumentation (Get-ScopeSource 'src/sdio/sdio.c')
 $sdio=$sdio.Replace('SdioSendCommandRaw(', 'SdioSendCommand(').Replace('SdioCmd53TransferRaw(', 'SdioCmd53Transfer(')
 Assert-SameSource $sdio (Get-ScopeSource 'src/sdio/sdio.c' $proven) 'Actual SDIO engine'
-$network=Remove-TimingInstrumentation (Get-ScopeSource 'src/cyw43455/network.c')
+$network=ConvertFrom-TimingInstrumentation (Get-ScopeSource 'src/cyw43455/network.c')
 $network=$network.Replace('CywMeasuredTxPump(', 'CywTxPump(').Replace('CywMeasuredDiagnostics(', 'Rpi5CywWriteDiagnostics(')
 $network=$network -replace '(?s)(if\(!i && !sentBefore && !sentAfter\))\s*\{\s*(KeWaitForSingleObject\([^;]+;)\s*\}', '$1 $2'
 Assert-SameSource $network (Get-ScopeSource 'src/cyw43455/network.c' $baseline) 'Worker/receive/NDIS processing'
