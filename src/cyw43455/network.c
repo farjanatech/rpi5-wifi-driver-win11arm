@@ -125,7 +125,7 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
         NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;
         Rpi5CywTrafficFrame(A,FALSE,p+off,(ULONG)len);
 /* TIMING-BEGIN */
-        uint64_t indicationStart=CywTimingBegin(&A->Timing);
+        CYW_TIMING_U64 indicationStart=CywTimingBegin(&A->Timing);
 /* TIMING-END */
         NdisMIndicateReceiveNetBufferLists(A->MiniportHandle,Nbl,0,1,NDIS_RECEIVE_FLAGS_RESOURCES);
 /* TIMING-BEGIN */
@@ -259,14 +259,14 @@ Exit: if(clm)ExFreePoolWithTag(clm,RPI5CYW_TAG);return Status;
 /* TIMING-BEGIN */
 static VOID CywMeasuredDiagnostics(PRPI5CYW_ADAPTER A,ULONG Stage,NTSTATUS Status)
 {
-    uint64_t Start=CywTimingBegin(&A->Timing);
+    CYW_TIMING_U64 Start=CywTimingBegin(&A->Timing);
     Rpi5CywWriteDiagnostics(A,Stage,Status);
     Rpi5CywWriteTimingDiagnostics(A);
     CywTimingEnd(&A->Timing,CywTimeDiagnostics,Start);
 }
 static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *S,ULONG Budget,PULONG Sent)
 {
-    uint64_t Start=CywTimingBegin(&A->Timing);
+    CYW_TIMING_U64 Start=CywTimingBegin(&A->Timing);
     NTSTATUS Status=CywTxPump(A,S,Budget,Sent);
     CywTimingEnd(&A->Timing,CywTimeTxPump,Start);
     return Status;
@@ -296,7 +296,7 @@ static VOID CywWorker(PVOID Context)
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
 /* TIMING-BEGIN */
-    uint64_t cycleStart,previousCycle=0,partStart,controlStart;
+    CYW_TIMING_U64 cycleStart,previousCycle=0,partStart,controlStart;
     ULONG creditBefore;BOOLEAN haveCycle=FALSE,previousBlocked=FALSE;
     RtlZeroMemory(&A->Timing,sizeof(A->Timing));
 /* TIMING-END */

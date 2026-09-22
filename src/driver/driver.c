@@ -1126,7 +1126,7 @@ VOID Rpi5CywWriteTimingDiagnostics(PRPI5CYW_ADAPTER Adapter)
     C_ASSERT(sizeof(CYW_TIMING_BUCKET)==40);
     C_ASSERT(sizeof(CYW_TIMING_SNAPSHOT)==40+40*CywTimeCount);
     Snapshot=Adapter->Timing.Snapshot;
-    Snapshot.SnapshotQpc=(uint64_t)KeQueryPerformanceCounter(NULL).QuadPart;
+    Snapshot.SnapshotQpc=(CYW_TIMING_U64)KeQueryPerformanceCounter(NULL).QuadPart;
     RtlInitUnicodeString(&KeyName,L"\\Registry\\Machine\\SOFTWARE\\Rpi5CywDirectDiag");
     InitializeObjectAttributes(&Attributes,&KeyName,OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE,NULL,NULL);
     if(!NT_SUCCESS(ZwOpenKey(&Key,KEY_SET_VALUE,&Attributes)))return;
