@@ -36,9 +36,9 @@ static NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER a,PUCHAR p,ULONG n,BOOLEAN wri
     return status;
 }
 static VOID CywReceive(PRPI5CYW_ADAPTER a,PUCHAR p,ULONG n)
-{CHECK(a==&Adapter && p==Rx+12 && n==CywLe16(Wire)-12);CHECK(memcmp(p,Wire+12,n)==0);++Delivered;DeliveredLength=n;}
+{CHECK(a==&Adapter && p==Rx+12 && n==(ULONG)CywLe16(Wire)-12u);CHECK(memcmp(p,Wire+12,n)==0);++Delivered;DeliveredLength=n;}
 static VOID CywEvent(PRPI5CYW_ADAPTER a,PUCHAR p,ULONG n)
-{CHECK(a==&Adapter && p==Rx+12 && n==CywLe16(Wire)-12);++Events;}
+{CHECK(a==&Adapter && p==Rx+12 && n==(ULONG)CywLe16(Wire)-12u);++Events;}
 #include "../src/cyw43455/rx_poll.h"
 static VOID Reset(ULONG length,UCHAR channel,UCHAR hint)
 {
@@ -55,7 +55,7 @@ static NTSTATUS Poll(BOOLEAN ahead)
 {
     ULONG channel=99,off=99,len=99;NTSTATUS status;
     status=ahead?CywPollFrame(&Adapter,&channel,&off,&len,TRUE):CywPoll(&Adapter,&channel,&off,&len);
-    if(NT_SUCCESS(status)){CHECK(len==CywLe16(Wire) && off==12 && channel==(Wire[5]&15));}
+    if(NT_SUCCESS(status)){CHECK(len==CywLe16(Wire) && off==12 && channel==(Wire[5]&15u));}
     else CHECK(channel==0 && off==0 && len==0);
     return status;
 }
