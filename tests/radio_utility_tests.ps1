@@ -25,5 +25,9 @@ $source=Get-Content -LiteralPath $path -Raw
 foreach($bad in @('Set-ItemProperty','bcdedit','pnputil','Disable-NetAdapter','WiFi.private.json')){if($source.Contains($bad)){throw 'Radio reader changes settings or accesses credentials.'}}
 foreach($code in @('0x12A00C','0x126010')){if(!$source.Contains($code)){throw 'Radio ABI mismatch.'}}
 $perf=Get-Content -LiteralPath (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') -Raw
-if($perf.IndexOf("Save-Step 'Read-only radio") -gt $perf.IndexOf("Repeated-download START")){throw 'Radio query overlaps load stage.'}
+if($perf.IndexOf("Write-Report 'Read-only radio") -gt $perf.IndexOf("Repeated-download START")){throw 'Radio query overlaps load stage.'}
+if(!$perf.Contains('if (-not $radioReady)') -or !$perf.Contains("'-File',`$radioTool")){throw 'Missing pre-load completion gate or incorrectly quoted tool path.'}
+. (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') -LibraryOnly
+$probe=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',$path,'-LibraryOnly') 15
+if($probe.TimedOut -or $probe.ExitCode -ne 0){throw 'Radio script could not be invoked as a bounded child process.'}
 Write-Output 'PASS: radio report parsing, signed RSSI, unknown/partial readbacks, backward ABI failure and pre-load-only integration.'

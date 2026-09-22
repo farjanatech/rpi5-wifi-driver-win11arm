@@ -152,14 +152,25 @@ try {
     # One explicit radio GET snapshot BEFORE the measured workload, never from
     # the one-second sampler or during downloads. Older drivers remain usable.
     $radioTool=Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Radio.ps1'
-    if (Test-Path -LiteralPath $radioTool) {
-        Save-Step 'Read-only radio snapshot (unknown if unsupported)' (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $radioTool)) 30
+    $radioReady=$true
+    $radioDriver=Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
+    if ((Test-Path -LiteralPath $radioTool) -and $null -ne $radioDriver -and
+        $radioDriver.PSObject.Properties['DiagVersion'] -and $radioDriver.DiagVersion -ge 17) {
+        Write-Report 'Read-only radio snapshot before load:'
+        try {
+            $radioResult=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',$radioTool) 30
+            Write-Report $radioResult.Output
+            $radioReady= -not $radioResult.TimedOut -and $radioResult.ExitCode -eq 0
+        } catch { $radioReady=$false;Write-Report "Radio query failed: $($_.Exception.Message)" }
+    } else {
+        Write-Report 'Radio snapshot unavailable: requires exp0.6.17+ and its radio utility. No band is assumed.'
     }
     Write-Report 'Counters are cumulative periodic driver snapshots, not atomic per-test measurements.'
     $before = Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue
     $before | Format-List * | Out-String -Width 500 | Set-Content (Join-Path $resultDirectory 'driver-before.txt')
     Write-Report (Get-Rpi5BusAssessment $before)
     try {
+        if (-not $radioReady) { throw 'Radio query completion was not confirmed; skip workload to avoid overlapping a pending query. Diagnostics will still be collected.' }
         $live = [Rpi5WifiControl]::Call(0x126004, $null)
         if ([BitConverter]::ToUInt32($live,8) -ne 0 -or [BitConverter]::ToUInt32($live,28) -ne 1) {
             throw 'Driver does not report a currently authenticated link. Network tests skipped.'
