@@ -93,6 +93,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG RxFilterSnapshot, MacReadbackMatches;
     NTSTATUS MacReadbackStatus;
     ULONG RuntimeF1FastPolls, TxQueueMaxDelayMs;
+    ULONG RuntimeCmd52Commands, RuntimeCmd52FastPolls, RuntimeCmd52WaitSleeps, RuntimeCmd52Timeouts;
     ULONG RuntimeCmd53SleepPhase[3], RuntimeF1WaitSleeps, RuntimeF2WaitSleeps;
     ULONG64 RuntimeCmd53Sleep100ns;
     ULONG BpWindow, BpWindowValid, BpWindowCacheHits, BpWindowSelections;

@@ -4,7 +4,21 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6.18 — restore .16 queue limit, retain radio reporting
+### Integrated exp0.6.19 — reduce runtime CMD52 polling delay
+
+.18 recovered to 17.09 Mbps with 128/128 completed downloads, 63 ms maximum
+recorded queue delay, but 774 queue-full rejections and one NoResources ping.
+It used 5 GHz versus .17's 2.4 GHz, so the comparison does not isolate the cap.
+
+This candidate replaces runtime CMD52's coarse 100-us polling with at most
+five 10-us waits followed by a yielding fallback and one-second deadline.
+Only the verified operating bus uses it; startup remains unchanged. Four new
+counters expose actual usage, fallback sleeps and timeouts. The 64-frame cap,
+packet scheduler, CMD53 transfers, firmware, country, UEFI and tools stay intact.
+See [exp0.6.19 instructions](docs/EXP0.6.19.md). Keep .18 as the tested fallback.
+This is a targeted timing candidate, not a promise of higher speed or zero drops.
+
+### Previous exp0.6.18 — tested recovery, retained fallback
 
 The .17 test had zero queue-full rejects but dropped to 9.00 Mbps, with two
 download timeouts, 5/77 missed router probes and a 1,875 ms maximum queue delay.

@@ -27,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce focused exp0.6.16 baseline scope
+      - name: Enforce focused exp0.6.18 baseline scope
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/focused_scope_tests.ps1
@@ -248,7 +248,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.18
+          name: rpi5-wifi-one-click-diagnostics-v0.6.19
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

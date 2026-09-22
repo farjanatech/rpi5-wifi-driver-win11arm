@@ -273,6 +273,8 @@ SdioWaitInhibitClear(
     return STATUS_IO_TIMEOUT;
 }
 
+#include "cmd52_wait.h"
+
 static NTSTATUS
 SdioSendCommand(
     _Inout_ PRPI5CYW_ADAPTER Adapter,
@@ -304,14 +306,21 @@ SdioSendCommand(
     KeMemoryBarrier();
     SdioWrite16(Adapter, SDHCI_COMMAND, SDHCI_MAKE_CMD(CommandIndex, CommandFlags));
 
-    for (Timeout = 0; Timeout < 10000; Timeout++)
-    {
-        InterruptStatus = SdioRead32(Adapter, SDHCI_INT_STATUS);
-        if ((InterruptStatus & (SDHCI_INT_CMD_COMPLETE | SDHCI_INT_ERROR | SDHCI_INT_CMD_ERROR_MASK)) != 0)
+    if (CommandIndex == SDCMD_IO_RW_DIRECT && KeGetCurrentIrql() == PASSIVE_LEVEL &&
+        Adapter->BusModeStage == 6 && Adapter->BusWidth == 4 &&
+        Adapter->BusActualKhz > 400 && Adapter->BusActualKhz <= 25000)
+        Status = SdioWaitRuntimeCmd52(Adapter, &InterruptStatus);
+    else {
+        for (Timeout = 0; Timeout < 10000; Timeout++)
         {
-            break;
+            InterruptStatus = SdioRead32(Adapter, SDHCI_INT_STATUS);
+            if ((InterruptStatus & (SDHCI_INT_CMD_COMPLETE | SDHCI_INT_ERROR | SDHCI_INT_CMD_ERROR_MASK)) != 0)
+            {
+                break;
+            }
+            KeStallExecutionProcessor(100);
         }
-        KeStallExecutionProcessor(100);
+        if (Timeout == 10000) Status = STATUS_IO_TIMEOUT;
     }
 
     Adapter->LastInterruptStatus = InterruptStatus;
@@ -320,10 +329,10 @@ SdioSendCommand(
         *Response = SdioRead32(Adapter, SDHCI_RESPONSE0);
         Adapter->LastResponse = *Response;
     }
-    if (Timeout == 10000)
+    if (!NT_SUCCESS(Status))
     {
         Adapter->LastCommandResetStatus = SdioResetHost(Adapter, SDHCI_RESET_CMD);
-        return STATUS_IO_TIMEOUT;
+        return Status;
     }
 
     if ((InterruptStatus & (SDHCI_INT_ERROR | SDHCI_INT_CMD_ERROR_MASK)) != 0)

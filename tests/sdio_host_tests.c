@@ -11,6 +11,7 @@ static ULONG FifoWrites, WriteWords[128], DiscoveryMode, Fail53At;
 static ULONG64 SimTime, ReadyAt;
 static ULONG SleepUs, SleepCount, StallUs, StopOnSleep;
 static ULONG BusClockFault,BusHostFault;
+static ULONG CommandDelayUs,CommandEvent;
 static ULONG PhaseMode, PhaseUs[3], ScheduledEvent, PhaseWords, StopOnStall;
 static ULONG64 PhaseDue;
 static PRPI5CYW_ADAPTER ActiveAdapter;
@@ -163,6 +164,10 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
     }
 Complete:
     Registers[SDHCI_RESPONSE0 / 4] = Response;
+    if(Command!=53 && CommandDelayUs) {
+        Registers[SDHCI_INT_STATUS/4]=0;
+        ScheduledEvent=CommandEvent;PhaseDue=SimTime+(ULONG64)CommandDelayUs*10;
+    }
 }
 ULONG64 KeQueryInterruptTime(void) { return SimTime; }
 void KeStallExecutionProcessor(ULONG Microseconds)
@@ -198,6 +203,7 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     SimTime=ReadyAt=0;SleepUs=1000;SleepCount=StallUs=StopOnSleep=0;
     ActiveAdapter=Adapter;
     BusClockFault=BusHostFault=0;
+    CommandDelayUs=0;CommandEvent=SDHCI_INT_CMD_COMPLETE;
     PhaseMode=ScheduledEvent=PhaseWords=StopOnStall=0;PhaseDue=0;
     memset(PhaseUs,0,sizeof(PhaseUs));
     Card[1][CYW_F1_WINDOW_LOW] = 0x80;
@@ -216,6 +222,7 @@ static void CheckRestored(void)
 
 #include "erom_tests.h"
 #include "bus_mode_tests.h"
+#include "cmd52_wait_tests.h"
 
 static void RunPhasePollingTests(void)
 {
@@ -271,6 +278,7 @@ int main(void)
     RunEromTests();
     RunBusModeTests();
     RunPhasePollingTests();
+    RunCmd52WaitTests();
     Init(&Adapter);Adapter.BpWindowValid=1;
     CHECK(SdioCmd52Write(&Adapter,1,0x1000a,0,0xff)==0 && !Adapter.BpWindowValid);
     Adapter.BpWindowValid=1;CHECK(SdioCmd52Write(&Adapter,1,0x1000e,0,0)==0 && Adapter.BpWindowValid);

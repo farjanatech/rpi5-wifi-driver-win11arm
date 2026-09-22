@@ -121,7 +121,11 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 18);
+    SET_DWORD(L"DiagVersion", 19);
+    SET_DWORD(L"RuntimeCmd52Commands", Adapter->RuntimeCmd52Commands);
+    SET_DWORD(L"RuntimeCmd52FastPolls", Adapter->RuntimeCmd52FastPolls);
+    SET_DWORD(L"RuntimeCmd52WaitSleeps", Adapter->RuntimeCmd52WaitSleeps);
+    SET_DWORD(L"RuntimeCmd52Timeouts", Adapter->RuntimeCmd52Timeouts);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -628,7 +632,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00060012;
+            Data.Ulong = 0x00060013;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:
