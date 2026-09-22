@@ -53,7 +53,7 @@ Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.cmd') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.14.1.md') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.17.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.18.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -99,11 +99,11 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.17 preserves exp0.6.16 worker budgets and completion accounting.
-The admission cap is 128 frames, not unlimited and not the .15 scheduling.
+Driver exp0.6.18 restores the exp0.6.16 64-frame cap, budgets and completion accounting.
+The only runtime change versus .17 is the admission limit (128 -> 64).
 Explicit read-only radio queries report band/channel/RSSI/PM/MPC before tests,
 never automatically inside the download sampler. Unknown is not a guess.
-See EXP0.6.17.md. More buffering may add latency; this candidate is unvalidated.
+See EXP0.6.18.md. The .17 test regressed; recovery is not yet hardware validated.
 Compare timeouts/latency and speed, not only rejects. Keep .16 for rollback.
 Install on the Pi, restart once, then run Test-RPi5-WiFi-Performance.cmd.
 No firmware, country, UEFI/fan or bus-mode changes. No guaranteed speed claim.

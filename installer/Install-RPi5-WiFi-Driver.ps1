@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.6.17'
+$script:InstallerVersion = '0.6.18'
 $script:RequiredUefiRevision = 'bda4c47'
 
 function Test-Rpi5PnpSuccess {

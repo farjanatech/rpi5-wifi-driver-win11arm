@@ -99,7 +99,7 @@ int main(void)
     for(i=0;i<CYW_TX_LIMIT;i++)CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[CYW_TX_LIMIT])==NDIS_STATUS_RESOURCES && TestAdapter.TxQueueFull==1);
     CHECK(TestQueue.Outstanding==CYW_TX_LIMIT && TestQueue.Frames==CYW_TX_LIMIT && TestQueue.Bytes==100*CYW_TX_LIMIT);
-    CHECK(CYW_TX_LIMIT==128 && TestAdapter.TxBurstAdmissions==0 && TestAdapter.TxQueueFrames==CYW_TX_LIMIT);
+    CHECK(CYW_TX_LIMIT==64 && TestAdapter.TxBurstAdmissions==0 && TestAdapter.TxQueueFrames==CYW_TX_LIMIT);
     CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);
     CHECK(!TestQueue.Outstanding && TestAdapter.TxNblCompleted==CYW_TX_LIMIT && !TestAdapter.TxQueueFrames);
     CHECK(TestAdapter.Traffic.Discards[1]==CYW_TX_LIMIT && TestAdapter.Traffic.Errors[1]==0);
@@ -165,7 +165,7 @@ int main(void)
     CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_LOW_POWER_STATE);
     CHECK(!CywTxOutstanding(&TestQueue) && Reentrant.Completions==1);
 
-    /* 128-frame hard cap, held through no credits then drained in small
+    /* Restored 64-frame hard cap, held through no credits then drained in small
      * chunks. No early/fake completion or unlimited retained ownership. */
     Init();Credits=0;
     for(i=0;i<CYW_TX_LIMIT;i++){Packet(&nbl[i],&nb[i],1514,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}

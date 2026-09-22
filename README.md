@@ -4,7 +4,20 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6.17 — bounded queue headroom and radio reporting
+### Integrated exp0.6.18 — restore .16 queue limit, retain radio reporting
+
+The .17 test had zero queue-full rejects but dropped to 9.00 Mbps, with two
+download timeouts, 5/77 missed router probes and a 1,875 ms maximum queue delay.
+This release restores .16's **64-frame cap**. Scheduling/ownership and .17's
+radio/connection/performance tools remain unchanged, enforced by CI checks.
+
+The .17 radio snapshot confirmed 2.4 GHz/channel 6, -41 dBm, PM and MPC off.
+That does not prove the cause of the slowdown. Test .18 on the unchanged router
+configuration first; compare a separately identified 5 GHz connection afterward.
+No forced band, new queue mechanism or claimed guaranteed speedup. See
+[exp0.6.18 instructions](docs/EXP0.6.18.md). Keep the tested .16 for rollback.
+
+### Previous exp0.6.17 — hardware run regressed; not the preferred candidate
 
 The .16 Pi run completed 128/128 downloads at 18.55 Mbps, with 55/55 successful
 router probes but 813 queue-full rejections. .17 tests a bounded 128-frame cap

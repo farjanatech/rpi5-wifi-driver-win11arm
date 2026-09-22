@@ -1,10 +1,10 @@
-# Latest driver: exp0.6.17 candidate
+# Latest driver: exp0.6.18 candidate
 
-See [exp0.6.17 instructions and acceptance criteria](EXP0.6.17.md). This driver
+See [exp0.6.18 instructions and acceptance criteria](EXP0.6.18.md). This driver
 candidate requires one installation and restart, then the included performance
 utility. The standalone utility instructions below apply when keeping .14.
-The .16 hardware run reached 18.55 Mbps with no failed downloads. .17 retains
-its scheduling, tests a 128-frame cap and adds pre-load radio GET reporting.
+The .16 hardware run reached 18.55 Mbps with no failed downloads. The .17 test
+regressed; .18 restores the 64-frame cap and retains pre-load radio reporting.
 Keep .16 for rollback; compare latency and errors as well as throughput.
 
 # Previous: standalone performance utility 0.6.14.1
