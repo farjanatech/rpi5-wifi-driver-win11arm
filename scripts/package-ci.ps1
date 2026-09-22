@@ -49,9 +49,11 @@ Copy-Item (Join-Path $root 'docs\AUTO-CONNECT.md') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.cmd') $stage
 Copy-Item (Join-Path $root 'utility\Measure-RPi5-WiFi-Load.ps1') $stage
+Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.ps1') $stage
+Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.cmd') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.14.1.md') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.16.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.17.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -97,13 +99,12 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.16 restores exp0.6.14's exact worker scheduling and 64-frame cap.
-Only the completion-accounting behavior is changed versus .14: release admission
-before the NDIS callback, retaining a separate callback reference for pause.
-Read-only diagnostics and version metadata are retained. GitHub verifies this
-focused source scope; the .15 per-frame interleaving/256-frame burst are removed.
-See EXP0.6.16.md. The .15 run regressed; recovery still needs a physical test.
-Compare timeouts/latency and speed, not only rejects. Keep .14 for rollback.
+Driver exp0.6.17 preserves exp0.6.16 worker budgets and completion accounting.
+The admission cap is 128 frames, not unlimited and not the .15 scheduling.
+Explicit read-only radio queries report band/channel/RSSI/PM/MPC before tests,
+never automatically inside the download sampler. Unknown is not a guess.
+See EXP0.6.17.md. More buffering may add latency; this candidate is unvalidated.
+Compare timeouts/latency and speed, not only rejects. Keep .16 for rollback.
 Install on the Pi, restart once, then run Test-RPi5-WiFi-Performance.cmd.
 No firmware, country, UEFI/fan or bus-mode changes. No guaranteed speed claim.
 
@@ -115,7 +116,7 @@ owns the cache; no concurrency, clock, firmware or wire-format changes.
 Adds locked 64-bit Ethernet byte/frame/error/discard statistics and the standard
 NDIS OID_GEN_STATISTICS interface for Windows traffic graphs. Bytes count actual
 chip transfers / host receive indications, not queued work or a fabricated rate.
-Performance utility 0.6.14.1 replaces the rejected large request with sequential
+Performance utility 0.6.17 retains the 0.6.14.1 workload with sequential
 1 MiB downloads (90s or 128 requests), independent router ping and traffic
 sampling. Up to 129 MiB total payload; see PERFORMANCE-0.6.14.1.md for limits.
 It uploads no logs. HTTP rejection is inconclusive, not a zero-speed result.

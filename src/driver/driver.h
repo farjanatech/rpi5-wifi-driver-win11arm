@@ -19,7 +19,7 @@
 #define RPI5CYW_TAG 'W5PR'
 #define RPI5CYW_MTU 1500
 #define RPI5CYW_FRAME_SIZE 1514
-#define RPI5CYW_TX_LIMIT 64u
+#define RPI5CYW_TX_LIMIT 128u
 #define RPI5CYW_DRIVER_VERSION 0x0100
 #define RPI5CYW_MAX_MULTICAST 32
 #define RPI5CYW_MAX_LINK_SPEED 433000000ULL
@@ -85,6 +85,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts;
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
     ULONG TxQueueFrames, TxBurstAdmissions, TxOversizedNbl, TxInterleavedPackets;
+    ULONG RadioReport[20]; /* Versioned, explicit-request-only firmware GET snapshot. */
     ULONG TxNblAccepted, TxNblCompleted, TxCancelled, TxExpired, TxCreditWaits;
     ULONG TxCreditSequence, TxCreditMaximum, TxFlowMask;
     ULONG PacketTx[7], PacketRxWire[7], PacketRxHost[7];

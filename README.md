@@ -4,7 +4,19 @@ Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineo
 
 ## Current milestone
 
-### Integrated exp0.6.16 — focused completion-accounting candidate
+### Integrated exp0.6.17 — bounded queue headroom and radio reporting
+
+The .16 Pi run completed 128/128 downloads at 18.55 Mbps, with 55/55 successful
+router probes but 813 queue-full rejections. .17 tests a bounded 128-frame cap
+while retaining .16 scheduling and ownership. Larger queues can increase
+latency: this is an unvalidated candidate, not a guaranteed speed improvement.
+
+Read-only, explicit-request radio reporting adds band/channel/RSSI/PM/MPC.
+The performance tool queries once before load, never periodically during it.
+Unsupported results remain unknown. Country, firmware, bus mode and UEFI stay
+unchanged. See [exp0.6.17 instructions](docs/EXP0.6.17.md). Keep .16 for rollback.
+
+### Previous exp0.6.16 — focused completion-accounting candidate
 
 exp0.6.15's hardware test regressed (three completed downloads, then three
 timeouts). This candidate restores exp0.6.14's worker source **exactly** and

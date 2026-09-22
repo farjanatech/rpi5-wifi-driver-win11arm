@@ -121,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 16);
+    SET_DWORD(L"DiagVersion", 17);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
@@ -213,6 +213,21 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"TxQueueHighWater", Adapter->TxQueueHighWater);
     SET_DWORD(L"TxQueueFull", Adapter->TxQueueFull);
     SET_DWORD(L"TxQueueLimit", RPI5CYW_TX_LIMIT);
+    SET_DWORD(L"RadioVersion", Adapter->RadioReport[0]);
+    SET_DWORD(L"RadioGeneration", Adapter->RadioReport[1]);
+    SET_DWORD(L"RadioValidMask", Adapter->RadioReport[2]);
+    SET_DWORD(L"RadioStatus", Adapter->RadioReport[3]);
+    SET_DWORD(L"RadioChannelStatus", Adapter->RadioReport[4]);
+    SET_DWORD(L"RadioRssiStatus", Adapter->RadioReport[5]);
+    SET_DWORD(L"RadioPmStatus", Adapter->RadioReport[6]);
+    SET_DWORD(L"RadioMpcStatus", Adapter->RadioReport[7]);
+    SET_DWORD(L"RadioHardwareChannel", Adapter->RadioReport[8]);
+    SET_DWORD(L"RadioTargetChannel", Adapter->RadioReport[9]);
+    SET_DWORD(L"RadioScanChannel", Adapter->RadioReport[10]);
+    SET_DWORD(L"RadioBandMHz", Adapter->RadioReport[11]);
+    SET_DWORD(L"RadioRssiRaw", Adapter->RadioReport[12]);
+    SET_DWORD(L"RadioPmMode", Adapter->RadioReport[13]);
+    SET_DWORD(L"RadioMpc", Adapter->RadioReport[14]);
     SET_DWORD(L"TxQueueFrames", Adapter->TxQueueFrames);
     SET_DWORD(L"TxBurstAdmissions", Adapter->TxBurstAdmissions);
     SET_DWORD(L"TxOversizedNbl", Adapter->TxOversizedNbl);
@@ -613,7 +628,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00060010;
+            Data.Ulong = 0x00060011;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

@@ -2,7 +2,7 @@
 /* Bounded pending-NBL ownership. Only the bus worker removes entries or
  * completes accepted NBLs; submission/cancellation use Lock. No NBL/NB chain
  * is modified except the NBL next link, detached by the send callback. */
-/* Restore the exp0.6.14 64-frame cap; this is not a burst-capacity change. */
+/* Bounded 128-frame admission; worker budgets/expiry/ownership are unchanged. */
 #define CYW_TX_LIMIT RPI5CYW_TX_LIMIT
 #define CYW_TX_MAX_AGE 300000000ULL /* 30 seconds, interrupt-time units */
 typedef struct _CYW_PENDING_SEND {

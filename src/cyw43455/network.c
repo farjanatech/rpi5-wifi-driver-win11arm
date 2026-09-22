@@ -14,6 +14,8 @@
 #define CYW_IOCTL_CONNECT CTL_CODE(FILE_DEVICE_NETWORK,0x800,METHOD_BUFFERED,FILE_WRITE_DATA)
 #define CYW_IOCTL_STATUS CTL_CODE(FILE_DEVICE_NETWORK,0x801,METHOD_BUFFERED,FILE_READ_DATA)
 #define CYW_IOCTL_DISCONNECT CTL_CODE(FILE_DEVICE_NETWORK,0x802,METHOD_BUFFERED,FILE_WRITE_DATA)
+#define CYW_IOCTL_RADIO_REFRESH CTL_CODE(FILE_DEVICE_NETWORK,0x803,METHOD_BUFFERED,FILE_WRITE_DATA)
+#define CYW_IOCTL_RADIO_STATUS CTL_CODE(FILE_DEVICE_NETWORK,0x804,METHOD_BUFFERED,FILE_READ_DATA)
 struct _CYW_NETWORK {
     PRPI5CYW_ADAPTER Adapter;
     KSPIN_LOCK Lock;
@@ -21,7 +23,7 @@ struct _CYW_NETWORK {
     PVOID Thread;
     volatile LONG Stop, Paused;
     volatile BOOLEAN Ready, Associated, Authorized, Published;
-    BOOLEAN RxPending, Powered;
+    BOOLEAN RxPending, Powered, RadioBusy;
     ULONG Request;
     CYW_CONNECT_REQUEST Connect;
     CYW_TX_STATE Sends;
@@ -243,6 +245,22 @@ static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
 Exit: if(clm)ExFreePoolWithTag(clm,RPI5CYW_TAG);return Status;
 }
 #include "connection.h"
+#include "radio.h"
+static VOID CywRadioRequest(PRPI5CYW_ADAPTER A)
+{
+    CYW_NETWORK *N=A->Network;ULONG report[20];KIRQL irql;
+    if(!N->Associated || !N->Authorized || N->Stop || N->Paused) {
+        RtlZeroMemory(report,sizeof(report));report[0]=1;report[3]=(ULONG)STATUS_DEVICE_NOT_READY;
+    } else CywReadRadio(A,report);
+    KeAcquireSpinLock(&N->Lock,&irql);
+    if(!N->Associated || !N->Authorized || N->Stop || N->Paused) {
+        report[2]=0;report[3]=(ULONG)STATUS_DEVICE_NOT_READY;
+    }
+    report[1]=A->RadioReport[1]+1;
+    RtlCopyMemory(A->RadioReport,report,sizeof(report));N->RadioBusy=FALSE;
+    KeReleaseSpinLock(&N->Lock,irql);
+    Rpi5CywWriteDiagnostics(A,120,A->NetworkStatus);
+}
 static VOID CywWorker(PVOID Context)
 {
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
@@ -272,7 +290,8 @@ static VOID CywWorker(PVOID Context)
         KeAcquireSpinLock(&N->Lock,&irql);op=N->Request;N->Request=0;
         RtlCopyMemory(&request,&N->Connect,sizeof(request));RtlSecureZeroMemory(&N->Connect,sizeof(request));
         KeReleaseSpinLock(&N->Lock,irql);
-        if(op) {
+        if(op==3)CywRadioRequest(A);
+        else if(op) {
             CywTxFlush(A,&N->Sends,NDIS_STATUS_MEDIA_DISCONNECTED);
             Status=op==1?CywConnect(A,&request):CywCmdInt(A,3,0);
             RtlSecureZeroMemory(&request,sizeof(request));
@@ -394,7 +413,7 @@ NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER A,BOOLEAN On)
         if(N->Powered)CywFirmwareStop(A);
         N->Powered=FALSE;A->IoStopped=1;
         N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
-        KeAcquireSpinLock(&N->Lock,&irql);N->Request=0;
+        KeAcquireSpinLock(&N->Lock,&irql);N->Request=0;N->RadioBusy=FALSE;
         RtlSecureZeroMemory(&N->Connect,sizeof(N->Connect));KeReleaseSpinLock(&N->Lock,irql);
         return STATUS_SUCCESS;
     }
@@ -473,12 +492,27 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
                 out[20]=A->LastCommand;out[21]=A->LastArgument;
                 out[22]=A->LastResponse;out[23]=A->LastInterruptStatus;bytes=96;
             }
+        } else if(code==CYW_IOCTL_RADIO_STATUS && Stack->Parameters.DeviceIoControl.OutputBufferLength>=sizeof(A->RadioReport)) {
+            ULONG *out=Irp->AssociatedIrp.SystemBuffer;
+            KeAcquireSpinLockAtDpcLevel(&N->Lock);
+            RtlCopyMemory(out,A->RadioReport,sizeof(A->RadioReport));
+            if(!N->Ready || !N->Associated || !N->Authorized || N->Paused || N->Stop) {
+                out[2]=0;out[3]=(ULONG)STATUS_DEVICE_NOT_READY;
+            }
+            KeReleaseSpinLockFromDpcLevel(&N->Lock);
+            bytes=sizeof(A->RadioReport);Status=STATUS_SUCCESS;
+        } else if(code==CYW_IOCTL_RADIO_REFRESH && Stack->Parameters.DeviceIoControl.InputBufferLength==0) {
+            KeAcquireSpinLockAtDpcLevel(&N->Lock);
+            if(!N->Ready || !N->Associated || !N->Authorized || N->Paused || N->Stop)Status=STATUS_DEVICE_NOT_READY;
+            else if(N->Request || N->RadioBusy)Status=STATUS_DEVICE_BUSY;
+            else {N->RadioBusy=TRUE;N->Request=3;KeSetEvent(&N->Wake,0,FALSE);Status=STATUS_SUCCESS;}
+            KeReleaseSpinLockFromDpcLevel(&N->Lock);
         } else if((code==CYW_IOCTL_CONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==sizeof(CYW_CONNECT_REQUEST) &&
                     CywValidConnect(Irp->AssociatedIrp.SystemBuffer)) ||
                   (code==CYW_IOCTL_DISCONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==0)) {
             KeAcquireSpinLockAtDpcLevel(&N->Lock);
             if(!N->Ready)Status=STATUS_DEVICE_NOT_READY;
-            else if(N->Request)Status=STATUS_DEVICE_BUSY;
+            else if(N->Request || N->RadioBusy)Status=STATUS_DEVICE_BUSY;
             else {
                 RtlSecureZeroMemory(&N->Connect,sizeof(N->Connect));
                 if(code==CYW_IOCTL_CONNECT)RtlCopyMemory(&N->Connect,Irp->AssociatedIrp.SystemBuffer,sizeof(N->Connect));

@@ -18,6 +18,7 @@ typedef struct _CYW_NETWORK {
 #define RtlSecureZeroMemory(p,n) memset(p,0,n)
 #define TRY(x) do {Status=(x);if(!NT_SUCCESS(Status))goto Exit;}while(0)
 static unsigned Failures,Outstanding,AllocCalls,FailAlloc,Sent,Polls,Mode,Fault,RadioUp,Joined;
+static unsigned RadioCase;
 static ULONG PayloadLength,DeclaredLength,ReplyError,RequestCommand,RequestFlags,RequestCapacity;
 static ULONG ActualOffset,ActualLength,ClmValue;
 static ULONGLONG Clock;
@@ -39,7 +40,23 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG 
     RequestCommand=CywLe32(data);RequestFlags=CywLe32(data+8);RequestCapacity=CywLe32(data+4);
     CHECK(length==16+RequestCapacity);CHECK(CywLe32(data+12)==0);
     if(Fault==5)return STATUS_IO_DEVICE_ERROR;
-    if(Mode) {
+    if(Mode==2) {
+        CHECK(!(RequestFlags&2));memset(Value,0,sizeof(Value));payload=RequestCapacity;
+        if(RequestCommand==29) {
+            CywPut32(Value,RadioCase==1?6:36);CywPut32(Value+4,RadioCase==1?6:36);
+            if(RadioCase==2)CywPut32(Value+8,11);
+            if(RadioCase==3)CywPut32(Value,0);
+        } else if(RequestCommand==127) {
+            CHECK(RequestCapacity==12);CywPut32(Value,RadioCase==5?0:0xffffffc9UL);
+            if(RadioCase==4)payload=3;
+        } else if(RequestCommand==85) {
+            CHECK(RequestCapacity==4);CywPut32(Value,RadioCase==6?3:0);
+            if(RadioCase==9)error=0xffffffe9UL;
+        } else {
+            CHECK(RequestCommand==262 && strcmp((char*)data+16,"mpc")==0);
+            CywPut32(Value,RadioCase==7?2:(RadioCase==8?1:0));
+        }
+    } else if(Mode) {
         payload=0;declared=RequestCapacity;error=0;
         if(RequestCommand==261){
             CHECK(!(RequestFlags&2) && RequestCapacity==1024 && CywLe32(data+16)==1024);
@@ -89,7 +106,7 @@ static NTSTATUS CywCmdInt(PRPI5CYW_ADAPTER A,ULONG command,ULONG value)
 static void Init(PRPI5CYW_ADAPTER A,CYW_NETWORK *N)
 {
     CHECK(!Outstanding);memset(A,0,sizeof(*A));memset(N,0,sizeof(*N));A->Network=N;N->Rx=Rx;N->TxMax=1;
-    AllocCalls=FailAlloc=Sent=Polls=Mode=Fault=RadioUp=Joined=0;Clock=0;
+    AllocCalls=FailAlloc=Sent=Polls=Mode=Fault=RadioUp=Joined=RadioCase=0;Clock=0;
     PayloadLength=DeclaredLength=4;ReplyError=ClmValue=0;memset(Value,0,sizeof(Value));memset(Country,0,12);
 }
 int main(void)
