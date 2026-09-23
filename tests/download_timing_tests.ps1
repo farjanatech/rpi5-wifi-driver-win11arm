@@ -9,7 +9,7 @@ if (@($ast.EndBlock.Statements | Where-Object {
 }).Count) { throw 'Timing helper must contain function definitions only.' }
 . $path
 
-function New-DownloadTimingFixture {
+function Get-DownloadTimingFixture {
     param([string]$Phase = 'RPI5_PHASE|0.010000|0.030000|0.070000|0.080000|0.100000|0.500000',
         [string]$Outcome = 'Complete', [double]$Total = 0.5, [int]$ExitCode = 0,
         [bool]$TimedOut = $false)
@@ -43,7 +43,7 @@ function Assert-DownloadTimingUnknown {
     }
 }
 
-$good = New-DownloadTimingFixture
+$good = Get-DownloadTimingFixture
 $good.Result | Add-Member -NotePropertyMembers @{RequestStart100ns=[uint64]100000;
     RequestEnd100ns=[uint64]5100000; ClockKind='QueryInterruptTime100nsSinceBoot'}
 Add-CheckedDownloadTiming $good
@@ -71,32 +71,32 @@ foreach ($phase in @(
     'RPI5_PHASE|0.01|0.03|0.07|0.08|0.1',
     'RPI5_PHASE|0.01|0.03|0.07|0.08|0.1|0.5|extra',
     ('RPI5_PHASE|' + ('9' * 400) + '|0.03|0.07|0.08|0.1|0.5'))) {
-    $bad = New-DownloadTimingFixture -Phase $phase
+    $bad = Get-DownloadTimingFixture -Phase $phase
     Assert-DownloadTimingUnknown $bad 'Malformed'
     if ((@($bad.Sample.PSObject.Properties.Name) -join '|') -cne $columns) { throw 'CSV columns changed on invalid data.' }
 }
 foreach ($phase in @('RPI5_PHASE|0.04|0.03|0.07|0.08|0.1|0.5',
     'RPI5_PHASE|0.01|0.03|0.07|0.08|0.6|0.5')) {
-    Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Phase $phase) 'NonMonotonic'
+    Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Phase $phase) 'NonMonotonic'
 }
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Phase '') 'Missing'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Phase ($good.Result.Output + "`n" + $good.Result.Output)) 'Duplicate'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Phase ($good.Result.Output + "`nRPI5_PHASE")) 'Duplicate'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Total 0.6) 'TotalMismatch'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Total 0 -Phase 'RPI5_PHASE|0|0|0|0|0|0') 'TotalMismatch'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Outcome 'TransportFailed' -ExitCode 28 -TimedOut $true) 'IncompleteRequest'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Outcome 'InvalidResponse') 'IncompleteRequest'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Outcome 'ServerRejected' -ExitCode 22) 'IncompleteRequest'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Outcome 'Complete' -ExitCode 1) 'IncompleteRequest'
-Assert-DownloadTimingUnknown (New-DownloadTimingFixture -Outcome 'Complete' -TimedOut $true) 'IncompleteRequest'
-$missing = New-DownloadTimingFixture
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Phase '') 'Missing'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Phase ($good.Result.Output + "`n" + $good.Result.Output)) 'Duplicate'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Phase ($good.Result.Output + "`nRPI5_PHASE")) 'Duplicate'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Total 0.6) 'TotalMismatch'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Total 0 -Phase 'RPI5_PHASE|0|0|0|0|0|0') 'TotalMismatch'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Outcome 'TransportFailed' -ExitCode 28 -TimedOut $true) 'IncompleteRequest'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Outcome 'InvalidResponse') 'IncompleteRequest'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Outcome 'ServerRejected' -ExitCode 22) 'IncompleteRequest'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Outcome 'Complete' -ExitCode 1) 'IncompleteRequest'
+Assert-DownloadTimingUnknown (Get-DownloadTimingFixture -Outcome 'Complete' -TimedOut $true) 'IncompleteRequest'
+$missing = Get-DownloadTimingFixture
 $missing.Result.PSObject.Properties.Remove('Output')
 Assert-DownloadTimingUnknown $missing 'Missing'
 
 $oldCulture = [Threading.Thread]::CurrentThread.CurrentCulture
 try {
     [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::GetCultureInfo('fr-FR')
-    $localized = New-DownloadTimingFixture
+    $localized = Get-DownloadTimingFixture
     Add-CheckedDownloadTiming $localized
     if ($localized.Sample.TimingStatus -ne 'Valid' -or $localized.Sample.DnsSeconds -ne 0.01) {
         throw 'Invariant decimal parser used the operating-system locale.'
@@ -108,15 +108,15 @@ try {
         throw 'Active non-English locale changed CSV timing interpretation.'
     }
 } finally { [Threading.Thread]::CurrentThread.CurrentCulture = $oldCulture }
-$zero = New-DownloadTimingFixture -Phase 'RPI5_PHASE|0|0|0|0|0.5|0.5'
+$zero = Get-DownloadTimingFixture -Phase 'RPI5_PHASE|0|0|0|0|0.5|0.5'
 Add-CheckedDownloadTiming $zero
 if ($zero.Sample.TimingStatus -ne 'Valid' -or $zero.Sample.DnsSeconds -ne 0 -or
     $zero.Sample.BodySeconds -ne 0 -or $zero.Sample.FirstByteWaitSeconds -ne 0.5) { throw 'Valid equal/rounded-zero phases rejected.' }
-$tolerance = New-DownloadTimingFixture -Total 0.500001
+$tolerance = Get-DownloadTimingFixture -Total 0.500001
 Add-CheckedDownloadTiming $tolerance
 if ($tolerance.Sample.TimingStatus -ne 'Valid') { throw 'Six-decimal tolerance rejected.' }
 
-$noClock = New-DownloadTimingFixture
+$noClock = Get-DownloadTimingFixture
 $noClock.Result | Add-Member -NotePropertyMembers @{RequestStart100ns=$null;
     RequestEnd100ns=$null; ClockKind='QueryInterruptTime100nsSinceBoot'}
 Add-CheckedDownloadTiming $noClock
@@ -132,7 +132,7 @@ foreach ($clock in @(
     @{RequestStart100ns=-1; RequestEnd100ns=11; ClockKind='QueryInterruptTime100nsSinceBoot'},
     @{RequestStart100ns=1.5; RequestEnd100ns=11; ClockKind='QueryInterruptTime100nsSinceBoot'},
     @{RequestStart100ns='18446744073709551616'; RequestEnd100ns=11; ClockKind='QueryInterruptTime100nsSinceBoot'})) {
-    $badClock = New-DownloadTimingFixture
+    $badClock = Get-DownloadTimingFixture
     $badClock.Result | Add-Member -NotePropertyMembers $clock
     Add-CheckedDownloadTiming $badClock
     if ($badClock.Sample.ClockStatus -ne 'Invalid' -or $badClock.Sample.TimingStatus -ne 'Valid' -or
@@ -140,9 +140,9 @@ foreach ($clock in @(
         $null -ne $badClock.Sample.RequestEnd100ns) { throw 'Invalid clock contaminated timing or invented alignment.' }
 }
 
-$slow = New-DownloadTimingFixture -Total 1 -Phase 'RPI5_PHASE|0.01|0.03|0.07|0.08|0.1|1'
+$slow = Get-DownloadTimingFixture -Total 1 -Phase 'RPI5_PHASE|0.01|0.03|0.07|0.08|0.1|1'
 Add-CheckedDownloadTiming $slow
-$failed = New-DownloadTimingFixture -Outcome 'TransportFailed' -ExitCode 28 -TimedOut $true -Total 15
+$failed = Get-DownloadTimingFixture -Outcome 'TransportFailed' -ExitCode 28 -TimedOut $true -Total 15
 Add-CheckedDownloadTiming $failed
 $summary = Get-Rpi5DownloadTimingSummary -Samples @($good.Sample, $slow.Sample, $failed.Sample, $missing.Sample)
 if ($summary.AttemptCount -ne 4 -or $summary.CompleteRequestCount -ne 3 -or
@@ -180,7 +180,7 @@ foreach ($name in $expected.Keys) {
         throw "CSV string round-trip changed phase sum: $name"
     }
 }
-$tiny = New-DownloadTimingFixture -Phase 'RPI5_PHASE|0.000001|0.000002|0.000003|0.000004|0.000005|0.500000'
+$tiny = Get-DownloadTimingFixture -Phase 'RPI5_PHASE|0.000001|0.000002|0.000003|0.000004|0.000005|0.500000'
 Add-CheckedDownloadTiming $tiny
 $tinyRows = @($tiny.Sample | ConvertTo-Csv -NoTypeInformation | ConvertFrom-Csv)
 $tinySummary = Get-Rpi5DownloadTimingSummary -Samples $tinyRows

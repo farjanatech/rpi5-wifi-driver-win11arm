@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $clockPath=Join-Path (Split-Path -Parent $PSScriptRoot) 'utility\RPi5-WiFi-MeasurementClock.ps1'
 
-function New-MeasurementClockFixture {
+function Get-MeasurementClockFixture {
     # Each fixture has isolated script-scope state. Native compilation is
     # forbidden here, including at import; the real API is an explicit CI test.
     return New-Module -ArgumentList $clockPath -ScriptBlock {
@@ -13,6 +13,10 @@ function New-MeasurementClockFixture {
         $script:ReaderCalls=0
         $script:ReadValues=@()
         function Add-Type {
+            [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets','',Justification='This isolated clock fixture must prevent native compilation and API loading.')]
+            [CmdletBinding()]
+            param([string]$TypeDefinition)
+            $null=$TypeDefinition
             $script:NativeAttempts++
             throw 'Native API must not be used by a mocked fixture.'
         }
@@ -32,7 +36,7 @@ function New-MeasurementClockFixture {
     }
 }
 
-$fixture=New-MeasurementClockFixture
+$fixture=Get-MeasurementClockFixture
 & $fixture {
     if($script:NativeAttempts -ne 0 -or $script:ReaderCalls -ne 0) { throw 'Import queried a native clock.' }
     if($null -ne (Get-Rpi5MeasurementTimestamp)) { throw 'Uninitialized clock is not unknown.' }
@@ -45,7 +49,7 @@ $fixture=New-MeasurementClockFixture
     }
 }
 
-$fixture=New-MeasurementClockFixture
+$fixture=Get-MeasurementClockFixture
 & $fixture {
     Initialize-TestClock @([uint64]9007199254740993,[uint64]9007199254740994,[uint64][int64]::MaxValue)
     if((Get-Rpi5MeasurementTimestamp) -ne [int64]9007199254740994) { throw 'Counter lost integer precision.' }
@@ -54,7 +58,7 @@ $fixture=New-MeasurementClockFixture
 
 foreach($bad in @($null,[int64]-1,[uint64]::MaxValue,[double]100.5,[decimal]100,'100',
                   $true,[pscustomobject]@{Value=100},[Exception]::new('Mock read failure'))) {
-    $fixture=New-MeasurementClockFixture
+    $fixture=Get-MeasurementClockFixture
     & $fixture {
         param($BadValue)
         Initialize-TestClock @([uint64]100,$BadValue,[uint64]200)
@@ -65,7 +69,7 @@ foreach($bad in @($null,[int64]-1,[uint64]::MaxValue,[double]100.5,[decimal]100,
     } $bad
 }
 
-$fixture=New-MeasurementClockFixture
+$fixture=Get-MeasurementClockFixture
 & $fixture {
     Initialize-TestClock @([uint64]100,[uint64]99,[uint64]101)
     if($null -ne (Get-Rpi5MeasurementTimestamp)) { throw 'Backward/wrapped clock was accepted.' }
@@ -73,20 +77,20 @@ $fixture=New-MeasurementClockFixture
     if($null -ne (Get-Rpi5MeasurementTimestamp) -or $script:ReaderCalls -ne 2) { throw 'Backward failure was not latched.' }
 }
 
-$fixture=New-MeasurementClockFixture
+$fixture=Get-MeasurementClockFixture
 & $fixture {
     # Multiple pipeline objects must not masquerade as one native reading.
     Initialize-Rpi5MeasurementClock -ReadClock { [uint64]100; [uint64]101 }
     if($null -ne (Get-Rpi5MeasurementTimestamp)) { throw 'Multiple reader outputs were accepted.' }
 }
 
-$fixture=New-MeasurementClockFixture
+$fixture=Get-MeasurementClockFixture
 & $fixture {
     Initialize-TestClock @($null,[uint64]100)
     if($null -ne (Get-Rpi5MeasurementTimestamp) -or $script:ReaderCalls -ne 1) { throw 'Failed initial probe was not latched.' }
 }
 
-$fixture=New-MeasurementClockFixture
+$fixture=Get-MeasurementClockFixture
 & $fixture {
     # Force a failed initial read even if a caller already loaded the type.
     Initialize-Rpi5MeasurementClock -ReadClock { $script:ReaderCalls++; throw 'Mock initial read failed.' }
@@ -99,7 +103,7 @@ $fixture=New-MeasurementClockFixture
 # Also exercise a failed Add-Type when no real type exists yet. Do not invoke
 # the real API implicitly when this test is rerun in an initialized process.
 if(-not ('Rpi5WifiMeasurementClockNativeV1' -as [type])) {
-    $fixture=New-MeasurementClockFixture
+    $fixture=Get-MeasurementClockFixture
     & $fixture {
         Initialize-Rpi5MeasurementClock
         Initialize-Rpi5MeasurementClock
@@ -109,7 +113,7 @@ if(-not ('Rpi5WifiMeasurementClockNativeV1' -as [type])) {
     }
 }
 
-$fixture=New-MeasurementClockFixture
+$fixture=Get-MeasurementClockFixture
 & $fixture {
     param($Path)
     Initialize-TestClock @([uint64]100,[uint64]110)

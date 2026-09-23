@@ -7,7 +7,7 @@ function Get-Rpi5DownloadOptionalProperty {
     return $null
 }
 
-function ConvertTo-Rpi5DownloadSeconds {
+function ConvertTo-Rpi5DownloadDuration {
     param($Value, [switch]$AllowExponent)
     if ($null -eq $Value) { return $null }
     # Curl emits an invariant decimal, never a localized comma or NaN/Infinity.
@@ -84,7 +84,7 @@ function Add-Rpi5DownloadTimingToSample {
         $fields.TimingStatus = 'Malformed'
         if ($parts.Count -eq 6) {
             foreach ($part in $parts) {
-                $value = ConvertTo-Rpi5DownloadSeconds $part
+                $value = ConvertTo-Rpi5DownloadDuration $part
                 if ($null -eq $value) { break }
                 $values.Add($value)
             }
@@ -94,7 +94,7 @@ function Add-Rpi5DownloadTimingToSample {
             for ($i = 1; $i -lt 6; $i++) {
                 if ($values[$i] -lt $values[$i - 1]) { $ordered = $false; break }
             }
-            $total = ConvertTo-Rpi5DownloadSeconds (Get-Rpi5DownloadOptionalProperty $Sample 'TransferSeconds') -AllowExponent
+            $total = ConvertTo-Rpi5DownloadDuration (Get-Rpi5DownloadOptionalProperty $Sample 'TransferSeconds') -AllowExponent
             if (-not $ordered) {
                 $fields.TimingStatus = 'NonMonotonic'
             } elseif ((Get-Rpi5DownloadOptionalProperty $Sample 'Outcome') -cne 'Complete' -or
@@ -138,7 +138,7 @@ function Get-Rpi5DownloadTimingSummary {
     $total = 0.0
     foreach ($sample in $Samples) {
         if ((Get-Rpi5DownloadOptionalProperty $sample 'Outcome') -ceq 'Complete') { $complete++ }
-        $duration = ConvertTo-Rpi5DownloadSeconds (Get-Rpi5DownloadOptionalProperty $sample 'TransferSeconds') -AllowExponent
+        $duration = ConvertTo-Rpi5DownloadDuration (Get-Rpi5DownloadOptionalProperty $sample 'TransferSeconds') -AllowExponent
         $isSlow = $null -ne $duration -and $duration -gt $SlowThresholdSeconds
         if ($isSlow) { $slow++ }
         if ((Get-Rpi5DownloadOptionalProperty $sample 'ClockStatus') -ceq 'Valid') { $clockValid++ }
@@ -150,13 +150,13 @@ function Get-Rpi5DownloadTimingSummary {
         $row = [ordered]@{}
         $rowTotal = $null
         if ($status -ceq 'Valid') {
-            $rowTotal = ConvertTo-Rpi5DownloadSeconds (Get-Rpi5DownloadOptionalProperty $sample 'CumulativeTotalSeconds') -AllowExponent
+            $rowTotal = ConvertTo-Rpi5DownloadDuration (Get-Rpi5DownloadOptionalProperty $sample 'CumulativeTotalSeconds') -AllowExponent
             $rowValid = (Get-Rpi5DownloadOptionalProperty $sample 'Outcome') -ceq 'Complete' -and
                 $null -ne $duration -and $duration -gt 0 -and $null -ne $rowTotal -and
                 [math]::Abs($duration - $rowTotal) -le 0.000002
             $rowSum = 0.0
             foreach ($name in @($sums.Keys)) {
-                $row[$name] = ConvertTo-Rpi5DownloadSeconds (Get-Rpi5DownloadOptionalProperty $sample $name) -AllowExponent
+                $row[$name] = ConvertTo-Rpi5DownloadDuration (Get-Rpi5DownloadOptionalProperty $sample $name) -AllowExponent
                 if ($null -eq $row[$name]) { $rowValid = $false } else { $rowSum += $row[$name] }
             }
             if ($null -eq $rowTotal -or [math]::Abs($rowSum - $rowTotal) -gt 0.000002) { $rowValid = $false }
