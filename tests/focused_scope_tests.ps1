@@ -90,7 +90,7 @@ function ConvertFrom-ScanControlIntegration {
 function ConvertFrom-StartupBusIntegration {
     param([string]$Text)
     $text=$Text.Replace("`r`n","`n")
-    foreach($line in @('#include "startup_bus.h"','    ULONGLONG startupBegin;',
+    foreach($line in @('#include "startup_bus.h"','    ULONG64 startupBegin;',
         '    startupBegin=KeQueryInterruptTime();','    TRY(CywPrepareFirmwareBus(A));',
         '    A->FirmwareStartupElapsedMs=(ULONG)((KeQueryInterruptTime()-startupBegin)/10000ULL);',
         '    TRY(CywFinishFirmwareBus(A));')) {

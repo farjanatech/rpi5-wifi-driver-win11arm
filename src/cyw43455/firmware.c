@@ -213,7 +213,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     PUCHAR fw=NULL,raw=NULL,nv=NULL;
     ULONG fwSize=0,fwPadded,rawSize=0,cap,bank,v,i,token,address,off,n;
     BOOLEAN busRetried=FALSE;
-    ULONGLONG startupBegin;
+    ULONG64 startupBegin;
     UCHAR b[4],check[512],byte;
     size_t nvSize=0;
     NTSTATUS Status=STATUS_DEVICE_CONFIGURATION_ERROR;
