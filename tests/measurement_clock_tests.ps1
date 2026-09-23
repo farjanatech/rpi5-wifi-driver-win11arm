@@ -145,15 +145,38 @@ if($NativeSmoke) {
         $output=@(Initialize-Rpi5MeasurementClock)
         $first=Get-Rpi5MeasurementTimestamp
         $second=Get-Rpi5MeasurementTimestamp
+        # Also call the compiled real API directly: a valid fake/module reader
+        # cannot make smoke pass, and a binding failure retains its own cause.
+        $nativeType='Rpi5WifiMeasurementClockNativeV1' -as [type]
+        $direct=$null; $directStatus='NativeTypeMissing'
+        if($null -ne $nativeType) {
+            try {
+                $direct=[Rpi5WifiMeasurementClockNativeV1]::Read()
+                $directStatus='ReadSucceeded'
+            } catch { $directStatus=$_.Exception.ToString() }
+        }
         if($output.Count -ne 0 -or $first -isnot [int64] -or $second -isnot [int64] -or
-           $first -lt 0 -or $second -lt $first) {
+           $first -lt 0 -or $second -lt $first -or $direct -isnot [uint64] -or $direct -lt $second) {
             $firstType=if($null -eq $first){'<null>'}else{$first.GetType().FullName}
             $secondType=if($null -eq $second){'<null>'}else{$second.GetType().FullName}
+            $initializer=Get-Command -Name Initialize-Rpi5MeasurementClock -ErrorAction Stop
+            $reader=Get-Command -Name Get-Rpi5MeasurementTimestamp -ErrorAction Stop
+            $stateVariable=Get-Variable -Name Rpi5MeasurementClockState -Scope Script -ErrorAction SilentlyContinue
+            $stateSummary=[ordered]@{Present=($null -ne $stateVariable)}
+            if($null -ne $stateVariable) {
+                foreach($name in @('Available','Last','FailureStage','FailureDetails','Reader')) {
+                    $property=$stateVariable.Value.PSObject.Properties[$name]
+                    $stateSummary[$name]=if($null -eq $property -or $null -eq $property.Value){'<null>'}else{[string]$property.Value}
+                }
+            }
+            $stateJson=[pscustomobject]$stateSummary | ConvertTo-Json -Compress
             # Initialization intentionally returns unknown to production callers
             # on failure. CI must fail loudly and retain the exception chain.
             $failure=if($Error.Count -gt 0){$Error[0].Exception.ToString()}else{'No error record.'}
-            throw ('Native boot interrupt-time smoke failed: output={0}, first={1} ({2}), second={3} ({4}); Add-Type={5}/{6}; latest exception: {7}' -f
-                $output.Count,$first,$firstType,$second,$secondType,$binding.CommandType,$binding.ModuleName,$failure)
+            throw ('Native boot interrupt-time smoke failed: output={0}, first={1} ({2}), second={3} ({4}); Add-Type={5}/{6}; type={7}; direct={8}, direct status={9}; initializer={10}/{11}, reader={12}/{13}; state={14}; latest exception: {15}' -f
+                $output.Count,$first,$firstType,$second,$secondType,$binding.CommandType,$binding.ModuleName,
+                ($null -ne $nativeType),$direct,$directStatus,$initializer.CommandType,$initializer.ModuleName,
+                $reader.CommandType,$reader.ModuleName,$stateJson,$failure)
         }
         # Adjacent calls can share the same clock tick. No sleep or resolution
         # change is needed, and strict increase would be an invalid requirement.

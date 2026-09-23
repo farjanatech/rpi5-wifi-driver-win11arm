@@ -9,6 +9,9 @@
 # Microsoft references:
 # https://learn.microsoft.com/en-us/windows/win32/api/realtimeapiset/nf-realtimeapiset-queryinterrupttime
 # https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kequeryinterrupttime
+# Bind the documented Windows 10+ API-set contract, not an assumed Kernel32
+# export: https://learn.microsoft.com/en-us/uwp/win32-and-com/win32-apis
+# lists QueryInterruptTime in api-ms-win-core-realtime-l1-1-1.dll.
 
 function Initialize-Rpi5MeasurementClock {
     # ReadClock is dependency injection for tests; production callers omit it.
@@ -19,7 +22,7 @@ function Initialize-Rpi5MeasurementClock {
         return
     }
     $script:Rpi5MeasurementClockState=[pscustomobject]@{
-        Available=$false; Reader=$null; Last=$null
+        Available=$false; Reader=$null; Last=$null; FailureStage=$null; FailureDetails=$null
     }
     try {
         if($null -eq $ReadClock) {
@@ -28,7 +31,7 @@ function Initialize-Rpi5MeasurementClock {
 using System.Runtime.InteropServices;
 public static class Rpi5WifiMeasurementClockNativeV1
 {
-    [DllImport("kernel32.dll", ExactSpelling = true)]
+    [DllImport("api-ms-win-core-realtime-l1-1-1.dll", ExactSpelling = true)]
     private static extern void QueryInterruptTime(out ulong interruptTime);
     public static ulong Read()
     {
@@ -48,6 +51,8 @@ public static class Rpi5WifiMeasurementClockNativeV1
         $null=Get-Rpi5MeasurementTimestamp
     } catch {
         $script:Rpi5MeasurementClockState.Available=$false
+        $script:Rpi5MeasurementClockState.FailureStage='Initialize'
+        $script:Rpi5MeasurementClockState.FailureDetails=$_.Exception.ToString()
     }
 }
 
@@ -78,6 +83,10 @@ function Get-Rpi5MeasurementTimestamp {
         return $stamp
     } catch {
         $state.Available=$false
+        # Private diagnostic state only, not timestamp/pipeline output. Retain
+        # the exception chain so CI can distinguish API binding from bad data.
+        $state.FailureStage='ReadOrValidate'
+        $state.FailureDetails=$_.Exception.ToString()
         return $null
     }
 }
