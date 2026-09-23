@@ -99,7 +99,8 @@ internal static class UiTests
         Check(driver.Connects == 1 && password.Text == "", "connect did not clear password or submitted duplicate join");
         Check(!Button("scan").Enabled && Find<Label>("status").Text.Contains("Disconnect first"), "connected scanning restriction unclear");
         Button("save").PerformClick(); Application.DoEvents();
-        Check(settings.Saves == 1 && settings.Active && settings.Profile?.Ssid == ssid.Text && settings.Key?.Length == 32, "save handler failed to reuse authenticated session key");
+        Check(settings.Saves == 1 && settings.Active && settings.Profile?.Ssid == ssid.Text && settings.Key?.Length == 32,
+            "save handler failed to reuse authenticated session key; saves=" + settings.Saves + "; UI=" + Find<Label>("status").Text);
         Check(Button("disable").Enabled && Button("forget").Enabled, "saved actions not enabled");
         Button("disable").PerformClick(); Application.DoEvents();
         Check(!settings.Active && settings.Profile != null && !Button("disable").Enabled && Button("forget").Enabled && driver.Auth, "disable should retain profile and current link");

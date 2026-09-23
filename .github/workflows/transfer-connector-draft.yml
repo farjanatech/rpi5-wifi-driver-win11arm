@@ -1,0 +1,63 @@
+name: Transfer verified connector to an existing draft
+on:
+  push:
+    branches: [bringup/cyw43455-sdio-arm64]
+    paths: ['.github/workflows/transfer-connector-draft.yml']
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Successful connector build run ID
+        required: true
+      commit:
+        description: Exact tested 40-character source commit
+        required: true
+      release_id:
+        description: Existing empty draft release ID
+        required: true
+permissions:
+  actions: read
+  contents: write
+jobs:
+  transfer:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: farjanatech/rpi5-wifi-driver-win11arm
+      BUILD_RUN: ${{ inputs.build_run }}
+      EXPECTED_COMMIT: ${{ inputs.commit }}
+      RELEASE_ID: ${{ inputs.release_id }}
+    steps:
+      - name: Verify successful trusted build and unpublished empty target
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN" =~ ^[0-9]+$ && "$RELEASE_ID" =~ ^[0-9]+$ && "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" | jq -e --arg commit "$EXPECTED_COMMIT" --arg repo "$GH_REPO" '.conclusion == "success" and .head_sha == $commit and .head_repository.full_name == $repo and .path == ".github/workflows/connector.yml"' >/dev/null
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" > draft.json
+          jq -e --arg commit "$EXPECTED_COMMIT" '.draft == true and .prerelease == true and .target_commitish == $commit and (.assets | length) == 0 and (.tag_name | test("^connector-exp[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"))' draft.json >/dev/null
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit }}
+          path: source
+      - name: Download and independently verify the actual ARM64 asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$BUILD_RUN" --name rpi5-wifi-connector-arm64 --dir release
+          grep -Fx "commit=$EXPECTED_COMMIT" <(tr -d '\r' < release/BUILD.txt)
+          grep -Fx 'self_contained=true' <(tr -d '\r' < release/BUILD.txt)
+          grep -Fx 'compressed=true' <(tr -d '\r' < release/BUILD.txt)
+          version=$(sed -n 's/^version=//p' release/BUILD.txt | tr -d '\r')
+          jq -e --arg tag "connector-exp$version" '.tag_name == $tag' draft.json >/dev/null
+          (cd release && sha256sum --check SHA256SUMS.txt)
+          python source/connector/test_icon_resources.py source/connector/Assets/RPi5-WiFi-Connector.ico release/RPi5-WiFi-Connector.exe
+          cat release/BUILD.txt release/SHA256SUMS.txt
+      - name: Upload without publishing or overwriting an existing asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(jq -r '.tag_name' draft.json)
+          gh release upload "$tag" release/RPi5-WiFi-Connector.exe release/SHA256SUMS.txt release/BUILD.txt
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" --jq '{id, draft, tag_name, target_commitish, assets: [.assets[] | {name, size, digest}]}'

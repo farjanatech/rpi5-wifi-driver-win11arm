@@ -123,8 +123,12 @@ internal sealed class MainForm : Form
                         if (closing.Token.WaitHandle.WaitOne(250)) closing.Token.ThrowIfCancellationRequested();
                     }
                     throw new TimeoutException("Driver startup observation timed out. Run diagnostics before rebooting.");
+                }, () =>
+                {
+                    // Retain the key before Work releases the buttons. A fast
+                    // Save click must not race the async connect continuation.
+                    if (joined && !IsDisposed && !closePending) { ClearKey(); sessionKey = pendingKey.ToArray(); keySsid = chosenSsid; keyCountry = chosenCountry; }
                 });
-                if (joined && !IsDisposed && !closePending && state?.Authenticated == true) { ClearKey(); sessionKey = pendingKey.ToArray(); keySsid = chosenSsid; keyCountry = chosenCountry; }
             }
             finally { CryptographicOperations.ZeroMemory(pendingKey); if (!IsDisposed) Buttons(); }
         };
@@ -239,10 +243,10 @@ internal sealed class MainForm : Form
         }
         finally { synchronizingSelection = false; }
     }
-    private async Task Work(Action action)
+    private async Task Work(Action action, Action? completed = null)
     {
         if (busy) return; busy = true; message = ""; Buttons();
-        try { await Task.Run(action); }
+        try { await Task.Run(action); completed?.Invoke(); }
         catch (OperationCanceledException) { message = "App operation cancelled. An established connection is not disconnected."; }
         catch (Exception ex) { message = ex.Message; }
         finally { busy = false; Poll(); if (closePending) Close(); }
