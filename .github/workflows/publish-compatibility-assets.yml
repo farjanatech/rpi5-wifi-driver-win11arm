@@ -1,0 +1,48 @@
+name: Transfer verified 0.6.29.1 assets to draft release
+on:
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: farjanatech/rpi5-wifi-driver-win11arm
+      RELEASE_ID: '394843355'
+      EXPECTED_COMMIT: f4dc733fff854a740e03a1b8482791c9d95aea09
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: f4dc733fff854a740e03a1b8482791c9d95aea09
+      - name: Require successful source-matched builds and original draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run in 35887255846 35887256231 35887255850; do
+            gh api "repos/$GH_REPO/actions/runs/$run" | jq -e --arg commit "$EXPECTED_COMMIT" '.conclusion == "success" and .head_sha == $commit' >/dev/null
+          done
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" | jq -e --arg commit "$EXPECTED_COMMIT" '.draft == true and .tag_name == "driver-exp0.6.29.1" and .target_commitish == $commit and (.assets | length) == 1 and .assets[0].name == "RPi5-WiFi-Windows11-ARM64-exp0.6.29.1.zip" and .assets[0].digest == "sha256:59aa993044b8ff466c8e892881610630ea27cf9fb93ad10ebbd25a9139ec2a8f"' >/dev/null
+      - name: Download verified connector directly on GitHub
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download 35887256231 --name rpi5-wifi-connector-arm64 --dir release
+          grep -Fx "commit=$EXPECTED_COMMIT" <(tr -d '\r' < release/BUILD.txt)
+          cd release
+          sha256sum --check SHA256SUMS.txt
+      - name: Recheck actual native icon and generate combined checksum file
+        shell: bash
+        run: |
+          set -euo pipefail
+          python connector/test_icon_resources.py connector/Assets/RPi5-WiFi-Connector.ico release/RPi5-WiFi-Connector.exe
+          printf '59AA993044B8FF466C8E892881610630EA27CF9FB93AD10EBBD25A9139EC2A8F  RPi5-WiFi-Windows11-ARM64-exp0.6.29.1.zip\n' >> release/SHA256SUMS.txt
+          cat release/SHA256SUMS.txt
+      - name: Add EXE and checksums without publishing or replacing existing assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload driver-exp0.6.29.1 release/RPi5-WiFi-Connector.exe release/SHA256SUMS.txt
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" --jq '{id, draft, tag_name, target_commitish, assets: [.assets[] | {name, size, digest}]}'
