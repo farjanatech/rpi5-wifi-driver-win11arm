@@ -8,7 +8,10 @@ on:
       - 'tests/radio_utility_tests.ps1'
       - 'tests/timing_utility_tests.ps1'
       - 'scripts/package-performance.ps1'
-      - 'docs/PERFORMANCE-0.6.27.md'
+      - 'docs/PERFORMANCE-0.6.27.1.md'
+      - 'tests/download_timing_tests.ps1'
+      - 'tests/measurement_clock_tests.ps1'
+      - 'tests/focused_scope_tests.ps1'
       - 'tests/readiness_utility_tests.ps1'
       - 'tests/transport_utility_tests.ps1'
       - '.github/workflows/performance-utility.yml'
@@ -21,6 +24,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve driver and comparative workload scope
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/focused_scope_tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Analyze scripts
         shell: pwsh
         run: |
@@ -31,11 +41,18 @@ jobs:
           $issues += @('utility/RPi5-WiFi-Operations.ps1','utility/Check-RPi5-WiFi-Readiness.ps1','utility/Connect-RPi5-WiFi.ps1','tests/readiness_utility_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
           }
+          $issues += @('utility/RPi5-WiFi-DownloadTiming.ps1','utility/RPi5-WiFi-MeasurementClock.ps1','tests/download_timing_tests.ps1','tests/measurement_clock_tests.ps1','tests/focused_scope_tests.ps1') | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
+          }
           $issues | Format-Table -AutoSize
           if ($issues) { throw 'Script analysis failed.' }
       - name: Windows PowerShell 5.1 tests (mocked requests, no hardware)
         shell: pwsh
         run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/download_timing_tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/measurement_clock_tests.ps1 -NativeSmoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_utility_tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/radio_utility_tests.ps1
@@ -51,8 +68,8 @@ jobs:
         run: ./scripts/package-performance.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-performance-0.6.27
+          name: rpi5-wifi-performance-0.6.27.1
           path: |
-            artifacts/RPi5-WiFi-Performance-0.6.27.zip
+            artifacts/RPi5-WiFi-Performance-0.6.27.1.zip
             artifacts/PERFORMANCE-SHA256SUMS.txt
           if-no-files-found: error

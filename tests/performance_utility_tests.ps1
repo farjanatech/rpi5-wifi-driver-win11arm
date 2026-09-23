@@ -81,3 +81,37 @@ $samplerSource=Get-Content -LiteralPath $samplerPath -Raw
 if ($samplerSource -match '(?i)Start-Transcript|Set-DnsClient|Disable-NetAdapter|bcdedit|Set-ItemProperty') { throw 'Sampler contains unexpected mutation.' }
 if ($samplerSource -notmatch 'OwnerStartTicks' -or $samplerSource -notmatch 'TotalSeconds -lt 110' -or $samplerSource -notmatch 'sampling.stop') { throw 'Sampler lifetime guards missing.' }
 Write-Output 'PASS: repeated workload byte/time bounds, server-denial stop, partial failures, effective rate and sampler counter reset.'
+
+# Exercise the real wrapper and loop with mocked process/clock calls. No network,
+# registry, driver or native clock is touched by this integration fixture.
+& {
+    $fixture=@{ClockCalls=0;ProcessCalls=0;Time=0.0;Rows=[Collections.Generic.List[object]]::new()}
+    function Get-Rpi5MeasurementTimestamp {
+        $fixture.ClockCalls++
+        return [long](10000000+$fixture.ClockCalls*10000000)
+    }
+    function Invoke-Rpi5BoundedProcess {
+        param([string]$File,[string[]]$Arguments,[int]$Seconds)
+        $fixture.ProcessCalls++
+        if($File -ne 'mock-curl' -or $Arguments.Count -ne 2 -or $Arguments[1] -ne 'unchanged' -or $Seconds -ne 16) {
+            throw 'Timed wrapper changed process arguments or deadline.'
+        }
+        $fixture.Time+=0.5
+        return (Get-DownloadFixture "RPI5_METRIC|200|1048576|0.500000`nRPI5_PHASE|0.010000|0.030000|0.050000|0.060000|0.100000|0.500000`n")
+    }
+    $request={param($seconds) Invoke-Rpi5TimedDownload 'mock-curl' @('--test','unchanged') ($seconds+1)}
+    $observe={param($sample) $fixture.Rows.Add($sample)}
+    $result=@(Invoke-Rpi5RepeatedDownload -Request $request -OnSample $observe -Now {$fixture.Time} -MaxRequests 3)
+    if($result.Count -ne 1 -or $result[0].Completed -ne 3 -or $result[0].ElapsedSeconds -ne 1.5 -or
+        $result[0].VerifiedBytes -ne 3145728 -or $fixture.ClockCalls -ne 6 -or $fixture.ProcessCalls -ne 3) {
+        throw 'Timing decoration changed loop output, byte/time bounds or request count.'
+    }
+    foreach($sample in $fixture.Rows) {
+        if($sample.Outcome -ne 'Complete' -or $sample.TimingStatus -ne 'Valid' -or
+            [math]::Abs($sample.BodySeconds-0.4) -gt 0.000001 -or
+            $sample.RequestEnd100ns-$sample.RequestStart100ns -ne 10000000) {
+            throw 'Timing metadata did not survive the actual request/loop integration.'
+        }
+    }
+}
+Write-Output 'PASS: phase decoration and clock wrapper preserve actual workload return, requests, bytes, deadlines and outcomes.'

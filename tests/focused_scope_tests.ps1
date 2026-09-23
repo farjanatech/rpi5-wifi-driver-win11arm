@@ -4,6 +4,7 @@ $baseline='a5b3748d6dd64b6f5bb1de31cad82a667dd4afeb'
 $proven='c0a22eb8a572ae6ee678fa6835e98c37ba750917'
 $fastest='e342399205e59513dc46b98b7bfd973e506c9bd9'
 $immediate='e81e8193f6c5f9e763e385cbee6911cf107cac7f'
+$utilityAnchor='d0f721e8e90c23dda04c51146c24c27e298ec188'
 $root=Split-Path -Parent $PSScriptRoot
 function Get-ScopeSource {
     param([string]$Path,[string]$Revision)
@@ -48,6 +49,21 @@ foreach($directory in @('src/cyw43455','src/sdio')) {
         if($relative -notin $protectedFiles){throw "Unexpected packet-path source: $relative"}
     }
 }
+# This is a utility-only update, not a new kernel-driver release. Retain the
+# existing .25 packet-path anchors above and also freeze all remaining driver
+# source, driver packaging metadata, build settings and connection behavior.
+$driverFiles=@(& git -C $root ls-tree -r --name-only $utilityAnchor -- src/driver)
+if($LASTEXITCODE -ne 0 -or -not $driverFiles.Count){throw 'Cannot enumerate .27 driver anchor.'}
+foreach($file in $driverFiles) {
+    Assert-ExactScopeSource (Get-ScopeSource $file) (Get-ScopeSource $file $utilityAnchor) "$file exact .27 utility-only anchor"
+}
+foreach($entry in Get-ChildItem -LiteralPath (Join-Path $root 'src/driver') -File -Recurse) {
+    $relative=$entry.FullName.Substring($root.Length+1).Replace('\','/')
+    if($relative -notin $driverFiles){throw "Unexpected driver source: $relative"}
+}
+foreach($file in @('package/rpi5cyw.inf','rpi5-cyw43455.vcxproj','utility/Connect-RPi5-WiFi.ps1','utility/RPi5-WiFi-Operations.ps1')) {
+    Assert-ExactScopeSource (Get-ScopeSource $file) (Get-ScopeSource $file $utilityAnchor) "$file exact .27 utility-only anchor"
+}
 function ConvertFrom-TxRetryInstrumentation {
     param([string]$Text)
     $text=[regex]::Replace($Text,'/\* TX-RETRY-BEGIN \*/.*?/\* TX-RETRY-END \*/','',[Text.RegularExpressions.RegexOptions]::Singleline)
@@ -61,7 +77,7 @@ Assert-SameSource (ConvertFrom-TxRetryInstrumentation (Get-ScopeSource 'src/cyw4
 foreach($file in @('src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/control.h','src/cyw43455/firmware.c')) {
     Assert-SameSource (Get-ScopeSource $file $baseline) (Get-ScopeSource $file $proven) "$file .16 anchor"
 }
-foreach($file in @('src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/control.h','utility/Measure-RPi5-WiFi-Load.ps1','utility/WiFi.config.example.json','scripts/fetch-firmware.ps1')) {
+foreach($file in @('src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/control.h','utility/WiFi.config.example.json','scripts/fetch-firmware.ps1')) {
     Assert-SameSource (Get-ScopeSource $file) (Get-ScopeSource $file $baseline) $file
 }
 function Get-ScopeFunction {
@@ -97,6 +113,35 @@ function ConvertTo-ScopeReplacement {
     $region=Get-ScopeRegion $Text $Pattern $Label
     return $Text.Replace($region,$Replacement)
 }
+# Four exact observation-only sampler splices. Normalize checkout line endings
+# only; preserve every original ping, counter read, sleep and lifetime bound.
+$sampler=(Get-ScopeSource 'utility/Measure-RPi5-WiFi-Load.ps1').Replace("`r`n","`n")
+$clockImport=@'
+$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'RPi5-WiFi-MeasurementClock.ps1')
+'@
+$sampler=ConvertTo-ScopeReplacement $sampler ([regex]::Escape($clockImport.Replace("`r`n","`n"))) '$ErrorActionPreference = ''Stop''' 'sampler clock helper import after error policy'
+$clockInitialize=@'
+if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw 'Sampler is for the Raspberry Pi, not the development PC.' }
+Initialize-Rpi5MeasurementClock
+'@
+$samplerGuard='if ($env:PROCESSOR_ARCHITECTURE -ne ''ARM64'') { throw ''Sampler is for the Raspberry Pi, not the development PC.'' }'
+$sampler=ConvertTo-ScopeReplacement $sampler ([regex]::Escape($clockInitialize.Replace("`r`n","`n"))) $samplerGuard 'sampler native initialization only after target guard'
+$rowStart=@'
+        $row = [ordered]@{ SampleStart100ns=(Get-Rpi5MeasurementTimestamp); SampleEnd100ns=$null;
+            ClockKind='QueryInterruptTime100nsSinceBoot';
+            SampleStartUtc=[datetime]::UtcNow.ToString('o'); SampleEndUtc='';
+'@
+$oldRowStart='        $row = [ordered]@{ SampleStartUtc=[datetime]::UtcNow.ToString(''o''); SampleEndUtc='''';'
+$sampler=ConvertTo-ScopeReplacement $sampler ([regex]::Escape($rowStart.Replace("`r`n","`n"))) $oldRowStart 'sampler adds only boot-clock row metadata'
+$rowEnd=@'
+        $row.SampleEndUtc=[datetime]::UtcNow.ToString('o'); $row.ElapsedSeconds=$watch.Elapsed.TotalSeconds
+        $row.SampleEnd100ns=Get-Rpi5MeasurementTimestamp
+'@
+$oldRowEnd='        $row.SampleEndUtc=[datetime]::UtcNow.ToString(''o''); $row.ElapsedSeconds=$watch.Elapsed.TotalSeconds'
+$sampler=ConvertTo-ScopeReplacement $sampler ([regex]::Escape($rowEnd.Replace("`r`n","`n"))) $oldRowEnd 'sampler observes end timestamp after original elapsed sample'
+Assert-ExactScopeSource $sampler (Get-ScopeSource 'utility/Measure-RPi5-WiFi-Load.ps1' $utilityAnchor) 'Entire .27 sampler outside four exact clock observation splices'
+Assert-ExactScopeSource (Get-ScopeSource 'utility/Measure-RPi5-WiFi-Load.ps1' $utilityAnchor) (Get-ScopeSource 'utility/Measure-RPi5-WiFi-Load.ps1' $baseline) '.27 sampler retains prior workload anchor'
 # .24 may extend the verified-mode guard, but not the byte-transfer engine,
 # dividers, phase waits, lengths, reset handling, or existing timing probes.
 $sdio=Get-ScopeSource 'src/sdio/sdio.c'
@@ -185,7 +230,8 @@ if($network -notmatch 'CywMeasuredTxPump\(A,&N->Sends,4,&sentBefore\)' -or
    $network -notmatch 'CywReceiveBudget\(i,KeQueryInterruptTime\(\)-rxStart\)'){
     throw 'Proven TX/RX processing budgets changed.'
 }
-# Keep the exact sustained workload; diagnostics may run only around it.
+# Keep the exact sustained workload. Utility 0.6.27.1 may attach observed curl
+# timing to a sample only after the original request end time is captured.
 $performance=Get-ScopeSource 'utility/Test-RPi5-WiFi-Performance.ps1'
 $performanceBefore=Get-ScopeSource 'utility/Test-RPi5-WiFi-Performance.ps1' $baseline
 foreach($name in @('Invoke-Rpi5RepeatedDownload','ConvertFrom-Rpi5DownloadResult')){
@@ -193,8 +239,46 @@ foreach($name in @('Invoke-Rpi5RepeatedDownload','ConvertFrom-Rpi5DownloadResult
     $actual=[regex]::Match($performance,$pattern)
     $expected=[regex]::Match($performanceBefore,$pattern)
     if(-not $actual.Success -or -not $expected.Success){throw "Missing protected workload $name"}
-    Assert-SameSource $actual.Value $expected.Value $name
+    $actualWorkload=$actual.Value
+    if($name -eq 'Invoke-Rpi5RepeatedDownload') {
+        $endSampleLine='$sample | Add-Member -NotePropertyName EndSeconds -NotePropertyValue ((& $Now) - $start)'
+        $observationLine='Add-Rpi5DownloadTimingToSample -Sample $sample -Result $result'
+        $observationSplice='(?m)^[ \t]*'+[regex]::Escape($endSampleLine)+'\r?\n[ \t]*'+[regex]::Escape($observationLine)+'[ \t]*\r?$'
+        $actualWorkload=ConvertTo-ScopeReplacement $actualWorkload $observationSplice $endSampleLine 'single timing observation after captured request end'
+    }
+    Assert-SameSource $actualWorkload $expected.Value $name
 }
+# Preserve subprocess behavior and curl request semantics. Only the caller's
+# clock wrapper and write-out fields may differ; compare literal source here
+# because comment-stripping must never hide a changed https:// destination.
+$utilityPerformance=Get-ScopeSource 'utility/Test-RPi5-WiFi-Performance.ps1' $utilityAnchor
+$boundedProcessPattern='(?ms)^function Invoke-Rpi5BoundedProcess \{.*?^\}'
+Assert-ExactScopeSource (Get-ScopeRegion $performance $boundedProcessPattern 'bounded curl process') (Get-ScopeRegion $utilityPerformance $boundedProcessPattern 'old bounded curl process') 'Existing subprocess launch, timeout and capture behavior'
+$commonPattern='(?m)^[ \t]*\$common = [^\r\n]+\r?$'
+Assert-ExactScopeSource (Get-ScopeRegion $performance $commonPattern 'curl common arguments') (Get-ScopeRegion $utilityPerformance $commonPattern 'old curl common arguments') 'Curl common request settings'
+$requestPattern='(?m)^[ \t]*\$request = \{\r?\n[ \t]*param\(\$seconds\)\r?\n[^\r\n]+\r?\n[ \t]*\}'
+$request=Get-ScopeRegion $performance $requestPattern 'single sequential curl request'
+$request=ConvertTo-ScopeReplacement $request 'Invoke-Rpi5TimedDownload' 'Invoke-Rpi5BoundedProcess' 'one timed wrapper around existing curl request'
+$oldWriteOut='RPI5_METRIC|%{http_code}|%{size_download}|%{time_total}'
+$phaseWriteOut=$oldWriteOut+'\nRPI5_PHASE|%{time_namelookup}|%{time_connect}|%{time_appconnect}|%{time_pretransfer}|%{time_starttransfer}|%{time_total}\n'
+$request=ConvertTo-ScopeReplacement $request ([regex]::Escape($phaseWriteOut)) $oldWriteOut 'only append curl phase write-out values'
+Assert-ExactScopeSource $request (Get-ScopeRegion $utilityPerformance $requestPattern 'old sequential curl request') 'Curl URL, byte limit, request arguments and timeout unchanged'
+$expectedClockWrapper=@'
+function Invoke-Rpi5TimedDownload {
+    param([string]$File, [string[]]$Arguments, [int]$Seconds)
+    # Observe the existing curl invocation, including process start/exit overhead.
+    # This is not the exact instant curl starts DNS or receives its first byte.
+    $start100ns=Get-Rpi5MeasurementTimestamp
+    $result=Invoke-Rpi5BoundedProcess $File $Arguments $Seconds
+    $end100ns=Get-Rpi5MeasurementTimestamp
+    $result | Add-Member -NotePropertyMembers @{
+        RequestStart100ns=$start100ns;RequestEnd100ns=$end100ns;
+        ClockKind='QueryInterruptTime100nsSinceBoot'
+    }
+    return $result
+}
+'@
+Assert-SameSource (Get-ScopeRegion $performance '(?ms)^function Invoke-Rpi5TimedDownload \{.*?^\}' 'read-only curl clock wrapper') $expectedClockWrapper 'Clock wrapper invokes unchanged process once and appends metadata only'
 # Connect display summaries may change, never credential validation, key
 # derivation/native request serialization, country choice, or secure cleanup.
 $connect=Get-ScopeSource 'utility/Connect-RPi5-WiFi.ps1'
@@ -220,4 +304,4 @@ if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or
    $workflow -notmatch 'Configuration: Release'){
     throw 'Optimized Release build is not configured.'
 }
-Write-Output 'PASS: exact .25 immediate-completion queue/worker/retry restored; .24 hardware path and .26 utility readiness scope preserved. Band/HS50/firmware/security/workload unchanged; no completion batching.'
+Write-Output 'PASS: utility-only timing observations; exact .27 driver/INF/build/connector and .25 immediate packet path preserved. Original requests, limits, sampler, firmware and security unchanged except narrowly allowed measurement metadata.'

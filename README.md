@@ -1,4 +1,9 @@
-> Current candidate: **exp0.6.27**, restoring .25's immediate send completions
+> Optional **measurement-only utility 0.6.27.1** works with the installed .27
+> driver; no reinstall is needed. It adds per-download phase timings and
+> clock alignment without changing the workload. See
+> [utility instructions](./docs/PERFORMANCE-0.6.27.1.md).
+>
+> Current driver candidate: **exp0.6.27**, restoring .25's immediate send completions
 > while retaining .26's connection and readiness utilities. See
 > [EXP0.6.27](./docs/EXP0.6.27.md). It remains experimental/test-signed;
 > passing CI does not prove hardware speed, reboot reliability or long-term stability.

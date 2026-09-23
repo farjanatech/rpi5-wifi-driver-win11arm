@@ -3,6 +3,7 @@ param([switch]$LibraryOnly, [int]$InterfaceIndex, [string]$Gateway,
     [string]$OutputDirectory, [int]$OwnerPid, [long]$OwnerStartTicks)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'RPi5-WiFi-MeasurementClock.ps1')
 
 function Get-Rpi5CounterRate {
     param($Previous, $Current, [double]$Seconds)
@@ -11,6 +12,7 @@ function Get-Rpi5CounterRate {
 }
 if ($LibraryOnly) { return }
 if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64') { throw 'Sampler is for the Raspberry Pi, not the development PC.' }
+Initialize-Rpi5MeasurementClock
 $targets = @(Get-NetAdapter | Where-Object ifIndex -eq $InterfaceIndex)
 if ($targets.Count -ne 1 -or $targets[0].InterfaceDescription -notlike '*CYW43455*') { throw 'Not a CYW43455 adapter.' }
 $target = $targets[0]
@@ -26,7 +28,9 @@ try {
     while ($watch.Elapsed.TotalSeconds -lt 110 -and -not (Test-Path -LiteralPath (Join-Path $OutputDirectory 'sampling.stop'))) {
         try { $owner = Get-Process -Id $OwnerPid -ErrorAction Stop } catch { break }
         if ($owner.StartTime.ToUniversalTime().Ticks -ne $OwnerStartTicks) { break }
-        $row = [ordered]@{ SampleStartUtc=[datetime]::UtcNow.ToString('o'); SampleEndUtc='';
+        $row = [ordered]@{ SampleStart100ns=(Get-Rpi5MeasurementTimestamp); SampleEnd100ns=$null;
+            ClockKind='QueryInterruptTime100nsSinceBoot';
+            SampleStartUtc=[datetime]::UtcNow.ToString('o'); SampleEndUtc='';
             ElapsedSeconds=0.0; GatewayStatus='Unavailable'; GatewayRttMs=$null;
             ReceivedBytes=$null; SentBytes=$null; ReceiveMbps=$null; SendMbps=$null;
             StatisticsError=''; DriverSnapshotError='' }
@@ -63,6 +67,7 @@ try {
             } catch { $row.GatewayStatus=$_.Exception.GetType().Name }
         }
         $row.SampleEndUtc=[datetime]::UtcNow.ToString('o'); $row.ElapsedSeconds=$watch.Elapsed.TotalSeconds
+        $row.SampleEnd100ns=Get-Rpi5MeasurementTimestamp
         [pscustomobject]$row | Export-Csv -LiteralPath (Join-Path $OutputDirectory 'load-timeline.csv') -NoTypeInformation -Append -Encoding UTF8
         Start-Sleep -Milliseconds 1000
     }

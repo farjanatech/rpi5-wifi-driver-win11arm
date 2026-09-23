@@ -6,6 +6,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'RPi5-WiFi-Operations.ps1')
 . (Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Timing.ps1') -TimingLibraryOnly
 . (Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Transport.ps1') -TransportLibraryOnly
+. (Join-Path $PSScriptRoot 'RPi5-WiFi-MeasurementClock.ps1')
+. (Join-Path $PSScriptRoot 'RPi5-WiFi-DownloadTiming.ps1')
 
 function Get-Rpi5BusAssessment {
     param($Diagnostic)
@@ -58,6 +60,19 @@ function Invoke-Rpi5BoundedProcess {
             Output=($stdout.GetAwaiter().GetResult() + $stderr.GetAwaiter().GetResult()) }
     } finally { $process.Dispose() }
 }
+function Invoke-Rpi5TimedDownload {
+    param([string]$File, [string[]]$Arguments, [int]$Seconds)
+    # Observe the existing curl invocation, including process start/exit overhead.
+    # This is not the exact instant curl starts DNS or receives its first byte.
+    $start100ns=Get-Rpi5MeasurementTimestamp
+    $result=Invoke-Rpi5BoundedProcess $File $Arguments $Seconds
+    $end100ns=Get-Rpi5MeasurementTimestamp
+    $result | Add-Member -NotePropertyMembers @{
+        RequestStart100ns=$start100ns;RequestEnd100ns=$end100ns;
+        ClockKind='QueryInterruptTime100nsSinceBoot'
+    }
+    return $result
+}
 function ConvertFrom-Rpi5DownloadResult {
     param($Result, [long]$ExpectedBytes = 1048576)
     $http = 0; $bytes = 0L; $seconds = 0.0
@@ -92,6 +107,7 @@ function Invoke-Rpi5RepeatedDownload {
         $sample | Add-Member -NotePropertyName Attempt -NotePropertyValue $attempt
         $sample | Add-Member -NotePropertyName StartSeconds -NotePropertyValue $elapsed
         $sample | Add-Member -NotePropertyName EndSeconds -NotePropertyValue ((& $Now) - $start)
+        Add-Rpi5DownloadTimingToSample -Sample $sample -Result $result
         if ($sample.Outcome -eq 'Complete') {
             $completed++; $consecutive=0; $verifiedBytes += $sample.Bytes
         } else { $failures++; $consecutive++ }
@@ -122,9 +138,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 $resultDirectory = $null
 $performanceLease=$null
-$performanceResult=[pscustomobject]@{Kind='RPi5PerformanceResult';SchemaVersion=1;UtilityVersion='0.6.27';
+$performanceResult=[pscustomobject]@{Kind='RPi5PerformanceResult';SchemaVersion=1;UtilityVersion='0.6.27.1';
     Outcome='Failed'; Summary=$null; Checks=[ordered]@{}; LoadProbeFailures=$null; QueueRejectsDelta=$null;
-    LoadProbeStatusCounts=@(); DiagnosticsCollected=$false; OutputDirectory=$null; ZipPath=$null}
+    LoadProbeStatusCounts=@(); DownloadTiming=$null; DiagnosticsCollected=$false; OutputDirectory=$null; ZipPath=$null}
 try {
     if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64' -or
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
@@ -132,7 +148,7 @@ try {
     }
     $performanceLease=Enter-Rpi5Operation
     & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') -LibraryOnly
-    Write-Output 'Performance utility 0.6.27 for installed exp0.6.14 or newer. This utility does not install drivers.'
+    Write-Output 'Performance utility 0.6.27.1 for installed exp0.6.27 (older compatible drivers remain supported). No driver installation.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
     Write-Output 'The test requests example.com and up to 129 MiB of download payload from speed.cloudflare.com (plus protocol overhead). Repeated-download stage: up to 90 seconds. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
@@ -181,7 +197,7 @@ try {
         }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "Performance utility 0.6.27 report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "Performance utility 0.6.27.1 report; UTC=$([datetime]::UtcNow.ToString('o'))"
     # Explicit radio GET snapshots BEFORE and AFTER the measured workload,
     # never from the sampler or during downloads. Older drivers remain usable.
     $radioTool=Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Radio.ps1'
@@ -253,6 +269,8 @@ try {
         Save-Step '1 MiB bounded HTTPS download; bytes/sec is application throughput' (Join-Path $system 'curl.exe') ($common + @('--max-time','45','--fail','-o','NUL','-w','http=%{http_code} bytes=%{size_download} bytes_per_second=%{speed_download} total_seconds=%{time_total}','https://speed.cloudflare.com/__down?bytes=1048576')) 50
         # Sampling is independent of curl so long requests cannot hide pauses.
         # The sampler is read-only and has its own parent/lifetime guards.
+        # Compile the read-only native clock helper outside workload timing.
+        Initialize-Rpi5MeasurementClock
         $sampler = $null
         try {
             $samplerArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f (Join-Path $PSScriptRoot 'Measure-RPi5-WiFi-Load.ps1')),
@@ -267,7 +285,7 @@ try {
             Write-Report "Repeated-download START UTC=$([datetime]::UtcNow.ToString('o')); 1 MiB/request, 90s or 128 requests, whichever comes first."
             $request = {
                 param($seconds)
-                Invoke-Rpi5BoundedProcess (Join-Path $system 'curl.exe') ($common + @('--max-time',"$seconds",'--max-filesize','1048576','--fail','-o','NUL','-w','RPI5_METRIC|%{http_code}|%{size_download}|%{time_total}','https://speed.cloudflare.com/__down?bytes=1048576')) ($seconds + 1)
+                Invoke-Rpi5TimedDownload (Join-Path $system 'curl.exe') ($common + @('--max-time',"$seconds",'--max-filesize','1048576','--fail','-o','NUL','-w','RPI5_METRIC|%{http_code}|%{size_download}|%{time_total}\nRPI5_PHASE|%{time_namelookup}|%{time_connect}|%{time_appconnect}|%{time_pretransfer}|%{time_starttransfer}|%{time_total}\n','https://speed.cloudflare.com/__down?bytes=1048576')) ($seconds + 1)
             }
             $observe = {
                 param($sample)
@@ -298,6 +316,16 @@ try {
                 Set-Content (Join-Path $resultDirectory 'adapter-traffic-after.txt')
         } catch { Write-Report 'Windows traffic statistics unavailable; retain driver counters.' }
     } catch { Write-Report "PERFORMANCE INCOMPLETE: $($_.Exception.Message)" }
+    # Summarize optional phase evidence after the workload and sampler stop.
+    # Missing evidence does not invent a fast phase or change download success.
+    try {
+        $downloadRows=@(Import-Csv -LiteralPath (Join-Path $resultDirectory 'download-samples.csv'))
+        $phaseSummary=Get-Rpi5DownloadTimingSummary -Samples $downloadRows
+        $performanceResult.DownloadTiming=$phaseSummary
+        $phaseSummary | ConvertTo-Json -Depth 6 |
+            Set-Content -LiteralPath (Join-Path $resultDirectory 'download-timing-summary.json') -Encoding UTF8
+        Write-Report 'Saved per-request phases and boot-clock windows. These locate delay, not its cause; correlate with passive history, not a server/driver verdict.'
+    } catch { Write-Report 'Optional download timing summary unavailable; retain download-samples.csv. Missing timings are not zero delay.' }
     try {
         $probeRows=@(Import-Csv -LiteralPath (Join-Path $resultDirectory 'load-timeline.csv'))
         if($probeRows.Count -gt 0) {

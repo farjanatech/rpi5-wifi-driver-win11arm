@@ -51,6 +51,8 @@ Copy-Item (Join-Path $root 'docs\AUTO-CONNECT.md') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.cmd') $stage
 Copy-Item (Join-Path $root 'utility\Measure-RPi5-WiFi-Load.ps1') $stage
+Copy-Item (Join-Path $root 'utility\RPi5-WiFi-DownloadTiming.ps1') $stage
+Copy-Item (Join-Path $root 'utility\RPi5-WiFi-MeasurementClock.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.cmd') $stage
 Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Timing.ps1') $stage

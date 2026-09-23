@@ -110,7 +110,7 @@ try {
     } | Select-Object -Last 1
     $after=$null
     try {$after=Get-Rpi5ConnectionReadiness} catch { Write-Warning 'Final live status unavailable.' }
-    $readiness=[pscustomobject]@{SchemaVersion=1;UtilityVersion='0.6.27';CapturedUtc=[datetime]::UtcNow.ToString('o');
+    $readiness=[pscustomobject]@{SchemaVersion=1;UtilityVersion='0.6.27.1';CapturedUtc=[datetime]::UtcNow.ToString('o');
         Outcome=(Get-Rpi5ReadinessVerdict $startup $reconnect $performance $after);
         Startup=$startup;StartupTask=$taskEvidence;InitialConnection=$initial;Reconnect=$reconnect;
         FinalConnection=$after;Performance=$performance;
