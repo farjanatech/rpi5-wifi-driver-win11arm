@@ -4,7 +4,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 
 # Definitions only: importing this helper never opens the driver or scans.
-function New-Rpi5ScanRequest {
+function ConvertTo-Rpi5ScanRequest {
     param([string]$Country)
     if($Country -cnotmatch '^[A-Z]{2}$'){throw 'Confirm the two-letter country where this Pi is physically located.'}
     $data=[byte[]]::new(8)

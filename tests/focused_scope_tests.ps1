@@ -71,13 +71,13 @@ function ConvertFrom-ScanControlIntegration {
     )) {
         $text=ConvertTo-ScanScopeReplacement $text ($line+"`n") '' 1 $line
     }
-    $event=@'
+    $scanEventSplice=@'
     /* Scan events are not association events. Never publish an SSID scan as
      * a link transition or overwrite the existing connection diagnostics. */
     if(type==69) {CywScanEvent(A,status,eth+72,CywBe32(msg+20));return;}
     if(N->ScanBusy)return;
 '@
-    $text=ConvertTo-ScanScopeReplacement $text ($event.Replace("`r`n","`n")+"`n") '' 1 'escan event routing and scan-only link-event suppression'
+    $text=ConvertTo-ScanScopeReplacement $text ($scanEventSplice.Replace("`r`n","`n")+"`n") '' 1 'escan event routing and scan-only link-event suppression'
     $dispatch=@'
         else if(code==CYW_IOCTL_SCAN_START || code==CYW_IOCTL_SCAN_STATUS || code==CYW_IOCTL_SCAN_CANCEL)
             Status=CywScanControl(A,code,Irp->AssociatedIrp.SystemBuffer,

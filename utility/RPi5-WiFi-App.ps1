@@ -24,7 +24,7 @@ function Test-Rpi5AppSsid {
 }
 function Invoke-Rpi5AppConnect {
     param([string]$Country,[string]$Ssid,[byte[]]$PasswordBytes,
-        [scriptblock]$Derive={param($Password,$Name) [Rpi5WifiControl]::Derive($Password,$Name)},
+        [scriptblock]$Derive={param([byte[]]$Password,[byte[]]$Name) [Rpi5WifiControl]::Derive($Password,$Name)},
         [scriptblock]$Send={param($Data) [void][Rpi5WifiControl]::Call(0x12A000,$Data)})
     $pmk=$null;$request=$null
     try{
@@ -75,7 +75,7 @@ function Submit-Rpi5AppScan {
     # Record ownership before issuing the request. Capture its generation before
     # returning to the UI message loop, including an immediate close action.
     $Context.Operation='Scan';$Context.Watch=[Diagnostics.Stopwatch]::StartNew();$Context.ScanSubmitted=$false
-    $null=& $Start (New-Rpi5ScanRequest $Country)
+    $null=& $Start (ConvertTo-Rpi5ScanRequest $Country)
     $Context.ScanSubmitted=$true
     $report=& $Read
     if($report.Generation -eq $Context.PreviousGeneration){throw 'A fresh scan generation was not observed.'}
@@ -133,13 +133,13 @@ $form=[Windows.Forms.Form]::new()
 $form.Text='RPi5 Wi-Fi Connect';$form.ClientSize=[Drawing.Size]::new(850,565)
 $form.MinimumSize=[Drawing.Size]::new(866,604);$form.StartPosition='CenterScreen'
 $form.Font=[Drawing.Font]::new('Segoe UI',9)
-function New-Rpi5AppLabel {
+function Show-Rpi5AppLabel {
     param([string]$Text,[int]$X,[int]$Y,[int]$Width,[int]$Height)
     $label=[Windows.Forms.Label]::new();$label.Text=$Text;$label.SetBounds($X,$Y,$Width,$Height)
     $form.Controls.Add($label);return $label
 }
-$null=New-Rpi5AppLabel 'Wi-Fi connection app for the Ethernet-style CYW43455 adapter. WPA2-Personal / AES only.' 16 14 812 24
-$null=New-Rpi5AppLabel 'Physical country:' 16 49 112 24
+$null=Show-Rpi5AppLabel 'Wi-Fi connection app for the Ethernet-style CYW43455 adapter. WPA2-Personal / AES only.' 16 14 812 24
+$null=Show-Rpi5AppLabel 'Physical country:' 16 49 112 24
 $countryBox=[Windows.Forms.TextBox]::new();$countryBox.SetBounds(132,46,52,26)
 $countryBox.MaxLength=2;$countryBox.CharacterCasing='Upper';$form.Controls.Add($countryBox)
 $countryConfirm=[Windows.Forms.CheckBox]::new();$countryConfirm.Text='I confirm this is where the Pi is located'
@@ -152,16 +152,16 @@ foreach($column in @(@('Network (SSID)',210),@('Signal',65),@('Band',65),@('Chan
     [void]$networks.Columns.Add([string]$column[0],[int]$column[1])
 }
 $form.Controls.Add($networks)
-$null=New-Rpi5AppLabel 'The selected SSID uses automatic band selection; the listed BSSID is not forced. Hidden network? Type its exact SSID below.' 16 314 814 32
-$null=New-Rpi5AppLabel 'Network name:' 16 355 110 24
+$null=Show-Rpi5AppLabel 'The selected SSID uses automatic band selection; the listed BSSID is not forced. Hidden network? Type its exact SSID below.' 16 314 814 32
+$null=Show-Rpi5AppLabel 'Network name:' 16 355 110 24
 $ssidBox=[Windows.Forms.TextBox]::new();$ssidBox.SetBounds(132,351,698,28);$ssidBox.Anchor='Top,Left,Right';$ssidBox.MaxLength=32;$form.Controls.Add($ssidBox)
-$null=New-Rpi5AppLabel 'WPA2 password:' 16 392 115 24
+$null=Show-Rpi5AppLabel 'WPA2 password:' 16 392 115 24
 $passwordBox=[Windows.Forms.TextBox]::new();$passwordBox.SetBounds(132,389,438,28);$passwordBox.UseSystemPasswordChar=$true;$passwordBox.MaxLength=63;$form.Controls.Add($passwordBox)
 $connectButton=[Windows.Forms.Button]::new();$connectButton.Text='Connect';$connectButton.SetBounds(584,386,115,32);$form.Controls.Add($connectButton)
 $disconnectButton=[Windows.Forms.Button]::new();$disconnectButton.Text='Disconnect';$disconnectButton.SetBounds(713,386,117,32);$disconnectButton.Anchor='Top,Right';$form.Controls.Add($disconnectButton)
-$statusLabel=New-Rpi5AppLabel 'Reading driver status...' 16 431 814 75
+$statusLabel=Show-Rpi5AppLabel 'Reading driver status...' 16 431 814 75
 $statusLabel.BorderStyle='FixedSingle';$statusLabel.Anchor='Top,Left,Right';$statusLabel.Padding=[Windows.Forms.Padding]::new(6)
-$null=New-Rpi5AppLabel 'No passwords are saved. Autoconnect remains managed separately. Closing this window does not disconnect Wi-Fi.' 16 517 814 34
+$null=Show-Rpi5AppLabel 'No passwords are saved. Autoconnect remains managed separately. Closing this window does not disconnect Wi-Fi.' 16 517 814 34
 $timer=[Windows.Forms.Timer]::new();$timer.Interval=1000
 $script:Rpi5App=@{Form=$form;Country=$countryBox;Confirm=$countryConfirm;Networks=$networks;Ssid=$ssidBox;Password=$passwordBox;
     ScanButton=$scanButton;ConnectButton=$connectButton;DisconnectButton=$disconnectButton;StatusLabel=$statusLabel;
@@ -202,11 +202,14 @@ function Complete-Rpi5AppOperation {
     Exit-Rpi5Operation $script:Rpi5App.Lease;$script:Rpi5App.Lease=$null
 }
 function Stop-Rpi5AppScan {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions','',Justification='Internal GUI close/timeout cleanup cancels only the user-started scan; command-line confirmation must not block window closing.')]
+    [CmdletBinding()]
+    param()
     if($script:Rpi5App.Operation -eq 'Scan' -and $script:Rpi5App.ScanSubmitted){
         [void](Invoke-Rpi5AppScanCancel $script:Rpi5App)
     }
 }
-function Update-Rpi5AppButtons {
+function Show-Rpi5AppButtonState {
     $app=$script:Rpi5App;$idle=Test-Rpi5AppIdle $app.State
     $free=-not $app.Operation
     $confirmed=$app.Confirm.Checked -and $app.Country.Text -cmatch '^[A-Z]{2}$'
@@ -215,7 +218,7 @@ function Update-Rpi5AppButtons {
     $app.DisconnectButton.Enabled=$free -and $null -ne $app.State -and $app.State.Phase -ge 500 -and (-not $idle)
     $app.Country.Enabled=$free;$app.Confirm.Enabled=$free;$app.Ssid.Enabled=$free;$app.Password.Enabled=$free;$app.Networks.Enabled=$free
 }
-function Update-Rpi5AppStatus {
+function Show-Rpi5AppStatus {
     $app=$script:Rpi5App
     if($app.Updating){return};$app.Updating=$true
     try{
@@ -262,9 +265,11 @@ function Update-Rpi5AppStatus {
         $app.State=$null
         if($app.Operation){Stop-Rpi5AppScan;Complete-Rpi5AppOperation 'Operation observation failed. No automatic retry was attempted.'}
         $app.StatusLabel.Text='Driver status unavailable. Confirm the matching driver is installed and run diagnostics. '+$app.Message
-    }finally{$app.Updating=$false;Update-Rpi5AppButtons}
+    }finally{$app.Updating=$false;Show-Rpi5AppButtonState}
 }
 function Start-Rpi5AppOperation {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions','',Justification='Internal GUI button handler: the explicit click and confirmed country authorize the one request; no command-line confirmation or background retry is appropriate.')]
+    [CmdletBinding()]
     param([ValidateSet('Scan','Connect','Disconnect')][string]$Operation)
     $app=$script:Rpi5App
     if($app.Operation){return}
@@ -297,26 +302,26 @@ function Start-Rpi5AppOperation {
     }finally{
         if($null -ne $passwordBytes){[Array]::Clear($passwordBytes,0,$passwordBytes.Length)}
         if($Operation -eq 'Connect'){$app.Password.Clear()}
-        Update-Rpi5AppStatus
+        Show-Rpi5AppStatus
     }
 }
-$countryBox.add_TextChanged({$script:Rpi5App.Confirm.Checked=$false;Update-Rpi5AppButtons})
-$countryConfirm.add_CheckedChanged({Update-Rpi5AppButtons})
-$ssidBox.add_TextChanged({Update-Rpi5AppButtons})
-$passwordBox.add_TextChanged({Update-Rpi5AppButtons})
+$countryBox.add_TextChanged({$script:Rpi5App.Confirm.Checked=$false;Show-Rpi5AppButtonState})
+$countryConfirm.add_CheckedChanged({Show-Rpi5AppButtonState})
+$ssidBox.add_TextChanged({Show-Rpi5AppButtonState})
+$passwordBox.add_TextChanged({Show-Rpi5AppButtonState})
 $networks.add_SelectedIndexChanged({
     $app=$script:Rpi5App
     if($app.Networks.SelectedItems.Count -eq 1){
         $entry=$app.Networks.SelectedItems[0].Tag
         Select-Rpi5AppNetwork $app $entry
-        Update-Rpi5AppStatus
+        Show-Rpi5AppStatus
     }
 })
 $scanButton.add_Click({Start-Rpi5AppOperation Scan})
 $connectButton.add_Click({Start-Rpi5AppOperation Connect})
 $disconnectButton.add_Click({Start-Rpi5AppOperation Disconnect})
-$timer.add_Tick({Update-Rpi5AppStatus})
-$form.add_Shown({Update-Rpi5AppStatus;$script:Rpi5App.Timer.Start()})
+$timer.add_Tick({Show-Rpi5AppStatus})
+$form.add_Shown({Show-Rpi5AppStatus;$script:Rpi5App.Timer.Start()})
 $form.add_FormClosing({$script:Rpi5App.Timer.Stop();Stop-Rpi5AppScan;$script:Rpi5App.Password.Clear()})
 try{[void]$form.ShowDialog()}finally{
     $timer.Stop();$timer.Dispose();$passwordBox.Clear()

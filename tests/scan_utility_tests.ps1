@@ -12,12 +12,12 @@ foreach($path in @($scanPath,$appPath)){
 # read a private profile, open the driver, or launch an elevated process.
 . $appPath -LibraryOnly
 function Assert-ScanTest {param([bool]$Value,[string]$Message) if(-not $Value){throw $Message}}
-function Assert-ScanThrows {
+function Assert-ScanThrow {
     param([scriptblock]$Action,[string]$Message)
     $rejected=$false;try{$null=& $Action}catch{$rejected=$true}
     Assert-ScanTest $rejected $Message
 }
-function New-ScanFixture {
+function Get-ScanFixture {
     param([byte[]]$Ssid=([Text.Encoding]::UTF8.GetBytes('test-network')),[uint32]$Security=2)
     $bytes=[byte[]]::new(3616)
     [BitConverter]::GetBytes([uint32]1).CopyTo($bytes,0)
@@ -34,12 +34,12 @@ function New-ScanFixture {
     [BitConverter]::GetBytes([uint32]36).CopyTo($bytes,84)
     return ,$bytes
 }
-$request=New-Rpi5ScanRequest 'BD'
+$request=ConvertTo-Rpi5ScanRequest 'BD'
 Assert-ScanTest ($request -is [byte[]] -and $request.Length -eq 8 -and
     [BitConverter]::ToUInt32($request,0) -eq 1 -and $request[4] -eq 66 -and $request[5] -eq 68 -and
     $request[6] -eq 0 -and $request[7] -eq 0) 'Scan request ABI differs.'
-foreach($country in @('','B','bd','USA','B1','BD;')){Assert-ScanThrows {New-Rpi5ScanRequest $country} 'Invalid/unconfirmed country accepted.'}
-$fixture=New-ScanFixture
+foreach($country in @('','B','bd','USA','B1','BD;')){Assert-ScanThrow {ConvertTo-Rpi5ScanRequest $country} 'Invalid/unconfirmed country accepted.'}
+$fixture=Get-ScanFixture
 $report=ConvertFrom-Rpi5ScanReport $fixture
 Assert-ScanTest ($report.Version -eq 1 -and $report.Generation -eq 12 -and $report.State -eq 3 -and
     $report.Country -eq 'BD' -and $report.Count -eq 1 -and -not $report.Truncated) 'Scan header decoding failed.'
@@ -49,28 +49,28 @@ Assert-ScanTest ($entry.Ssid -ceq 'test-network' -and $entry.Connectable -and $e
     $entry.Security -eq 'WPA2-Personal / AES') 'Compatible scan entry decoding failed.'
 foreach($pair in @(@(0,2),@(4,0),@(8,6),@(16,65),@(20,2),@(24,65536),@(32,33))){
     $malformed=[byte[]]$fixture.Clone();[BitConverter]::GetBytes([uint32]$pair[1]).CopyTo($malformed,[int]$pair[0])
-    Assert-ScanThrows {ConvertFrom-Rpi5ScanReport $malformed} 'Malformed scan ABI accepted.'
+    Assert-ScanThrow {ConvertFrom-Rpi5ScanReport $malformed} 'Malformed scan ABI accepted.'
 }
-foreach($length in @(0,32,3615,3617)){Assert-ScanThrows {ConvertFrom-Rpi5ScanReport ([byte[]]::new($length))} 'Invalid scan output size accepted.'}
+foreach($length in @(0,32,3615,3617)){Assert-ScanThrow {ConvertFrom-Rpi5ScanReport ([byte[]]::new($length))} 'Invalid scan output size accepted.'}
 foreach($first in @(1,255)){
     $malformed=[byte[]]$fixture.Clone();$malformed[68]=[byte]$first
-    Assert-ScanThrows {ConvertFrom-Rpi5ScanReport $malformed} 'Multicast BSSID accepted.'
+    Assert-ScanThrow {ConvertFrom-Rpi5ScanReport $malformed} 'Multicast BSSID accepted.'
 }
 $malformed=[byte[]]$fixture.Clone();[Array]::Clear($malformed,68,6)
-Assert-ScanThrows {ConvertFrom-Rpi5ScanReport $malformed} 'Zero BSSID accepted.'
+Assert-ScanThrow {ConvertFrom-Rpi5ScanReport $malformed} 'Zero BSSID accepted.'
 foreach($security in @(0,1,3,4,6,8,10,16,18,32,34,64,66,255)){
-    $blocked=ConvertFrom-Rpi5ScanReport (New-ScanFixture -Security $security)
+    $blocked=ConvertFrom-Rpi5ScanReport (Get-ScanFixture -Security $security)
     Assert-ScanTest (-not $blocked.Entries[0].Connectable) 'Unsupported/malformed/security-policy network became selectable.'
 }
 foreach($raw in @([byte[]]@(),[byte[]]@(0xc3,0x28),[byte[]]@(65,0,66),[byte[]]@(65,10,66),
     [Text.Encoding]::UTF8.GetBytes(('a'+[char]0x202e+'b')))){
-    $blocked=ConvertFrom-Rpi5ScanReport (New-ScanFixture -Ssid $raw)
+    $blocked=ConvertFrom-Rpi5ScanReport (Get-ScanFixture -Ssid $raw)
     Assert-ScanTest (-not $blocked.Entries[0].Connectable -and $null -eq $blocked.Entries[0].Ssid) 'Unsafe/hidden SSID text became a connect target.'
 }
 $utf8Ssid=[string][char]0x00e9+'-network'
-$unicode=ConvertFrom-Rpi5ScanReport (New-ScanFixture -Ssid ([Text.Encoding]::UTF8.GetBytes($utf8Ssid)))
+$unicode=ConvertFrom-Rpi5ScanReport (Get-ScanFixture -Ssid ([Text.Encoding]::UTF8.GetBytes($utf8Ssid)))
 Assert-ScanTest ($unicode.Entries[0].Ssid -ceq $utf8Ssid -and $unicode.Entries[0].Connectable) 'Exact UTF-8 SSID was damaged.'
-$full=New-ScanFixture -Ssid ([Text.Encoding]::ASCII.GetBytes(('x'*32)))
+$full=Get-ScanFixture -Ssid ([Text.Encoding]::ASCII.GetBytes(('x'*32)))
 Assert-ScanTest (ConvertFrom-Rpi5ScanReport $full).Entries[0].Connectable '32-byte SSID was rejected.'
 $unknownChannel=[byte[]]$fixture.Clone();[BitConverter]::GetBytes([uint32]15).CopyTo($unknownChannel,84)
 Assert-ScanTest (-not (ConvertFrom-Rpi5ScanReport $unknownChannel).Entries[0].Connectable) 'Invalid/unknown channel silently assigned a band.'
@@ -116,7 +116,7 @@ Assert-ScanTest ($scanContext.ScanGeneration -eq 13 -and $lifecycle.Starts -eq 1
 Assert-ScanTest (Invoke-Rpi5AppScanCancel $scanContext $readScan $cancelScan) 'Immediate-close scan was not cancelled.'
 Assert-ScanTest ($lifecycle.Cancels -eq 1 -and $lifecycle.CancelledGeneration -eq 13 -and $lifecycle.Reads -eq 1) 'Known-generation cancellation guessed or performed extra reads.'
 $scanContext.ScanGeneration=$null;$scanContext.Operation=''
-Assert-ScanThrows {Submit-Rpi5AppScan $scanContext BD $startScan {throw 'mock report failure'}} 'Failed immediate report read ignored.'
+Assert-ScanThrow {Submit-Rpi5AppScan $scanContext BD $startScan {throw 'mock report failure'}} 'Failed immediate report read ignored.'
 Assert-ScanTest ($scanContext.Operation -eq 'Scan') 'Observation failure lost scan ownership before cancellation.'
 Assert-ScanTest (Invoke-Rpi5AppScanCancel $scanContext $readScan $cancelScan) 'Bounded recovery read could not cancel fresh scan.'
 Assert-ScanTest ($lifecycle.Cancels -eq 2 -and $lifecycle.CancelledGeneration -eq 13) 'Recovery cancelled the wrong scan.'
@@ -129,7 +129,7 @@ Assert-ScanTest ($lifecycle.CancelledGeneration -eq 1) 'Wrapped cancellation gen
 $scanContext.ScanGeneration=[uint32]0
 Assert-ScanTest (-not (Invoke-Rpi5AppScanCancel $scanContext $readScan $cancelScan)) 'Reserved generation zero sent to driver.'
 $readsBefore=$lifecycle.Reads;$cancelsBefore=$lifecycle.Cancels
-Assert-ScanThrows {Submit-Rpi5AppScan $scanContext BD {param($Data)
+Assert-ScanThrow {Submit-Rpi5AppScan $scanContext BD {param($Data)
     Assert-ScanTest ($Data.Length -eq 8) 'Rejected-start mock received an invalid request.'
     throw 'busy start rejected'
 } $readScan} 'Rejected start ignored.'
@@ -147,7 +147,7 @@ Assert-ScanTest ($selectionContext.Ssid.Text -ceq 'test-network' -and $selection
 # Mock derivation and control send exercise the production request constructor;
 # no driver handle, firmware, credentials on disk, native form, or real password.
 $capture=@{Derived=0;Sent=0;Pmk=[byte[]](1..32);Request=$null}
-$derive={param($Password,$Name)
+$derive={param([byte[]]$Password,[byte[]]$Name)
     $capture.Derived++
     Assert-ScanTest ($Password.Length -eq 8 -and [Text.Encoding]::UTF8.GetString($Name) -ceq 'test') 'Derivation inputs damaged.'
     return ,$capture.Pmk
@@ -165,19 +165,19 @@ foreach($buffer in @($password,$capture.Pmk,$capture.Request)){
     Assert-ScanTest (@($buffer | Where-Object {$_ -ne 0}).Count -eq 0) 'Sensitive byte buffer was not cleared after success.'
 }
 $capture.Pmk=[byte[]](1..32);$password=[Text.Encoding]::ASCII.GetBytes('mockpass')
-Assert-ScanThrows {Invoke-Rpi5AppConnect BD test $password $derive {param($Data) $capture.Request=$Data;throw 'mock send failure'}} 'Send failure ignored.'
+Assert-ScanThrow {Invoke-Rpi5AppConnect BD test $password $derive {param($Data) $capture.Request=$Data;throw 'mock send failure'}} 'Send failure ignored.'
 foreach($buffer in @($password,$capture.Pmk,$capture.Request)){
     Assert-ScanTest (@($buffer | Where-Object {$_ -ne 0}).Count -eq 0) 'Sensitive byte buffer was not cleared after failure.'
 }
 $before=$capture.Derived
 foreach($bad in @('',('x'*33),('a'+[char]0+'b'),('a'+[char]0x202e+'b'))){
     $password=[Text.Encoding]::ASCII.GetBytes('mockpass')
-    Assert-ScanThrows {Invoke-Rpi5AppConnect BD $bad $password $derive $send} 'Invalid SSID accepted.'
+    Assert-ScanThrow {Invoke-Rpi5AppConnect BD $bad $password $derive $send} 'Invalid SSID accepted.'
     Assert-ScanTest (@($password | Where-Object {$_ -ne 0}).Count -eq 0) 'Invalid-input password not cleared.'
 }
 Assert-ScanTest ($capture.Derived -eq $before) 'Invalid SSID reached key derivation.'
 $password=[byte[]]@(1,2,3,4,5,6,7,8)
-Assert-ScanThrows {Invoke-Rpi5AppConnect BD test $password $derive $send} 'Non-printable password accepted.'
+Assert-ScanThrow {Invoke-Rpi5AppConnect BD test $password $derive $send} 'Non-printable password accepted.'
 Assert-ScanTest ($capture.Derived -eq $before) 'Invalid password reached key derivation.'
 
 $appSource=Get-Content -LiteralPath $appPath -Raw
@@ -192,7 +192,7 @@ Assert-ScanTest ($appSource.Contains('-ScanLibraryOnly') -and $scanSource.Contai
 foreach($code in @('0x12A014','0x126018','0x12A01C')){Assert-ScanTest ($scanSource.Contains($code) -and $appSource.Contains($code)) 'Scan control ABI mismatch.'}
 $tokens=$null;$parseErrors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($appPath,[ref]$tokens,[ref]$parseErrors)
-$tick=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Update-Rpi5AppStatus'},$true)
+$tick=$ast.Find({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Show-Rpi5AppStatus'},$true)
 Assert-ScanTest ($null -ne $tick -and -not $tick.Extent.Text.Contains('0x12A014') -and -not $tick.Extent.Text.Contains('0x12A000')) 'Status timer initiates scan/connect.'
 $launcher=Get-Content -LiteralPath (Join-Path $root 'utility\RPi5-WiFi-App.cmd') -Raw
 Assert-ScanTest ($launcher.Contains('-STA') -and $launcher.Contains('System32\WindowsPowerShell\v1.0\powershell.exe')) 'Native PowerShell STA launcher missing.'
