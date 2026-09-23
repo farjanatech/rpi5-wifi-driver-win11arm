@@ -122,7 +122,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 $resultDirectory = $null
 $performanceLease=$null
-$performanceResult=[pscustomobject]@{Kind='RPi5PerformanceResult';SchemaVersion=1;UtilityVersion='0.6.26';
+$performanceResult=[pscustomobject]@{Kind='RPi5PerformanceResult';SchemaVersion=1;UtilityVersion='0.6.27';
     Outcome='Failed'; Summary=$null; Checks=[ordered]@{}; LoadProbeFailures=$null; QueueRejectsDelta=$null;
     LoadProbeStatusCounts=@(); DiagnosticsCollected=$false; OutputDirectory=$null; ZipPath=$null}
 try {
@@ -132,7 +132,7 @@ try {
     }
     $performanceLease=Enter-Rpi5Operation
     & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') -LibraryOnly
-    Write-Output 'Performance utility 0.6.26 for installed exp0.6.14 or newer. This utility does not install drivers.'
+    Write-Output 'Performance utility 0.6.27 for installed exp0.6.14 or newer. This utility does not install drivers.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
     Write-Output 'The test requests example.com and up to 129 MiB of download payload from speed.cloudflare.com (plus protocol overhead). Repeated-download stage: up to 90 seconds. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
@@ -181,7 +181,7 @@ try {
         }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "Performance utility 0.6.26 report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "Performance utility 0.6.27 report; UTC=$([datetime]::UtcNow.ToString('o'))"
     # Explicit radio GET snapshots BEFORE and AFTER the measured workload,
     # never from the sampler or during downloads. Older drivers remain usable.
     $radioTool=Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Radio.ps1'

@@ -64,7 +64,7 @@ try {Invoke-Rpi5FreshConnectionBoundary ([pscustomobject]@{Status=0;Phase=600;Au
 Assert-Rpi5Test ($rejected -and $boundary.Disconnects -eq 2) 'Failed disconnect was retried or ignored.'
 
 $boot=[datetime]::UtcNow.AddHours(-1).ToString('o')
-$receipt=[pscustomobject]@{SchemaVersion=1;UtilityVersion='0.6.26';BootUtc=$boot;
+$receipt=[pscustomobject]@{SchemaVersion=1;UtilityVersion='0.6.27';BootUtc=$boot;
     StartedUtc=[datetime]::UtcNow.AddMinutes(-5).ToString('o');CompletedUtc=[datetime]::UtcNow.AddMinutes(-4).ToString('o');
     Outcome='Ready';Authenticated=$true;IPv4Ready=$true;RouteReady=$true;Status=0;UntrustedExtra='not-to-be-exported'}
 $startup=Get-Rpi5StartupAssessment $receipt $boot

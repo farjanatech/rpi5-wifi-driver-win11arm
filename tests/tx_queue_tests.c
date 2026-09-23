@@ -31,12 +31,13 @@ typedef struct TEST_NBL { struct TEST_NBL *Next;PNET_BUFFER First;PVOID CancelId
 static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter,Immediate,Poison,CheckCompleting;
 static ULONG HookAt,BusyAt,FailAt,CompletionCalls,CompletionNbls,LargestCompletion,ProbeCalls;
 static ULONG CheckCallbackFrames,ExpectedCallbackFrames,ExpectedProbeFrames,ExpectedProbeBytes;
+static ULONG CheckImmediateBoundary;
 static ULONG CallbackProbeCalls;
-static NDIS_STATUS CallbackProbeStatus[2];
+static NDIS_STATUS CallbackProbeStatus[4];
 static ULONG64 Clock,TransferTicks;
 static PNET_BUFFER_LIST ProbeNbl;
 static PNET_BUFFER_LIST CallbackProbeNbl,MustCompleteBeforeProbe;
-static PVOID CancelStagedId;
+static PVOID CancelCompletedId;
 static CYW_TX_STATE TestQueue;
 static RPI5CYW_ADAPTER TestAdapter;
 VOID Rpi5CywTrafficDrop(PRPI5CYW_ADAPTER A,BOOLEAN Tx,ULONG Frames,BOOLEAN Error)
@@ -56,7 +57,9 @@ static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST 
 #include "../src/cyw43455/tx_queue.h"
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
 {
-    (void)adapter;CHECK(!Locks);TransferCalls++;
+    (void)adapter;CHECK(!Locks);
+    if(CheckImmediateBoundary)CHECK(CompletionNbls==TransferCalls);
+    TransferCalls++;
     CHECK(length>=18 && length<=1518 && data[0]==0x20 && !data[1] && !data[2] && !data[3]);
     Clock+=TransferTicks;
     if(!HookAt || HookAt==TransferCalls) {
@@ -66,10 +69,10 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
         if(Hook==4) {
             ProbeCalls++;
             CHECK(TestQueue.Frames==ExpectedProbeFrames && TestQueue.Bytes==ExpectedProbeBytes);
-            CHECK(TestQueue.Outstanding==CYW_TX_LIMIT && TestQueue.Count==CYW_TX_LIMIT-1);
+            CHECK(TestQueue.Outstanding==CYW_TX_LIMIT && TestQueue.Count==CYW_TX_LIMIT);
             CHECK(CywTxSubmit(&TestAdapter,&TestQueue,ProbeNbl)==NDIS_STATUS_RESOURCES);
         }
-        if(Hook==5)CywTxCancel(&TestQueue,CancelStagedId);
+        if(Hook==5)CywTxCancel(&TestQueue,CancelCompletedId);
         if(Hook==6)Clock=0;
     }
     if(Busy || (BusyAt && BusyAt==TransferCalls))return STATUS_DEVICE_BUSY;
@@ -81,12 +84,12 @@ static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST 
     PNET_BUFFER_LIST next;ULONG count=0;
     (void)handle;CHECK(!Locks && nbl!=NULL);CompletionCalls++;
     while(nbl) {
-        CHECK(nbl!=(PNET_BUFFER_LIST)(size_t)1 && count<CYW_TX_COMPLETION_BATCH_LIMIT);
-        if(nbl==(PNET_BUFFER_LIST)(size_t)1 || count>=CYW_TX_COMPLETION_BATCH_LIMIT)break;
+        CHECK(nbl!=(PNET_BUFFER_LIST)(size_t)1 && count<1);
+        if(nbl==(PNET_BUFFER_LIST)(size_t)1 || count>=1)break;
         next=nbl->Next;CHECK(nbl->Completions==0);nbl->Completions++;nbl->Flags=flags;count++;
         if(Poison) {
             /* Returned NBLs may be freed/reused synchronously. The production
-             * batch must not traverse or append to this chain after handoff. */
+             * queue must not access this NBL or its NB chain after handoff. */
             nbl->Next=(PNET_BUFFER_LIST)(size_t)1;
             nbl->First=(PNET_BUFFER)(size_t)1;
         }
@@ -98,10 +101,10 @@ static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST 
         CheckCallbackFrames=0;CHECK(TestQueue.Frames==ExpectedCallbackFrames);
         CHECK(TestAdapter.TxQueueFrames==ExpectedCallbackFrames);
     }
-    if(CallbackProbeNbl && CallbackProbeCalls<2) {
-        /* A detached failed multi-NB chain must already have been returned
-         * before a SUCCESS callback can release the other retained charges. */
-        CHECK(MustCompleteBeforeProbe->Completions==1);
+    if(CallbackProbeNbl && CallbackProbeCalls<4) {
+        /* Earlier successful sends cannot free the retained failed multi-NB
+         * chain's charge. Its own callback may admit a full replacement. */
+        CHECK(MustCompleteBeforeProbe->Completions==(CallbackProbeCalls==3?1u:0u));
         CallbackProbeStatus[CallbackProbeCalls++]=CywTxSubmit(&TestAdapter,&TestQueue,CallbackProbeNbl);
     }
     if(Reenter){Reenter=0;CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&Reentrant)==NDIS_STATUS_PENDING);}
@@ -119,8 +122,10 @@ static void Init(void)
     TransferCalls=Busy=FailTransfer=Hook=Reenter=Immediate=Poison=CheckCompleting=0;CHECK(!Locks);
     HookAt=BusyAt=FailAt=CompletionCalls=CompletionNbls=LargestCompletion=ProbeCalls=0;
     CheckCallbackFrames=ExpectedCallbackFrames=ExpectedProbeFrames=ExpectedProbeBytes=0;
-    TransferTicks=0;ProbeNbl=NULL;CancelStagedId=NULL;
+    CheckImmediateBoundary=0;
+    TransferTicks=0;ProbeNbl=NULL;CancelCompletedId=NULL;
     CallbackProbeCalls=0;CallbackProbeStatus[0]=CallbackProbeStatus[1]=NDIS_STATUS_FAILURE;
+    CallbackProbeStatus[2]=CallbackProbeStatus[3]=NDIS_STATUS_FAILURE;
     CallbackProbeNbl=MustCompleteBeforeProbe=NULL;
 }
 static void Packet(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG length,PVOID id)
@@ -128,21 +133,20 @@ static void Packet(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG length,PVOID id)
     memset(nbl,0,sizeof(*nbl));memset(nb,0,sizeof(*nb));nb->Length=length;
     nbl->First=nb;nbl->CancelId=id;
 }
-static void BatchTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
+static void ImmediateOwnershipTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
 {
     ULONG sent,i;
-    /* Retained SUCCESS NBLs still consume the exact 64-frame/byte/NBL cap.
-     * Only the callback handoff releases four charges, and reentry may use
-     * that released capacity while Completing preserves the lifetime count. */
+    /* The first immediate callback releases one slot and reentry refills it.
+     * During the next transfer all 64 frames/bytes/NBLs are still charged:
+     * another admission must fail while Completing protects callback lifetime. */
     Init();for(i=0;i<=CYW_TX_LIMIT;i++)Packet(&nbl[i],&nb[i],100,id);
     for(i=0;i<CYW_TX_LIMIT;i++)CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);
     ProbeNbl=&nbl[CYW_TX_LIMIT];ExpectedProbeFrames=CYW_TX_LIMIT;ExpectedProbeBytes=CYW_TX_LIMIT*100;
-    Hook=4;HookAt=2;CheckCallbackFrames=1;ExpectedCallbackFrames=CYW_TX_LIMIT-4;
+    Hook=4;HookAt=2;CheckCallbackFrames=1;ExpectedCallbackFrames=CYW_TX_LIMIT-1;
     Packet(&Reentrant,&ReentrantNb,100,id);Reenter=CheckCompleting=Poison=1;
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==4);
     CHECK(ProbeCalls==1 && TestAdapter.TxQueueFull==1 && !ProbeNbl->Completions);
-    CHECK(CompletionCalls==1 && CompletionNbls==4 && LargestCompletion==4);
-    CHECK(TestAdapter.TxCompletionBatchCalls==1 && TestAdapter.TxCompletionBatchNbls==4 && TestAdapter.TxCompletionBatchMax==4);
+    CHECK(CompletionCalls==4 && CompletionNbls==4 && LargestCompletion==1);
     CHECK(TestQueue.Count==61 && TestQueue.Outstanding==61 && TestQueue.Frames==61 && TestQueue.Bytes==6100);
     CHECK(!TestQueue.Completing && !Reentrant.Completions);
     for(i=0;i<4;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_SUCCESS && !nbl[i].Flags && !nb[i].Next);
@@ -151,15 +155,14 @@ static void BatchTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
     for(i=0;i<CYW_TX_LIMIT;i++)CHECK(nbl[i].Completions==1);
     CHECK(Reentrant.Completions==1);
 
-    /* Even a larger caller budget cannot enlarge the fixed four-NBL batch. */
-    Init();Poison=CheckCompleting=1;
+    /* Each completed NBL is returned immediately, even with a larger budget. */
+    Init();Poison=CheckCompleting=CheckImmediateBoundary=1;
     for(i=0;i<8;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
     CHECK(CywTxPump(&TestAdapter,&TestQueue,8,&sent)==0 && sent==8);
-    CHECK(CompletionCalls==2 && CompletionNbls==8 && LargestCompletion==4 && !CywTxOutstanding(&TestQueue));
-    CHECK(TestAdapter.TxCompletionBatchCalls==2 && TestAdapter.TxCompletionBatchNbls==8);
+    CHECK(CompletionCalls==8 && CompletionNbls==8 && LargestCompletion==1 && !CywTxOutstanding(&TestQueue));
     for(i=0;i<8;i++)CHECK(nbl[i].Completions==1);
 
-    /* Partially transmitted multi-NB chains are never staged or uncharged. */
+    /* Partially transmitted multi-NB chains are never completed or uncharged. */
     Init();for(i=0;i<5;i++)Packet(&nbl[i],&nb[i],100,id);
     nb[1].Next=&nb[2];nb[2].Next=&nb[3];
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
@@ -171,15 +174,15 @@ static void BatchTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
     CHECK(TestQueue.Entries[0].Frames==2 && TestQueue.Entries[0].HeldFrames==3);
     CHECK(nb[1].Next==&nb[2] && nb[2].Next==&nb[3] && !nb[3].Next);
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==3 && !CywTxOutstanding(&TestQueue));
-    CHECK(CompletionCalls==2 && CompletionNbls==3 && LargestCompletion==2);
+    CHECK(CompletionCalls==3 && CompletionNbls==3 && LargestCompletion==1);
     CHECK(nbl[1].Completions==1 && nbl[4].Completions==1 && TestAdapter.TxPackets==5);
 
-    /* Exit paths flush completed successes: credit exhaustion, BUSY, failed
-     * bus transfer and mapping failure leave pending ownership recoverable. */
+    /* Credit exhaustion, BUSY, bus failure and mapping failure must not undo
+     * already completed successes or strand pending ownership. */
     Init();Credits=2;CheckCompleting=1;
     for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==2);
-    CHECK(CompletionCalls==1 && CompletionNbls==2 && TestQueue.Frames==1 && TestQueue.Bytes==100 && TestQueue.Count==1);
+    CHECK(CompletionCalls==2 && CompletionNbls==2 && TestQueue.Frames==1 && TestQueue.Bytes==100 && TestQueue.Count==1);
     CHECK(!nbl[2].Completions && !TestQueue.Completing && TestAdapter.TxCreditWaits==1);
     CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);CHECK(!CywTxOutstanding(&TestQueue));
 
@@ -188,24 +191,23 @@ static void BatchTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==1 && TransferCalls==2);
     CHECK(nbl[0].Completions==1 && !nbl[1].Completions && TestQueue.Frames==2 && TestQueue.Outstanding==2);
     CHECK(CompletionCalls==1 && TestAdapter.TxCreditWaits==1);
-    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==2 && CompletionCalls==2 && CompletionNbls==3);
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==2 && CompletionCalls==3 && CompletionNbls==3);
     CHECK(!CywTxOutstanding(&TestQueue) && nbl[1].Completions==1 && nbl[2].Completions==1);
 
     Init();FailAt=3;CheckCompleting=Poison=1;
     for(i=0;i<4;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==STATUS_IO_DEVICE_ERROR && sent==2);
     CHECK(nbl[0].Status==NDIS_STATUS_SUCCESS && nbl[1].Status==NDIS_STATUS_SUCCESS && nbl[2].Status==NDIS_STATUS_FAILURE);
-    CHECK(CompletionCalls==2 && CompletionNbls==3 && TestQueue.Count==1 && TestQueue.Frames==1 && TestQueue.Bytes==100);
+    CHECK(CompletionCalls==3 && CompletionNbls==3 && TestQueue.Count==1 && TestQueue.Frames==1 && TestQueue.Bytes==100);
     CHECK(!nbl[3].Completions && TestAdapter.TxErrors==1 && TestAdapter.TxPackets==2 && !TestQueue.Completing);
     CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_MEDIA_DISCONNECTED);
     for(i=0;i<4;i++)CHECK(nbl[i].Completions==1);
     CHECK(!CywTxOutstanding(&TestQueue));
 
-    /* Regression: three staged successes plus a failed 61-NB chain retain
-     * exactly 64 frames. Returning the successes BEFORE the detached failure
-     * would expose 64 free admissions while still owning the failed 61 NBs.
-     * The failure callback first rejects a new 64-NB chain (3 still held);
-     * only the later success callback can admit that full replacement. */
+    /* Three single-frame sends plus a failing 61-NB chain start at exactly64
+     * retained frames. Each successful callback must reject a new 64-NB chain
+     * while any of the original 61-NB chain remains owned. The failure's own
+     * immediate callback is the first point that can admit the replacement. */
     Init();FailAt=4;CheckCompleting=Poison=1;
     for(i=0;i<CYW_TX_LIMIT;i++)Packet(&nbl[i],&nb[i],100,id);
     for(i=3;i<CYW_TX_LIMIT-1;i++)nb[i].Next=&nb[i+1];
@@ -218,8 +220,9 @@ static void BatchTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
     }
     Reentrant.First=ReentrantChain;CallbackProbeNbl=&Reentrant;MustCompleteBeforeProbe=&nbl[3];
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==STATUS_IO_DEVICE_ERROR && sent==3);
-    CHECK(CallbackProbeCalls==2 && CallbackProbeStatus[0]==NDIS_STATUS_RESOURCES && CallbackProbeStatus[1]==NDIS_STATUS_PENDING);
-    CHECK(CompletionCalls==2 && CompletionNbls==4 && TestAdapter.TxCompletionBatchNbls==3);
+    CHECK(CallbackProbeCalls==4 && CallbackProbeStatus[0]==NDIS_STATUS_RESOURCES && CallbackProbeStatus[1]==NDIS_STATUS_RESOURCES);
+    CHECK(CallbackProbeStatus[2]==NDIS_STATUS_RESOURCES && CallbackProbeStatus[3]==NDIS_STATUS_PENDING);
+    CHECK(CompletionCalls==4 && CompletionNbls==4);
     CHECK(TestQueue.Frames==64 && TestQueue.Bytes==6400 && TestQueue.Count==1 && TestQueue.Outstanding==1);
     CHECK(!TestQueue.Completing && !Reentrant.Completions && TestAdapter.TxQueueHighWater==64);
     for(i=0;i<4;i++)CHECK(nbl[i].Completions==1);
@@ -235,19 +238,19 @@ static void BatchTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
     CHECK(!nbl[2].Completions && CompletionCalls==2 && TestQueue.Outstanding==1 && TestQueue.Frames==1);
     CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);CHECK(!CywTxOutstanding(&TestQueue));
 
-    /* A cancellation of an already fully-transferred staged NBL cannot
-     * retract it. Cancellation of an active or pending NBL still aborts it. */
-    Init();Hook=5;HookAt=2;CancelStagedId=&nbl[0];CheckCompleting=Poison=1;
+    /* A cancellation of an already returned NBL cannot retract it or touch
+     * its poisoned memory. Active and pending cancellation still aborts. */
+    Init();Hook=5;HookAt=2;CancelCompletedId=&nbl[0];CheckCompleting=Poison=1;
     for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,&nbl[i]);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==3);
-    CHECK(CompletionCalls==1 && CompletionNbls==3 && !TestAdapter.TxCancelled && !CywTxOutstanding(&TestQueue));
+    CHECK(CompletionCalls==3 && CompletionNbls==3 && !TestAdapter.TxCancelled && !CywTxOutstanding(&TestQueue));
     for(i=0;i<3;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_SUCCESS);
 
     Init();Hook=1;HookAt=2;CheckCompleting=Poison=1;
     for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,&nbl[i]);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==3);
     CHECK(nbl[0].Status==NDIS_STATUS_SUCCESS && nbl[1].Status==NDIS_STATUS_SEND_ABORTED && nbl[2].Status==NDIS_STATUS_SUCCESS);
-    CHECK(CompletionCalls==2 && CompletionNbls==3 && TestAdapter.TxCancelled==1 && !CywTxOutstanding(&TestQueue));
+    CHECK(CompletionCalls==3 && CompletionNbls==3 && TestAdapter.TxCancelled==1 && !CywTxOutstanding(&TestQueue));
     for(i=0;i<3;i++)CHECK(nbl[i].Completions==1);
 
     Init();Hook=2;HookAt=2;CheckCompleting=Poison=1;
@@ -257,26 +260,26 @@ static void BatchTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
     CHECK(CompletionNbls==3 && !CywTxOutstanding(&TestQueue) && !TestQueue.Frames && !TestQueue.Bytes);
     for(i=0;i<3;i++)CHECK(nbl[i].Completions==1);
 
-    /* 2ms is checked between operations, not a hard I/O execution deadline.
-     * A slow in-flight transfer flushes at the next safe boundary. */
-    Init();TransferTicks=10000ULL;CheckCompleting=Poison=1;
+    /* Completion timing does not wait for any elapsed-time batch boundary:
+     * each success is returned once before the next transfer, fast or slow. */
+    Init();TransferTicks=10000ULL;CheckCompleting=Poison=CheckImmediateBoundary=1;
     for(i=0;i<4;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==4);
-    CHECK(CompletionCalls==2 && CompletionNbls==4 && LargestCompletion==3 && TestAdapter.TxCompletionBatchMax==3);
+    CHECK(CompletionCalls==4 && CompletionNbls==4 && LargestCompletion==1);
     CHECK(!CywTxOutstanding(&TestQueue));
 
-    Init();TransferTicks=30000ULL;CheckCompleting=Poison=1;
+    Init();TransferTicks=30000ULL;CheckCompleting=Poison=CheckImmediateBoundary=1;
     for(i=0;i<4;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==4);
-    CHECK(CompletionCalls==2 && CompletionNbls==4 && LargestCompletion==2 && !CywTxOutstanding(&TestQueue));
+    CHECK(CompletionCalls==4 && CompletionNbls==4 && LargestCompletion==1 && !CywTxOutstanding(&TestQueue));
 
-    Init();Clock=10000ULL;Hook=6;HookAt=2;CheckCompleting=Poison=1;
+    Init();Clock=10000ULL;Hook=6;HookAt=2;CheckCompleting=Poison=CheckImmediateBoundary=1;
     for(i=0;i<3;i++){Packet(&nbl[i],&nb[i],100,id);CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);}
-    /* Keep submission time at zero so this tests the batch's rollback guard,
-     * rather than the independent queue expiry policy's unsigned age. */
+    /* Keep submission time at zero to avoid the independent expiry policy's
+     * unsigned age: completion itself does not depend on the clock advancing. */
     for(i=0;i<3;i++)TestQueue.Entries[i].Submitted=0;
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==3);
-    CHECK(CompletionCalls==2 && CompletionNbls==3 && LargestCompletion==2 && !CywTxOutstanding(&TestQueue));
+    CHECK(CompletionCalls==3 && CompletionNbls==3 && LargestCompletion==1 && !CywTxOutstanding(&TestQueue));
 
     Init();CHECK(CywTxPump(&TestAdapter,&TestQueue,0,&sent)==0 && !sent && !CompletionCalls);
     CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && !sent && !CompletionCalls && !Locks);
@@ -376,11 +379,9 @@ int main(void)
 
     Init();Packet(&nbl[0],&nb[0],100,id);Packet(&Reentrant,&ReentrantNb,100,id);
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);Reenter=1;
-    /* The first completion is handed back at this pump's exit; a send
-     * reentered there remains queued for the existing next worker turn. */
-    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==1 && TestQueue.Outstanding==1);
-    CHECK(nbl[0].Completions==1 && !Reentrant.Completions);
-    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==1 && !TestQueue.Outstanding);
+    /* Critical .27 regression: completion reentry refills an otherwise empty
+     * queue and the replacement uses this SAME pump's remaining budget. */
+    CHECK(CywTxPump(&TestAdapter,&TestQueue,4,&sent)==0 && sent==2 && !TestQueue.Outstanding);
     CHECK(nbl[0].Completions==1 && Reentrant.Completions==1);
 
     /* Mixed send-chain admission + completion BEFORE submit returns. */
@@ -390,7 +391,7 @@ int main(void)
     CHECK(nbl[0].Flags==0 && nbl[1].Flags==1 && nbl[2].Flags==0);
     CHECK(nbl[1].Status==NDIS_STATUS_INVALID_LENGTH && TestAdapter.TxNblCompleted==2 && !TestQueue.Outstanding);
     CHECK(TestAdapter.Traffic.Errors[1]==1 && TestAdapter.Traffic.Discards[1]==0);
-    BatchTests(nbl,nb,id);
+    ImmediateOwnershipTests(nbl,nb,id);
     CHECK(!Locks);if(Failures)return 1;
-    puts("PASS: actual TX/dispatch + bounded completion batching: retained 64-frame cap, multi-NB, credit/busy/error exits, cancel/pause, age bound, reentrancy and poisoned returned chains");return 0;
+    puts("PASS: actual immediate TX/dispatch: retained 64-frame cap, multi-NB, credit/busy/error exits, cancel/pause, same-pump reentry and poisoned returned ownership");return 0;
 }

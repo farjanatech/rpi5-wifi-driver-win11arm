@@ -63,6 +63,8 @@ Copy-Item (Join-Path $root 'docs\EXP0.6.24.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.25.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.26.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.26.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.27.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -109,20 +111,22 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.26 targets initial usability: bounded completion batching of
-actually transferred sends, serialized connection operations, honest readiness
-reporting and optional single reconnect validation. It does not filter TCP ACKs,
-increase the 64-retained-frame cap or change worker packet budgets. Batching
-reduces host callback overhead; it does not create firmware credits or guarantee
-higher throughput. The .25 idle retry remains unchanged.
-The .24/.25 Pi reports measured 28.96/28.99 Mbps with all 128 downloads complete,
-but still had queue-full rejects and two NoResources probes each. Keep .24 as
-the hardware-tested fallback. Neither short run establishes long-term stability.
-Verified band selection, <=50 MHz SDR with checked <=25 MHz fallback, UEFI/fan,
-firmware, country/security and optimized /O2 /Ot build are unchanged.
-See EXP0.6.26.md and PERFORMANCE-0.6.26.md. Install on the Pi, restart once,
-then run Check-RPi5-WiFi-Readiness.cmd. This candidate still needs Pi validation;
-no router rename, additional device or OS reinstall is required.
+Driver exp0.6.27 restores .25's immediate send completions and exact packet path,
+retaining .26's serialized connection operations and honest readiness reports.
+The .26 Pi run completed 128/128 downloads at 17.74 Mbps versus .24/.25's
+28.96/28.99 Mbps. Batching reduced callbacks but also delayed ownership handoff
+and reentrant send processing. Removing it is a focused rollback, not proof it
+caused the entire slowdown or a guarantee of recovered throughput.
+Queue-full rejects and two NoResources probes remained in all three runs.
+Keep .24 as the hardware-tested fallback. No short run proves lasting stability.
+The .25 idle retry, 64-frame cap, packet budgets, verified band selection,
+<=50 MHz SDR with checked <=25 MHz fallback, UEFI/fan, firmware, country/security
+and optimized /O2 /Ot build are unchanged. No TCP ACK filtering is introduced.
+See EXP0.6.27.md and PERFORMANCE-0.6.27.md. Install on the Pi, restart once,
+then run Check-RPi5-WiFi-Readiness.cmd. No separate performance run is needed.
+This candidate needs Pi validation; no router rename, extra device or OS
+reinstall is required. Startup/reconnect marked NotTested means missing evidence,
+not a failed installation. Autoconnect remains optional and is not newly enabled.
 Historical retained features below describe earlier candidates, not new claims.
 
 Retained exp0.6.14 caches the verified runtime backplane address window, avoiding
@@ -245,7 +249,7 @@ Security:
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.6.26
+driver_version=0.6.27
 build_configuration=$Configuration
 timing_default=worker-only; detailed command and receive-indication clocks disabled
 driver_commit=$env:GITHUB_SHA

@@ -1,11 +1,12 @@
-> Current candidate: **exp0.6.26**, targeting an initial usable release with
-> bounded send-completion batching, reliable connection checks and one readiness
-> report. See [EXP0.6.26](./docs/EXP0.6.26.md). It remains experimental/test-signed;
+> Current candidate: **exp0.6.27**, restoring .25's immediate send completions
+> while retaining .26's connection and readiness utilities. See
+> [EXP0.6.27](./docs/EXP0.6.27.md). It remains experimental/test-signed;
 > passing CI does not prove hardware speed, reboot reliability or long-term stability.
 > **Keep exp0.6.24 as the tested fallback:** .24/.25 completed 128/128 downloads
-> at 28.96/28.99 Mbps, but both still had queue-full rejects and two NoResources
-> probes. .25 did not materially improve speed. .26 preserves the radio, SDIO,
-> 64-retained-frame limit and worker packet budgets; no TCP ACK filtering.
+> at 28.96/28.99 Mbps; .26 completed 128/128 at 17.74 Mbps. All still had queue
+> rejections and two NoResources probes. The .27 rollback removes batching as
+> a plausible scheduling regression, not a proven sole cause. Radio, SDIO,
+> 64-retained-frame limit and packet budgets are unchanged; no TCP ACK filtering.
 > Run `Check-RPi5-WiFi-Readiness.cmd` and share its single report ZIP. No router
 > rename, extra device, UEFI change or private-credential publication is needed.
 > Historical version notes below are retained for traceability.

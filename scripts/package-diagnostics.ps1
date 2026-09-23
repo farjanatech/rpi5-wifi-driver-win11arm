@@ -21,7 +21,7 @@ Copy-Item -LiteralPath (Join-Path $root 'utility\Get-RPi5-WiFi-Transport.ps1') -
 repository=$env:GITHUB_REPOSITORY
 commit=$env:GITHUB_SHA
 workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
-utility_version=0.6.26
+utility_version=0.6.27
 matching_acpi_id=ACPI\RPI0011
 "@ | Set-Content -LiteralPath (Join-Path $stage 'SOURCE_REVISION.txt') -Encoding UTF8
 

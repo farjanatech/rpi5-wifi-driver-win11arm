@@ -158,7 +158,7 @@ function Write-Rpi5StartupReceipt {
             if($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unsafe receipt file.' }
         }
     }
-    $receipt=[ordered]@{ SchemaVersion=1; UtilityVersion='0.6.26'; BootUtc=(Get-Rpi5BootIdentity);
+    $receipt=[ordered]@{ SchemaVersion=1; UtilityVersion='0.6.27'; BootUtc=(Get-Rpi5BootIdentity);
         StartedUtc=$StartedUtc; CompletedUtc=[datetime]::UtcNow.ToString('o'); Outcome=$Outcome;
         Authenticated=$false; IPv4Ready=$false; RouteReady=$false; Phase=$null; Status=$null }
     if($null -ne $Connection) {
@@ -169,7 +169,7 @@ function Write-Rpi5StartupReceipt {
     else { [IO.File]::Move($temporary,$path) }
 }
 function Get-Rpi5StartupAssessment {
-    param($Receipt,[string]$BootUtc,[string]$Version='0.6.26')
+    param($Receipt,[string]$BootUtc,[string]$Version='0.6.27')
     $result=[ordered]@{ Outcome='NotTested'; Reason='No current, valid startup receipt'; Receipt=$null }
     if($null -eq $Receipt) { return [pscustomobject]$result }
     try {

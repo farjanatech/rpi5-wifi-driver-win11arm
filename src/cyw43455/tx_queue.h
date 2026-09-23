@@ -52,21 +52,17 @@ static VOID CywTxCancel(CYW_TX_STATE *Q,PVOID CancelId)
     KeReleaseSpinLock(&Q->Lock,irql);
 }
 /* Caller holds Lock; bounded metadata records are moved, never packet data. */
-static PNET_BUFFER_LIST CywTxDetach(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status,BOOLEAN HoldCharge)
+static PNET_BUFFER_LIST CywTxRemove(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status)
 {
     PNET_BUFFER_LIST nbl=Q->Entries[Index].Nbl;ULONG i;
     if(Status!=NDIS_STATUS_SUCCESS)
         Rpi5CywTrafficDrop(A,TRUE,Q->Entries[Index].Frames,Status==NDIS_STATUS_FAILURE);
-    if(!HoldCharge) {
-        Q->Frames-=Q->Entries[Index].HeldFrames;Q->Bytes-=Q->Entries[Index].Bytes;
-    }
+    Q->Frames-=Q->Entries[Index].HeldFrames;Q->Bytes-=Q->Entries[Index].Bytes;
     A->TxQueueFrames=Q->Frames;
     for(i=Index+1;i<Q->Count;++i)Q->Entries[i-1]=Q->Entries[i];
     Q->Count--;RtlZeroMemory(&Q->Entries[Q->Count],sizeof(Q->Entries[0]));
     return nbl;
 }
-static PNET_BUFFER_LIST CywTxRemove(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status)
-{return CywTxDetach(A,Q,Index,Status,FALSE);}
 static VOID CywTxComplete(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LIST Nbl,NDIS_STATUS Status)
 {
     KIRQL irql;
@@ -102,12 +98,10 @@ static VOID CywTxFlush(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,NDIS_STATUS Status)
         CywTxComplete(A,Q,nbl,Status);
     }
 }
-#include "tx_completion_batch.h"
 static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG Sent)
 {
     ULONG i,len;ULONG64 now;KIRQL irql;PUCHAR data;PNET_BUFFER nb;
-    PNET_BUFFER_LIST nbl;NDIS_STATUS completion=NDIS_STATUS_SUCCESS;NTSTATUS status,result=STATUS_SUCCESS;
-    CYW_TX_COMPLETION_BATCH batch={0};
+    PNET_BUFFER_LIST nbl;NDIS_STATUS completion=NDIS_STATUS_SUCCESS;NTSTATUS status;
     *Sent=0;
     /* Cancelled/expired entries behind a flow-controlled head must not wait
      * for credits. Completion is outside Lock and permits NDIS reentrancy. */
@@ -126,7 +120,6 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
         CywTxComplete(A,Q,nbl,completion);
     }
     while(*Sent<Budget) {
-        CywTxBatchFlushIfDue(A,Q,&batch);
         KeAcquireSpinLock(&Q->Lock,&irql);
         if(!Q->Count) {KeReleaseSpinLock(&Q->Lock,irql);break;}
         completion=CywTxAbortStatus(Q,&Q->Entries[0],KeQueryInterruptTime());
@@ -157,27 +150,11 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
              * admission budget early. */
             Q->Entries[0].Frames--;
         } else if(completion==NDIS_STATUS_SUCCESS)completion=NDIS_STATUS_FAILURE;
-        if(completion!=NDIS_STATUS_SUCCESS)nbl=CywTxRemove(A,Q,0,completion);
-        else if(!Q->Entries[0].Frames) {
-            /* The whole NBL has completed transmission and its last gate /
-             * cancellation check. Detach from pending sends but keep all
-             * retained frames, bytes and NBL admission charged until handoff.
-             * Later cancellation cannot retract already processed sends. */
-            CywTxBatchAppend(&batch,Q->Entries[0].Nbl,Q->Entries[0].HeldFrames,
-                Q->Entries[0].Bytes,KeQueryInterruptTime());
-            (void)CywTxDetach(A,Q,0,NDIS_STATUS_SUCCESS,TRUE);
-        }
+        if(completion!=NDIS_STATUS_SUCCESS || !Q->Entries[0].Frames)nbl=CywTxRemove(A,Q,0,completion);
         KeReleaseSpinLock(&Q->Lock,irql);
-        /* Complete an uncharged failure before any success callback can
-         * reenter admission. The success batch remains charged throughout.
-         * NDIS completion order need not match transmission order. */
         if(nbl)CywTxComplete(A,Q,nbl,completion);
-        CywTxBatchFlushIfDue(A,Q,&batch);
-        if(!NT_SUCCESS(status) && data) {result=status;break;} /* Bus fault: fail rest in worker exit. */
+        if(!NT_SUCCESS(status) && data)return status; /* Bus fault: fail rest in worker exit. */
         if(!data)break; /* Mapping failure is per-NBL, not a radio failure. */
     }
-    /* Includes credit/flow block, busy, cancellation/pause, mapping/bus error,
-     * queue empty and budget exhaustion. No completed NBL outlives this pump. */
-    CywTxBatchFlush(A,Q,&batch);
-    return result;
+    return STATUS_SUCCESS;
 }
