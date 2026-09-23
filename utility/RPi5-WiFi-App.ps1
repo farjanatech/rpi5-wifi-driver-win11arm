@@ -169,7 +169,8 @@ $script:Rpi5App=@{Form=$form;Country=$countryBox;Confirm=$countryConfirm;Network
     Message='';Timer=$timer}
 if($PreviewPath){
     # CI-only offline rendering of the ACTUAL layout. This branch exits before
-    # event handlers, the timer, a UI message loop or any control-device call.
+    # event handlers, timer startup, the normal modal loop or control-device calls.
+    # Two bounded paint passes below make native child controls visible to GDI.
     # Restrict output to this checkout's existing ci-logs directory.
     $previewRoot=[IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $PSScriptRoot) 'ci-logs'))+[IO.Path]::DirectorySeparatorChar
     $previewFile=[IO.Path]::GetFullPath($PreviewPath)
@@ -189,11 +190,19 @@ if($PreviewPath){
     $statusLabel.Text='Offline layout preview. Synthetic networks only. No driver, scan, password derivation or connection has been used.'
     $bitmap=$null
     try{
-        $null=$form.Handle;foreach($control in $form.Controls){$control.CreateControl()}
-        $form.PerformLayout();$bitmap=[Drawing.Bitmap]::new($form.Width,$form.Height)
+        # A hidden parent leaves child controls invisible even after CreateControl;
+        # show the modeless preview before painting. No handlers are registered yet.
+        $form.ShowInTaskbar=$false;$form.Show();$form.PerformLayout()
+        [Windows.Forms.Application]::DoEvents()
+        $form.Refresh();foreach($control in $form.Controls){$control.Refresh()}
+        [Windows.Forms.Application]::DoEvents()
+        foreach($control in @($countryBox,$networks,$ssidBox,$passwordBox,$statusLabel)){
+            if(-not $control.Visible -or -not $control.IsHandleCreated){throw 'Offline preview control was not made visible.'}
+        }
+        $bitmap=[Drawing.Bitmap]::new($form.Width,$form.Height)
         $form.DrawToBitmap($bitmap,[Drawing.Rectangle]::new(0,0,$form.Width,$form.Height))
         $bitmap.Save($previewFile,[Drawing.Imaging.ImageFormat]::Png)
-    }finally{if($null -ne $bitmap){$bitmap.Dispose()};$timer.Dispose();$form.Dispose();$script:Rpi5App=$null}
+    }finally{if($null -ne $bitmap){$bitmap.Dispose()};$timer.Dispose();$form.Close();$form.Dispose();$script:Rpi5App=$null}
     return
 }
 function Complete-Rpi5AppOperation {

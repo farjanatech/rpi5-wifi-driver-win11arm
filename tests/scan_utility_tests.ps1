@@ -200,4 +200,14 @@ Assert-ScanTest ($appSource.Contains('if(-not $PreviewPath){. (Join-Path $PSScri
     $appSource.IndexOf('if($PreviewPath){') -lt $appSource.IndexOf('$timer.add_Tick') -and
     $appSource.IndexOf('if($PreviewPath){') -lt $appSource.IndexOf('$form.add_Shown') -and
     $appSource.Contains('$form.DrawToBitmap') -and $appSource.Contains('Offline preview must target a PNG')) 'Offline preview can reach native control initialization/events or lacks bounded output.'
+$previewStart=$appSource.IndexOf('if($PreviewPath){')
+$previewEnd=$appSource.IndexOf('function Complete-Rpi5AppOperation')
+$previewSource=$appSource.Substring($previewStart,$previewEnd-$previewStart)
+Assert-ScanTest ($previewSource.Contains('$form.Show()') -and $previewSource.Contains('$form.Close()') -and
+    $previewSource.IndexOf('$form.Show()') -lt $previewSource.IndexOf('$form.DrawToBitmap') -and
+    [regex]::Matches($previewSource,'\[Windows\.Forms\.Application\]::DoEvents\(\)').Count -eq 2 -and
+    $previewSource.Contains('$control.Visible') -and $previewSource.Contains('$control.IsHandleCreated')) 'Offline preview can still render a hidden parent or lacks bounded painting/cleanup.'
+foreach($forbidden in @('ShowDialog(','.add_','.Start()','Rpi5WifiControl','Invoke-Rpi5ScanControl','Invoke-Rpi5AppConnect','Enter-Rpi5Operation')){
+    Assert-ScanTest (-not $previewSource.Contains($forbidden)) 'Offline preview starts live handlers, a modal loop, timer or a driver operation.'
+}
 Write-Output 'PASS: scan ABI, strict SSID/security selection, stale-generation/timeout gates, existing connect ABI and credential cleanup; no GUI or hardware executed.'
