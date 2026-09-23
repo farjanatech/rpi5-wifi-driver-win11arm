@@ -32,6 +32,17 @@ Assert-Rpi5Test ($rejected -and $fixture.Mutex.Released -eq 0 -and $fixture.Mute
 $lease=Enter-Rpi5Operation -CreateMutex {param($Acl) $fixture.Mutex=Get-Rpi5FakeMutex $Acl $true $true;return $fixture.Mutex}
 Assert-Rpi5Test ($lease.Owned -and $lease.Abandoned) 'Abandoned ownership was not acknowledged.'
 Exit-Rpi5Operation $lease
+$rejected=$false
+try {
+    $null=Enter-Rpi5Operation -CreateMutex {
+        param($Acl)
+        $fixture.Mutex=Get-Rpi5FakeMutex $Acl
+        $fixture.Mutex | Add-Member ScriptMethod WaitOne {param($Milliseconds)
+            $this.Waited=$Milliseconds;throw [InvalidOperationException]::new('Unrelated mock failure') } -Force
+        return $fixture.Mutex
+    }
+} catch {$rejected=$true}
+Assert-Rpi5Test ($rejected -and $fixture.Mutex.Released -eq 0 -and $fixture.Mutex.Disposed -eq 1) 'Unknown wait failure incorrectly granted/released ownership.'
 foreach($address in @('169.254.1.2','127.0.0.1','0.0.0.0','224.0.0.1','::1','invalid')) {
     Assert-Rpi5Test (-not (Test-Rpi5UsableAddress ([pscustomobject]@{IPAddress=$address;AddressState='Preferred'}))) 'Unusable address accepted.'
 }

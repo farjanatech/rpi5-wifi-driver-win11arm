@@ -22,7 +22,18 @@ function Enter-Rpi5Operation {
             }
         }
         try { $owned=$mutex.WaitOne($WaitSeconds*1000) }
-        catch [Threading.AbandonedMutexException] { $owned=$true; $abandoned=$true }
+        catch {
+            # PowerShell can wrap method exceptions (including script-backed
+            # test methods). Only abandonment from this WaitOne means ownership
+            # transferred. Bound inspection; every unrelated error is rethrown.
+            $cause=$_.Exception; $depth=0; $isAbandoned=$false
+            while($null -ne $cause -and $depth -lt 8) {
+                if($cause -is [Threading.AbandonedMutexException]) { $isAbandoned=$true; break }
+                $cause=$cause.InnerException; $depth++
+            }
+            if(-not $isAbandoned) { throw }
+            $owned=$true; $abandoned=$true
+        }
         if(-not $owned) { throw 'Another Wi-Fi operation is running. Wait for it to finish and try again.' }
         # Named mutex ownership is recursive on the same thread. Nested scripts
         # must run in-process, never as a child waiting on its parent's lease.
