@@ -134,6 +134,16 @@ jobs:
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\control-reply-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Test bounded disconnected scan wire format and sequence
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $command = 'call "{0}" && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\scan_protocol_tests.c /Fe:ci-logs\scan_protocol_tests.exe && ci-logs\scan_protocol_tests.exe && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\scan_sequence_tests.c /Fe:ci-logs\scan_sequence_tests.exe && ci-logs\scan_sequence_tests.exe && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\scan_control_tests.c /Fe:ci-logs\scan_control_tests.exe && ci-logs\scan_control_tests.exe' -f $vcvars
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\scan-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Test actual read-only radio queries
         shell: pwsh
         run: |
@@ -170,6 +180,9 @@ jobs:
             '.\utility\RPi5-WiFi-Operations.ps1',
             '.\utility\Check-RPi5-WiFi-Readiness.ps1',
             '.\tests\readiness_utility_tests.ps1',
+            '.\utility\RPi5-WiFi-App.ps1',
+            '.\utility\RPi5-WiFi-Scan.ps1',
+            '.\tests\scan_utility_tests.ps1',
             '.\tests\autoconnect_utility_tests.ps1',
             '.\utility\Test-RPi5-WiFi-Performance.ps1',
             '.\utility\Measure-RPi5-WiFi-Load.ps1',
@@ -210,6 +223,9 @@ jobs:
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\readiness_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\readiness-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\scan_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\scan-utility-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\radio_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\radio-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -220,6 +236,13 @@ jobs:
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\transport_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\transport-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Render offline connection app preview
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File utility/RPi5-WiFi-App.ps1 -PreviewPath ci-logs\wifi-app.png
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path -LiteralPath ci-logs\wifi-app.png)) { throw 'Connection app preview was not produced.' }
 
       - name: Simulate actual firmware startup with bus failures
         shell: pwsh

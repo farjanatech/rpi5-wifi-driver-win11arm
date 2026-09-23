@@ -47,6 +47,9 @@ foreach ($name in @('Set-RPi5-WiFi-Autoconnect.ps1', 'Enable-RPi5-WiFi-Autoconne
     'RPi5-WiFi-Operations.ps1','Check-RPi5-WiFi-Readiness.ps1','Check-RPi5-WiFi-Readiness.cmd')) {
     Copy-Item (Join-Path $root "utility\$name") $stage
 }
+foreach ($name in @('RPi5-WiFi-App.cmd','RPi5-WiFi-App.ps1','RPi5-WiFi-Scan.ps1')) {
+    Copy-Item (Join-Path $root "utility\$name") $stage
+}
 Copy-Item (Join-Path $root 'docs\AUTO-CONNECT.md') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.cmd') $stage
@@ -67,6 +70,8 @@ Copy-Item (Join-Path $root 'docs\EXP0.6.26.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.26.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.27.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -113,22 +118,23 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.27 restores .25's immediate send completions and exact packet path,
-retaining .26's serialized connection operations and honest readiness reports.
-The .26 Pi run completed 128/128 downloads at 17.74 Mbps versus .24/.25's
-28.96/28.99 Mbps. Batching reduced callbacks but also delayed ownership handoff
-and reentrant send processing. Removing it is a focused rollback, not proof it
-caused the entire slowdown or a guarantee of recovered throughput.
-Queue-full rejects and two NoResources probes remained in all three runs.
-Keep .24 as the hardware-tested fallback. No short run proves lasting stability.
-The .25 idle retry, 64-frame cap, packet budgets, verified band selection,
-<=50 MHz SDR with checked <=25 MHz fallback, UEFI/fan, firmware, country/security
-and optimized /O2 /Ot build are unchanged. No TCP ACK filtering is introduced.
-See EXP0.6.27.md and PERFORMANCE-0.6.27.md. Install on the Pi, restart once,
-then run Check-RPi5-WiFi-Readiness.cmd. No separate performance run is needed.
-This candidate needs Pi validation; no router rename, extra device or OS
-reinstall is required. Startup/reconnect marked NotTested means missing evidence,
-not a failed installation. Autoconnect remains optional and is not newly enabled.
+Driver exp0.6.28 adds on-demand disconnected-only network scanning and a separate
+RPi5-WiFi-App.cmd connection window. It is not the native Windows Wi-Fi menu,
+does not scan in the background while connected, and does not claim more speed.
+Country must match the Pi's physical location. Connection remains experimental
+WPA2-Personal/AES only. This first app version does not save passwords or enable
+autoconnect; the existing optional startup connector and private profile remain
+unchanged. A refused/unsupported/failed scan must not be called an empty success.
+Keep the complete exp0.6.27 package for rollback. The live TX/RX/SDIO traffic
+path, immediate completion ownership, 64-frame cap, packet budgets, firmware,
+verified band/bus setup and optimized Release settings are preserved. This
+candidate still needs Pi validation; passing CI is not hardware certification.
+See EXP0.6.28.md. Install on the Pi, restart once, then open RPi5-WiFi-App.cmd.
+Measurement utility 0.6.27.1 is retained; Check-RPi5-WiFi-Readiness.cmd collects
+the same workload once into one ZIP. See PERFORMANCE-0.6.27.1.md. No separate
+performance run, UEFI update, router rename or Windows reinstall is required.
+Startup/reconnect marked NotTested means missing evidence, not a failed install.
+Startup receipt compatibility remains 0.6.27; autoconnect is not newly enabled.
 Historical retained features below describe earlier candidates, not new claims.
 
 Retained exp0.6.14 caches the verified runtime backplane address window, avoiding
@@ -251,7 +257,9 @@ Security:
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.6.27
+driver_version=0.6.28
+measurement_utility_version=0.6.27.1
+startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration
 timing_default=worker-only; detailed command and receive-indication clocks disabled
 driver_commit=$env:GITHUB_SHA

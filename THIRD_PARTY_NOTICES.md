@@ -1,5 +1,22 @@
 # Third-party notices
 
+## Explicit disconnected scan references (exp0.6.28)
+
+The byte-oriented escan v1 request, BSS-info v109 layout, event69 result
+container and WLC_SCAN abort request in `scan_protocol.h`/`scan_sequence.h`
+reference Linux v6.12 brcmfmac `fwil_types.h`, `fwil.h` and `cfg80211.c`
+(`brcmf_run_escan`, `brcmf_escan_prep`, `brcmf_notify_escan_complete`).
+These Broadcom ISC sources are covered by the complete notice below.
+The use of escan on CYW43455 was also cross-checked against Ahmed ARIF's
+GPL-2.0-or-later ReactOS `cyw43455/fwil.c` and `cyw43455.h` on `main-nt10`.
+The bounded Windows sequencing, independent strict parser, fixed report ABI,
+security compatibility policy and deterministic host tests are maintained here.
+No ReactOS Native 802.11 miniport or Linux cfg80211 stack is installed.
+
+https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/broadcom/brcm80211/brcmfmac/fwil_types.h
+https://github.com/torvalds/linux/blob/v6.12/drivers/net/wireless/broadcom/brcm80211/brcmfmac/cfg80211.c
+https://github.com/ahmedarif193/reactos/tree/main-nt10/drivers/network/dd/cyw43455
+
 ## Integrated candidate 0.6 references and redistributed firmware
 
 exp0.6.21 receive read-ahead references Ahmed ARIF's `CywBusThread` in

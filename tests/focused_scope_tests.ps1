@@ -35,42 +35,105 @@ function Assert-ExactScopeSource {
         throw "Unexpected exact-source change: $Label"
     }
 }
-# .27 restores every .25 CYW/SDIO source file, without a batching exemption or
-# an unverified edit hidden inside instrumentation markers. .26 utility-only
-# readiness changes remain permitted by the credential/workload guards below.
+function ConvertTo-ScanScopeReplacement {
+    param([string]$Text,[string]$Old,[string]$New,[int]$Count,[string]$Label)
+    $spliceMatches=[regex]::Matches($Text,[regex]::Escape($Old))
+    if($spliceMatches.Count -ne $Count){throw "Missing or ambiguous exact scan splice: $Label"}
+    return $Text.Replace($Old,$New)
+}
+function ConvertFrom-ScanControlIntegration {
+    param([string]$Text)
+    $text=$Text.Replace("`r`n","`n")
+    # These exact lines are the reviewed disconnected control-plane additions.
+    # No wildcard/marker removal can hide a new traffic, credential or SDIO path.
+    foreach($line in @(
+        '#include "scan_protocol.h"',
+        '#define CYW_IOCTL_SCAN_START CTL_CODE(FILE_DEVICE_NETWORK,0x805,METHOD_BUFFERED,FILE_WRITE_DATA)',
+        '#define CYW_IOCTL_SCAN_STATUS CTL_CODE(FILE_DEVICE_NETWORK,0x806,METHOD_BUFFERED,FILE_READ_DATA)',
+        '#define CYW_IOCTL_SCAN_CANCEL CTL_CODE(FILE_DEVICE_NETWORK,0x807,METHOD_BUFFERED,FILE_WRITE_DATA)',
+        '    CYW_SCAN_REPORT ScanReport;',
+        '    UCHAR ScanCountry[2];',
+        '    BOOLEAN ScanBusy,ControlBusy,ScanComplete,ScanAcceptEvents;',
+        '    USHORT ScanSyncId;',
+        '    volatile LONG ScanCancel;',
+        '    ULONG ScanEventStatus;',
+        'static VOID CywScanEvent(PRPI5CYW_ADAPTER A,ULONG Status,PUCHAR Payload,ULONG Length);',
+        '#include "scan_control.h"',
+        '#include "scan_sequence.h"',
+        '        N->ControlBusy=op!=0;',
+        '        else if(op==4)CywScanRequest(A);',
+        '        if(op) {KeAcquireSpinLock(&N->Lock,&irql);N->ControlBusy=FALSE;KeReleaseSpinLock(&N->Lock,irql);}',
+        '    CywScanQuiesce(A);',
+        '    N->ScanReport.Version=1;',
+        '    if(Paused)CywScanQuiesce(A);',
+        '        CywScanReset(A);',
+        '    CywScanReset(A);'
+    )) {
+        $text=ConvertTo-ScanScopeReplacement $text ($line+"`n") '' 1 $line
+    }
+    $event=@'
+    /* Scan events are not association events. Never publish an SSID scan as
+     * a link transition or overwrite the existing connection diagnostics. */
+    if(type==69) {CywScanEvent(A,status,eth+72,CywBe32(msg+20));return;}
+    if(N->ScanBusy)return;
+'@
+    $text=ConvertTo-ScanScopeReplacement $text ($event.Replace("`r`n","`n")+"`n") '' 1 'escan event routing and scan-only link-event suppression'
+    $dispatch=@'
+        else if(code==CYW_IOCTL_SCAN_START || code==CYW_IOCTL_SCAN_STATUS || code==CYW_IOCTL_SCAN_CANCEL)
+            Status=CywScanControl(A,code,Irp->AssociatedIrp.SystemBuffer,
+                Stack->Parameters.DeviceIoControl.InputBufferLength,Stack->Parameters.DeviceIoControl.OutputBufferLength,&bytes);
+'@
+    $text=ConvertTo-ScanScopeReplacement $text ($dispatch.Replace("`r`n","`n")+"`n") '' 1 'memory-only scan IOCTL dispatch'
+    $text=ConvertTo-ScanScopeReplacement $text 'else if(N->Request || N->RadioBusy || N->ScanBusy)Status=STATUS_DEVICE_BUSY;' 'else if(N->Request || N->RadioBusy)Status=STATUS_DEVICE_BUSY;' 2 'block connect/radio requests during an active scan'
+    return $text
+}
+# .28 permits only the exact scan control-plane splices above. Every other
+# .25 CYW/SDIO source byte stays protected, including the complete live worker,
+# queue, receive dispatch, existing IOCTLs and authentication sequence.
 $protectedFiles=@(& git -C $root ls-tree -r --name-only $immediate -- src/cyw43455 src/sdio)
+$scanHeaders=@('src/cyw43455/scan_protocol.h','src/cyw43455/scan_sequence.h','src/cyw43455/scan_control.h')
 if($LASTEXITCODE -ne 0 -or -not $protectedFiles.Count){throw 'Cannot enumerate .25 packet-path anchor.'}
+$networkForScope=ConvertFrom-ScanControlIntegration (Get-ScopeSource 'src/cyw43455/network.c')
 foreach($file in $protectedFiles) {
-    Assert-ExactScopeSource (Get-ScopeSource $file) (Get-ScopeSource $file $immediate) "$file exact .25 packet-path anchor"
+    $actual=if($file -eq 'src/cyw43455/network.c'){$networkForScope}else{Get-ScopeSource $file}
+    Assert-ExactScopeSource $actual (Get-ScopeSource $file $immediate) "$file exact .25 traffic anchor outside explicit scan control plane"
 }
 foreach($directory in @('src/cyw43455','src/sdio')) {
     foreach($entry in Get-ChildItem -LiteralPath (Join-Path $root $directory) -File -Recurse) {
         $relative=$entry.FullName.Substring($root.Length+1).Replace('\','/')
-        if($relative -notin $protectedFiles){throw "Unexpected packet-path source: $relative"}
+        if($relative -notin $protectedFiles -and $relative -notin $scanHeaders){throw "Unexpected packet-path source: $relative"}
     }
 }
-# This is a utility-only update, not a new kernel-driver release. Retain the
-# existing .25 packet-path anchors above and also freeze all remaining driver
-# source, driver packaging metadata, build settings and connection behavior.
+# The scan candidate may advance only the two driver release labels here.
+# All remaining driver source, build settings and connection behavior retain
+# the exact .27 anchor; isolated scan control-plane allowances are separate.
 $driverFiles=@(& git -C $root ls-tree -r --name-only $utilityAnchor -- src/driver)
 if($LASTEXITCODE -ne 0 -or -not $driverFiles.Count){throw 'Cannot enumerate .27 driver anchor.'}
 foreach($file in $driverFiles) {
-    Assert-ExactScopeSource (Get-ScopeSource $file) (Get-ScopeSource $file $utilityAnchor) "$file exact .27 utility-only anchor"
+    $actual=Get-ScopeSource $file
+    if($file -eq 'src/driver/driver.c') {
+        $actual=$actual.Replace('SET_DWORD(L"DiagVersion", 28);','SET_DWORD(L"DiagVersion", 27);')
+        $actual=$actual.Replace('Data.Ulong = 0x0006001c;','Data.Ulong = 0x0006001b;')
+    }
+    Assert-ExactScopeSource $actual (Get-ScopeSource $file $utilityAnchor) "$file exact .27 anchor outside release labels"
 }
 foreach($entry in Get-ChildItem -LiteralPath (Join-Path $root 'src/driver') -File -Recurse) {
     $relative=$entry.FullName.Substring($root.Length+1).Replace('\','/')
     if($relative -notin $driverFiles){throw "Unexpected driver source: $relative"}
 }
-foreach($file in @('package/rpi5cyw.inf','rpi5-cyw43455.vcxproj','utility/Connect-RPi5-WiFi.ps1','utility/RPi5-WiFi-Operations.ps1')) {
+foreach($file in @('rpi5-cyw43455.vcxproj','utility/Connect-RPi5-WiFi.ps1','utility/RPi5-WiFi-Operations.ps1')) {
     Assert-ExactScopeSource (Get-ScopeSource $file) (Get-ScopeSource $file $utilityAnchor) "$file exact .27 utility-only anchor"
 }
+$inf=Get-ScopeSource 'package/rpi5cyw.inf'
+if($inf -notmatch '(?m)^DriverVer\s*=\s*09/23/2026,0\.6\.28\.0\s*$'){throw 'Driver INF version incorrect.'}
+Assert-ExactScopeSource ($inf.Replace('09/23/2026,0.6.28.0','09/23/2026,0.6.27.0')) (Get-ScopeSource 'package/rpi5cyw.inf' $utilityAnchor) 'INF unchanged outside .28 release version'
 function ConvertFrom-TxRetryInstrumentation {
     param([string]$Text)
     $text=[regex]::Replace($Text,'/\* TX-RETRY-BEGIN \*/.*?/\* TX-RETRY-END \*/','',[Text.RegularExpressions.RegexOptions]::Singleline)
     return [regex]::Replace($text,'/\* TX-RETRY-WAIT-BEGIN \*/.*?/\* TX-RETRY-WAIT-END \*/',
         'KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);',[Text.RegularExpressions.RegexOptions]::Singleline)
 }
-Assert-SameSource (ConvertFrom-TxRetryInstrumentation (Get-ScopeSource 'src/cyw43455/network.c')) (Get-ScopeSource 'src/cyw43455/network.c' $fastest) 'Entire .24 worker except bounded idle retry'
+Assert-SameSource (ConvertFrom-TxRetryInstrumentation $networkForScope) (Get-ScopeSource 'src/cyw43455/network.c' $fastest) 'Entire .24 worker except bounded idle retry and exact disconnected scan dispatch'
 # The complete .25 worker/retry files were checked above. This additional
 # comparison proves that removing only that exact retry returns the .24 worker.
 # Queue ownership, control framing and firmware upload remain the .16 anchor.
@@ -214,7 +277,7 @@ $setter=$setter.Replace('UCHAR preference[8];ULONG length=CywBuildJoinPreference
 $setter=$setter.Replace('preference,length);','preference,sizeof(preference));')
 Assert-SameSource $setter (Get-ScopeFunction (Get-ScopeSource 'src/cyw43455/join_preference.h' $baseline) 'CywApplyJoinPreference') 'Join preference transport/error handling'
 Assert-SameSource (Get-ScopeFunction $preference 'CywApplyJoinPreference') 'static NTSTATUS CywApplyJoinPreference(PRPI5CYW_ADAPTER A){return CywSetJoinPreference(A,TRUE);}' 'Bounded initial preference wrapper'
-$network=ConvertFrom-TimingInstrumentation (ConvertFrom-TxRetryInstrumentation (Get-ScopeSource 'src/cyw43455/network.c'))
+$network=ConvertFrom-TimingInstrumentation (ConvertFrom-TxRetryInstrumentation $networkForScope)
 $priorNetwork=ConvertFrom-TimingInstrumentation (Get-ScopeSource 'src/cyw43455/network.c' $baseline)
 $receive=(Get-ScopeFunction $network 'CywReceive').Replace('N->SelectingBand || ','')
 $link=(Get-ScopeFunction $network 'CywLink').Replace('if(Up && A->Network->SelectingBand)return;','')
@@ -295,8 +358,8 @@ if(Test-Path (Join-Path $root 'src/cyw43455/rx_poll.h')){throw 'Retired read-ahe
 $header=Get-ScopeSource 'src/driver/driver.h'
 if($header -notmatch '#define RPI5CYW_TX_LIMIT 64u'){throw 'Queue limit changed.'}
 $driver=Get-ScopeSource 'src/driver/driver.c'
-if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 27\)'){throw 'Diagnostic version incorrect.'}
-if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x0006001b;'){throw 'NDIS vendor driver version incorrect.'}
+if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 28\)'){throw 'Diagnostic version incorrect.'}
+if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x0006001c;'){throw 'NDIS vendor driver version incorrect.'}
 $project=Get-ScopeSource 'rpi5-cyw43455.vcxproj'
 $workflow=Get-ScopeSource '.github/workflows/build-arm64-driver.yml'
 if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or
@@ -304,4 +367,4 @@ if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or
    $workflow -notmatch 'Configuration: Release'){
     throw 'Optimized Release build is not configured.'
 }
-Write-Output 'PASS: utility-only timing observations; exact .27 driver/INF/build/connector and .25 immediate packet path preserved. Original requests, limits, sampler, firmware and security unchanged except narrowly allowed measurement metadata.'
+Write-Output 'PASS: exact disconnected scan control-plane splices only; .27 driver/INF/build/connector preserved outside release labels and .25 immediate traffic path retained. Existing workload, limits, sampler, firmware and security remain protected.'

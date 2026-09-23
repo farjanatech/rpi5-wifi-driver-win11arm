@@ -1,19 +1,19 @@
-> Optional **measurement-only utility 0.6.27.1** works with the installed .27
-> driver; no reinstall is needed. It adds per-download phase timings and
-> clock alignment without changing the workload. See
-> [utility instructions](./docs/PERFORMANCE-0.6.27.1.md).
+> Current driver candidate: **exp0.6.28**, adding an on-demand, disconnected-only
+> scanner and separate `RPi5-WiFi-App.cmd` connection window. This is **not the
+> native Windows Wi-Fi menu** and is not a speed update. See
+> [EXP0.6.28](./docs/EXP0.6.28.md). Keep the complete **exp0.6.27** package for rollback.
+> The working traffic path, firmware, 64-frame cap, packet budgets and immediate
+> send completions remain protected. Country must match the Pi's location;
+> WPA2-Personal/AES only. The first app version does not save passwords or enable
+> autoconnect. Existing startup settings and private profiles are unchanged.
+> This remains experimental/test-signed; CI does not prove physical scan support,
+> speed, reboot reliability or long-term stability.
 >
-> Current driver candidate: **exp0.6.27**, restoring .25's immediate send completions
-> while retaining .26's connection and readiness utilities. See
-> [EXP0.6.27](./docs/EXP0.6.27.md). It remains experimental/test-signed;
-> passing CI does not prove hardware speed, reboot reliability or long-term stability.
-> **Keep exp0.6.24 as the tested fallback:** .24/.25 completed 128/128 downloads
-> at 28.96/28.99 Mbps; .26 completed 128/128 at 17.74 Mbps. All still had queue
-> rejections and two NoResources probes. The .27 rollback removes batching as
-> a plausible scheduling regression, not a proven sole cause. Radio, SDIO,
-> 64-retained-frame limit and packet budgets are unchanged; no TCP ACK filtering.
-> Run `Check-RPi5-WiFi-Readiness.cmd` and share its single report ZIP. No router
-> rename, extra device, UEFI change or private-credential publication is needed.
+> **Measurement utility 0.6.27.1** is retained, with unchanged requests and timing
+> fields. See [measurement instructions](./docs/PERFORMANCE-0.6.27.1.md).
+> After installing on the Pi and restarting once, open the connection app.
+> `Check-RPi5-WiFi-Readiness.cmd` remains the single combined evidence collector.
+> No router rename, extra device, UEFI change or credential publication is needed.
 > Historical version notes below are retained for traceability.
 
 # Raspberry Pi 5 CYW43455 Wi-Fi driver for Windows 11 ARM64

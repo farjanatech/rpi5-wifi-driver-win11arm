@@ -9,6 +9,7 @@
 #include "network.h"
 #include "../sdio/sdio.h"
 #include "tx_types.h"
+#include "scan_protocol.h"
 /* TIMING-BEGIN */
 #include "../driver/timing_clock.h"
 /* TIMING-END */
@@ -19,6 +20,9 @@
 #define CYW_IOCTL_DISCONNECT CTL_CODE(FILE_DEVICE_NETWORK,0x802,METHOD_BUFFERED,FILE_WRITE_DATA)
 #define CYW_IOCTL_RADIO_REFRESH CTL_CODE(FILE_DEVICE_NETWORK,0x803,METHOD_BUFFERED,FILE_WRITE_DATA)
 #define CYW_IOCTL_RADIO_STATUS CTL_CODE(FILE_DEVICE_NETWORK,0x804,METHOD_BUFFERED,FILE_READ_DATA)
+#define CYW_IOCTL_SCAN_START CTL_CODE(FILE_DEVICE_NETWORK,0x805,METHOD_BUFFERED,FILE_WRITE_DATA)
+#define CYW_IOCTL_SCAN_STATUS CTL_CODE(FILE_DEVICE_NETWORK,0x806,METHOD_BUFFERED,FILE_READ_DATA)
+#define CYW_IOCTL_SCAN_CANCEL CTL_CODE(FILE_DEVICE_NETWORK,0x807,METHOD_BUFFERED,FILE_WRITE_DATA)
 struct _CYW_NETWORK {
     PRPI5CYW_ADAPTER Adapter;
     KSPIN_LOCK Lock;
@@ -29,6 +33,12 @@ struct _CYW_NETWORK {
     volatile BOOLEAN SelectingBand;
     BOOLEAN RxPending, Powered, RadioBusy, RxBatch, RxBatchServiced;
     ULONG Request;
+    CYW_SCAN_REPORT ScanReport;
+    UCHAR ScanCountry[2];
+    BOOLEAN ScanBusy,ControlBusy,ScanComplete,ScanAcceptEvents;
+    USHORT ScanSyncId;
+    volatile LONG ScanCancel;
+    ULONG ScanEventStatus;
     CYW_CONNECT_REQUEST Connect;
     CYW_TX_STATE Sends;
     UCHAR TxSeq, TxMax, TxFlow;
@@ -41,6 +51,8 @@ static PRPI5CYW_ADAPTER ControlAdapter;
 static NDIS_HANDLE ControlHandle;
 static PDEVICE_OBJECT ControlDevice;
 static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A);
+static VOID CywScanEvent(PRPI5CYW_ADAPTER A,ULONG Status,PUCHAR Payload,ULONG Length);
+#include "scan_control.h"
 BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A)
 {return A->IoStopped || (A->Network && A->Network->Stop);}
 
@@ -84,6 +96,10 @@ static VOID CywEvent(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     msg=eth+24;
     if(CywBe32(msg+20)>n-skip-72)return;
     type=CywBe32(msg+4);status=CywBe32(msg+8);reason=CywBe32(msg+12);
+    /* Scan events are not association events. Never publish an SSID scan as
+     * a link transition or overwrite the existing connection diagnostics. */
+    if(type==69) {CywScanEvent(A,status,eth+72,CywBe32(msg+20));return;}
+    if(N->ScanBusy)return;
     A->LinkEvent=type;A->LinkReason=reason;
     if(type==16) {
         N->Associated=(msg[3]&1)!=0 && status==0;
@@ -223,6 +239,7 @@ static BOOLEAN CywBandRequestPending(PRPI5CYW_ADAPTER A)
 }
 #include "connection.h"
 #include "radio.h"
+#include "scan_sequence.h"
 /* TIMING-BEGIN */
 static VOID CywMeasuredDiagnostics(PRPI5CYW_ADAPTER A,ULONG Stage,NTSTATUS Status)
 {
@@ -309,6 +326,7 @@ static VOID CywWorker(PVOID Context)
 /* TIMING-END */
         KeClearEvent(&N->PauseAck);
         KeAcquireSpinLock(&N->Lock,&irql);op=N->Request;N->Request=0;
+        N->ControlBusy=op!=0;
         RtlCopyMemory(&request,&N->Connect,sizeof(request));RtlSecureZeroMemory(&N->Connect,sizeof(request));
         KeReleaseSpinLock(&N->Lock,irql);
 /* TIMING-BEGIN */
@@ -319,6 +337,7 @@ static VOID CywWorker(PVOID Context)
         if(op)CywTxRetryReset(&A->TxRetry);
 /* TX-RETRY-END */
         if(op==3)CywRadioRequest(A);
+        else if(op==4)CywScanRequest(A);
         else if(op) {
             CywTxFlush(A,&N->Sends,NDIS_STATUS_MEDIA_DISCONNECTED);
             Status=op==1?CywConnect(A,&request):CywCmdInt(A,3,0);
@@ -331,6 +350,7 @@ static VOID CywWorker(PVOID Context)
             A->NetworkStatus=Status;CywMeasuredDiagnostics(A,120,Status);
             CywRefreshTxGate(A);
         }
+        if(op) {KeAcquireSpinLock(&N->Lock,&irql);N->ControlBusy=FALSE;KeReleaseSpinLock(&N->Lock,irql);}
 /* TIMING-BEGIN */
         if(op)CywTimingEnd(&A->Timing,CywTimeControl,controlStart);
 /* TIMING-END */
@@ -396,6 +416,7 @@ Exit:
 /* TIMING-BEGIN */
     A->Timing.Enabled=0;
 /* TIMING-END */
+    CywScanQuiesce(A);
     RtlSecureZeroMemory(&request,sizeof(request));
     N->Ready=FALSE;
     CywTxFlush(A,&N->Sends,A->IoStopped?NDIS_STATUS_LOW_POWER_STATE:NDIS_STATUS_MEDIA_DISCONNECTED);
@@ -411,6 +432,7 @@ NTSTATUS CywNetworkInitialize(PRPI5CYW_ADAPTER A)
     A->Network=N;N->Adapter=A;N->TxMax=1;N->Paused=1;N->Powered=TRUE;
     KeInitializeSpinLock(&N->Sends.Lock);N->Sends.Gate=NDIS_STATUS_PAUSED;
     KeInitializeSpinLock(&N->Lock);KeInitializeEvent(&N->Wake,SynchronizationEvent,FALSE);
+    N->ScanReport.Version=1;
     KeInitializeEvent(&N->PauseAck,NotificationEvent,TRUE);
     KeInitializeEvent(&N->ThreadStarted,NotificationEvent,FALSE);
     N->Rx=ExAllocatePool2(POOL_FLAG_NON_PAGED,CYW_WIRE_CAPACITY,RPI5CYW_TAG);
@@ -460,6 +482,7 @@ VOID CywNetworkPause(PRPI5CYW_ADAPTER A,BOOLEAN Paused)
     if(!N)return;
     if(Paused)KeClearEvent(&N->PauseAck);
     InterlockedExchange(&N->Paused,Paused);N->Published=TRUE;KeSetEvent(&N->Wake,0,FALSE);
+    if(Paused)CywScanQuiesce(A);
     CywRefreshTxGate(A);
     if(Paused && (N->Ready || CywTxOutstanding(&N->Sends)))
         KeWaitForSingleObject(&N->PauseAck,Executive,KernelMode,FALSE,NULL);
@@ -484,9 +507,11 @@ NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER A,BOOLEAN On)
         N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
         KeAcquireSpinLock(&N->Lock,&irql);N->Request=0;N->RadioBusy=FALSE;
         RtlSecureZeroMemory(&N->Connect,sizeof(N->Connect));KeReleaseSpinLock(&N->Lock,irql);
+        CywScanReset(A);
         return STATUS_SUCCESS;
     }
     if(N->Thread)return STATUS_SUCCESS;
+    CywScanReset(A);
     A->IoStopped=0;N->Stop=0;N->Ready=FALSE;N->Powered=TRUE;
     N->Paused=(LONG)A->NdisPaused;N->TxSeq=0;N->TxMax=1;N->TxFlow=0;N->RxPending=FALSE;
     status=Rpi5CywDirectSdioProbe(A);
@@ -542,6 +567,9 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
         code=Stack->Parameters.DeviceIoControl.IoControlCode;
         KeAcquireSpinLock(&ControlLock,&irql);A=ControlAdapter;N=A?A->Network:NULL;
         if(!N)Status=STATUS_DEVICE_NOT_READY;
+        else if(code==CYW_IOCTL_SCAN_START || code==CYW_IOCTL_SCAN_STATUS || code==CYW_IOCTL_SCAN_CANCEL)
+            Status=CywScanControl(A,code,Irp->AssociatedIrp.SystemBuffer,
+                Stack->Parameters.DeviceIoControl.InputBufferLength,Stack->Parameters.DeviceIoControl.OutputBufferLength,&bytes);
         else if(code==CYW_IOCTL_STATUS && Stack->Parameters.DeviceIoControl.OutputBufferLength>=32) {
             ULONG *out=Irp->AssociatedIrp.SystemBuffer;
             out[0]=1;out[1]=A->NetworkPhase;out[2]=(ULONG)A->NetworkStatus;
@@ -577,7 +605,7 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
         } else if(code==CYW_IOCTL_RADIO_REFRESH && Stack->Parameters.DeviceIoControl.InputBufferLength==0) {
             KeAcquireSpinLockAtDpcLevel(&N->Lock);
             if(!N->Ready || !N->Associated || !N->Authorized || N->SelectingBand || N->Paused || N->Stop)Status=STATUS_DEVICE_NOT_READY;
-            else if(N->Request || N->RadioBusy)Status=STATUS_DEVICE_BUSY;
+            else if(N->Request || N->RadioBusy || N->ScanBusy)Status=STATUS_DEVICE_BUSY;
             else {N->RadioBusy=TRUE;N->Request=3;KeSetEvent(&N->Wake,0,FALSE);Status=STATUS_SUCCESS;}
             KeReleaseSpinLockFromDpcLevel(&N->Lock);
         } else if((code==CYW_IOCTL_CONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==sizeof(CYW_CONNECT_REQUEST) &&
@@ -585,7 +613,7 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
                   (code==CYW_IOCTL_DISCONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==0)) {
             KeAcquireSpinLockAtDpcLevel(&N->Lock);
             if(!N->Ready)Status=STATUS_DEVICE_NOT_READY;
-            else if(N->Request || N->RadioBusy)Status=STATUS_DEVICE_BUSY;
+            else if(N->Request || N->RadioBusy || N->ScanBusy)Status=STATUS_DEVICE_BUSY;
             else {
                 RtlSecureZeroMemory(&N->Connect,sizeof(N->Connect));
                 if(code==CYW_IOCTL_CONNECT)RtlCopyMemory(&N->Connect,Irp->AssociatedIrp.SystemBuffer,sizeof(N->Connect));

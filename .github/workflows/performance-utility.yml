@@ -13,6 +13,7 @@ on:
       - 'tests/measurement_clock_tests.ps1'
       - 'tests/focused_scope_tests.ps1'
       - 'tests/readiness_utility_tests.ps1'
+      - 'tests/scan_utility_tests.ps1'
       - 'tests/transport_utility_tests.ps1'
       - '.github/workflows/performance-utility.yml'
   workflow_dispatch:
@@ -44,13 +45,16 @@ jobs:
           $issues += @('utility/RPi5-WiFi-DownloadTiming.ps1','utility/RPi5-WiFi-MeasurementClock.ps1','tests/download_timing_tests.ps1','tests/measurement_clock_tests.ps1','tests/focused_scope_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
           }
+          $issues += @('utility/RPi5-WiFi-App.ps1','utility/RPi5-WiFi-Scan.ps1','tests/scan_utility_tests.ps1') | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
+          }
           $issues | Format-Table -AutoSize
           if ($issues) { throw 'Script analysis failed.' }
       - name: Windows PowerShell 5.1 tests (mocked requests, no hardware)
         shell: pwsh
         run: |
           $failedTests = @()
-          foreach ($test in @('download_timing','measurement_clock','performance_utility','radio_utility','timing_utility','transport_utility','readiness_utility')) {
+          foreach ($test in @('download_timing','measurement_clock','performance_utility','radio_utility','timing_utility','transport_utility','readiness_utility','scan_utility')) {
             $testArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"tests/${test}_tests.ps1")
             if ($test -eq 'measurement_clock') { $testArgs += '-NativeSmoke' }
             & powershell.exe @testArgs
