@@ -49,20 +49,14 @@ jobs:
       - name: Windows PowerShell 5.1 tests (mocked requests, no hardware)
         shell: pwsh
         run: |
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/download_timing_tests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/measurement_clock_tests.ps1 -NativeSmoke
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_utility_tests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/radio_utility_tests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/timing_utility_tests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/transport_utility_tests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/readiness_utility_tests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $failedTests = @()
+          foreach ($test in @('download_timing','measurement_clock','performance_utility','radio_utility','timing_utility','transport_utility','readiness_utility')) {
+            $testArgs = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"tests/${test}_tests.ps1")
+            if ($test -eq 'measurement_clock') { $testArgs += '-NativeSmoke' }
+            & powershell.exe @testArgs
+            if ($LASTEXITCODE -ne 0) { $failedTests += $test }
+          }
+          if ($failedTests.Count -ne 0) { throw "Utility tests failed: $($failedTests -join ', ')" }
       - name: Package allowlisted utility
         shell: pwsh
         run: ./scripts/package-performance.ps1

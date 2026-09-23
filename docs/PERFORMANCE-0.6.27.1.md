@@ -34,6 +34,9 @@ relative start/end columns. It adds cumulative curl timestamps and derived
 intervals for DNS, TCP connection, TLS, request preparation, first-byte wait and
 body download. `download-timing-summary.json` summarizes valid observations;
 unknown, failed or malformed observations are not counted as zero delay.
+New timing columns use invariant dot-decimal text so they remain readable across
+Windows language settings. `ObservedTransferSeconds` is an invariant copy of the
+original total for this summary; existing outcome and duration columns are unchanged.
 
 The test still uses separate sequential one-MiB HTTPS requests to the same
 endpoint, up to 128 requests or 90 seconds. URL, request strategy, byte limits,

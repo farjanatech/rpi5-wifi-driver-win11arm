@@ -32,6 +32,7 @@ function Add-Rpi5DownloadTimingToSample {
     # Never revise Outcome, byte accounting, deadlines or the original total.
     $fields = [ordered]@{
         TimingStatus = 'Missing'
+        ObservedTransferSeconds = $null
         CumulativeDnsSeconds = $null
         CumulativeConnectSeconds = $null
         CumulativeTlsSeconds = $null
@@ -49,6 +50,11 @@ function Add-Rpi5DownloadTimingToSample {
         ClockStatus = 'Unavailable'
         ClockKind = $null
     }
+    # Preserve the original numeric column, but copy its value into the new
+    # invariant timing schema. Windows PowerShell CSV serialization otherwise
+    # localizes doubles (for example 0,5), including the legacy total column.
+    $observedTotal = ConvertTo-Rpi5DownloadDuration (Get-Rpi5DownloadOptionalProperty $Sample 'TransferSeconds') -AllowExponent
+    $fields.ObservedTransferSeconds = $observedTotal
 
     $clockStart = Get-Rpi5DownloadOptionalProperty $Result 'RequestStart100ns'
     $clockEnd = Get-Rpi5DownloadOptionalProperty $Result 'RequestEnd100ns'
@@ -94,7 +100,7 @@ function Add-Rpi5DownloadTimingToSample {
             for ($i = 1; $i -lt 6; $i++) {
                 if ($values[$i] -lt $values[$i - 1]) { $ordered = $false; break }
             }
-            $total = ConvertTo-Rpi5DownloadDuration (Get-Rpi5DownloadOptionalProperty $Sample 'TransferSeconds') -AllowExponent
+            $total = $observedTotal
             if (-not $ordered) {
                 $fields.TimingStatus = 'NonMonotonic'
             } elseif ((Get-Rpi5DownloadOptionalProperty $Sample 'Outcome') -cne 'Complete' -or
@@ -122,6 +128,14 @@ function Add-Rpi5DownloadTimingToSample {
             }
         }
     }
+    # New seconds columns are nullable invariant round-trip strings in both
+    # memory and CSV. Do not change the process culture or legacy sample fields.
+    # The summary parses this schema, never guesses the legacy CSV's locale.
+    foreach ($name in @($fields.Keys)) {
+        if ($name.EndsWith('Seconds', [StringComparison]::Ordinal) -and $null -ne $fields[$name]) {
+            $fields[$name] = ([double]$fields[$name]).ToString('R', [Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
     $Sample | Add-Member -NotePropertyMembers $fields -Force
 }
 
@@ -138,15 +152,15 @@ function Get-Rpi5DownloadTimingSummary {
     $total = 0.0
     foreach ($sample in $Samples) {
         if ((Get-Rpi5DownloadOptionalProperty $sample 'Outcome') -ceq 'Complete') { $complete++ }
-        $duration = ConvertTo-Rpi5DownloadDuration (Get-Rpi5DownloadOptionalProperty $sample 'TransferSeconds') -AllowExponent
+        $duration = ConvertTo-Rpi5DownloadDuration (Get-Rpi5DownloadOptionalProperty $sample 'ObservedTransferSeconds') -AllowExponent
         $isSlow = $null -ne $duration -and $duration -gt $SlowThresholdSeconds
         if ($isSlow) { $slow++ }
         if ((Get-Rpi5DownloadOptionalProperty $sample 'ClockStatus') -ceq 'Valid') { $clockValid++ }
         $status = Get-Rpi5DownloadOptionalProperty $sample 'TimingStatus'
         if ([string]::IsNullOrEmpty([string]$status)) { $status = 'Missing' }
-        # Import-Csv supplies strings, and .NET may serialize small differences
-        # with an exponent. Parse those invariantly; never treat an empty cell
-        # or malformed claimed-Valid row as measured zero.
+        # New timing fields and the original-total copy are invariant strings,
+        # including exponent notation for small differences. Missing/malformed
+        # copies remain unknown; never guess the legacy TransferSeconds locale.
         $row = [ordered]@{}
         $rowTotal = $null
         if ($status -ceq 'Valid') {

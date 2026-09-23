@@ -56,7 +56,8 @@ foreach ($name in $expected.Keys) {
     if ([math]::Abs($good.Sample.$name - $expected[$name]) -gt 0.00000001) { throw "Wrong interval: $name" }
 }
 if ($good.Sample.CumulativeConnectSeconds -ne 0.03 -or $good.Sample.CumulativeTlsSeconds -ne 0.07 -or
-    $good.Sample.CumulativeTotalSeconds -ne 0.5) { throw 'Cumulative timings not retained.' }
+    $good.Sample.CumulativeTotalSeconds -ne 0.5 -or $good.Sample.ObservedTransferSeconds -cne '0.5' -or
+    $good.Sample.TransferSeconds -isnot [double]) { throw 'Cumulative timings or unchanged original total not retained.' }
 $columns = @($good.Sample.PSObject.Properties.Name) -join '|'
 
 foreach ($phase in @(
@@ -102,12 +103,27 @@ try {
         throw 'Invariant decimal parser used the operating-system locale.'
     }
     $localizedRows = @($localized.Sample | ConvertTo-Csv -NoTypeInformation | ConvertFrom-Csv)
+    foreach ($name in @($expected.Keys) + @('ObservedTransferSeconds','CumulativeDnsSeconds',
+        'CumulativeConnectSeconds','CumulativeTlsSeconds','CumulativePreTransferSeconds',
+        'CumulativeFirstByteSeconds','CumulativeTotalSeconds')) {
+        if ($localized.Sample.$name -isnot [string] -or
+            $localizedRows[0].$name -notmatch '^[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$') {
+            throw "Timing field did not retain portable invariant CSV: $name"
+        }
+    }
+    if ($localizedRows[0].ObservedTransferSeconds -cne '0.5' -or
+        $localized.Sample.TransferSeconds -isnot [double]) { throw 'Legacy total was changed instead of copied invariantly.' }
     $localizedSummary = Get-Rpi5DownloadTimingSummary -Samples $localizedRows
     if ($localizedSummary.ValidTimingCount -ne 1 -or
         [math]::Abs($localizedSummary.SumValidPhaseSeconds.BodySeconds - 0.4) -gt 0.00000001) {
         throw 'Active non-English locale changed CSV timing interpretation.'
     }
 } finally { [Threading.Thread]::CurrentThread.CurrentCulture = $oldCulture }
+$portableSummary = Get-Rpi5DownloadTimingSummary -Samples $localizedRows
+if ($portableSummary.ValidTimingCount -ne 1 -or $portableSummary.SumValidRequestTotalSeconds -ne 0.5 -or
+    [math]::Abs($portableSummary.SumValidPhaseSeconds.BodySeconds - 0.4) -gt 0.00000001) {
+    throw 'CSV written under another locale is not portable.'
+}
 $zero = Get-DownloadTimingFixture -Phase 'RPI5_PHASE|0|0|0|0|0.5|0.5'
 Add-CheckedDownloadTiming $zero
 if ($zero.Sample.TimingStatus -ne 'Valid' -or $zero.Sample.DnsSeconds -ne 0 -or
@@ -195,4 +211,11 @@ if ($invalidSummary.ValidTimingCount -ne 0 -or $invalidSummary.UnknownTimingCoun
 $roundTrip[0].BodySeconds = '999'
 $invalidSummary = Get-Rpi5DownloadTimingSummary -Samples @($roundTrip[0])
 if ($invalidSummary.ValidTimingCount -ne 0) { throw 'Inconsistent imported phase sum accepted.' }
+$roundTrip[0].BodySeconds = $good.Sample.BodySeconds
+$roundTrip[0].ObservedTransferSeconds = ''
+$invalidSummary = Get-Rpi5DownloadTimingSummary -Samples @($roundTrip[0])
+if ($invalidSummary.ValidTimingCount -ne 0) { throw 'Missing invariant total fell back to the locale-dependent legacy column.' }
+$roundTrip[0].ObservedTransferSeconds = '0,5'
+$invalidSummary = Get-Rpi5DownloadTimingSummary -Samples @($roundTrip[0])
+if ($invalidSummary.ValidTimingCount -ne 0) { throw 'Malformed invariant total guessed a locale.' }
 Write-Output 'PASS: invariant download phase parsing, ordered complete-only intervals, stable CSV columns, optional same-boot clock, unchanged outcomes and cautious summary.'
