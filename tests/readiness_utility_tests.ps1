@@ -138,9 +138,20 @@ function Get-NetIPConfiguration {
     param([Parameter(ValueFromPipeline)]$InputObject)
     process {if($InputObject){[pscustomobject]@{InterfaceAlias='mock';IPv4Address='192.168.0.2';IPv4DefaultGateway='192.168.0.1'}}}
 }
-function Get-ItemProperty {param($LiteralPath,$ErrorAction) $null=@($LiteralPath,$ErrorAction);return $null}
-function Get-ItemPropertyValue {param($LiteralPath,$Name,$ErrorAction) $null=@($LiteralPath,$Name,$ErrorAction);throw 'No remembered country in mock.'}
+function Get-ItemProperty {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets','',Justification='This synthetic connector test must prevent real registry reads.')]
+    [CmdletBinding()]
+    param($LiteralPath)
+    $null=$LiteralPath;return $null
+}
+function Get-ItemPropertyValue {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets','',Justification='This synthetic connector test must prevent real registry reads.')]
+    [CmdletBinding()]
+    param($LiteralPath,$Name)
+    $null=@($LiteralPath,$Name);throw 'No remembered country in mock.'
+}
 function New-ItemProperty {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets','',Justification='This synthetic connector test must block all real registry writes.')]
     [CmdletBinding(SupportsShouldProcess)]
     param($LiteralPath,$Name,$Value,$PropertyType,[switch]$Force)
     $null=@($LiteralPath,$Name,$Value,$PropertyType,$Force)
@@ -149,6 +160,7 @@ function New-ItemProperty {
 # Creating the remembered-country key is prevented too; filesystem fixtures
 # below use .NET APIs rather than this command.
 function New-Item {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets','',Justification='This synthetic connector test must block creation of real registry keys.')]
     [CmdletBinding(SupportsShouldProcess)]
     param($Path,[switch]$Force)
     $null=@($Path,$Force)

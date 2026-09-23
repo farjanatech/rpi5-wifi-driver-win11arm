@@ -92,11 +92,10 @@ try {
             Write-Output 'Reconnect verification requested: one brief disconnect/connect cycle, no automatic repeat or device reset.'
             $connectAttempted=$true
             try {
-                $connection=$null
-                & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') -ConfigPath $ConfigPath -PassThru | ForEach-Object {
-                    if($_ -isnot [string] -and $_.PSObject.Properties['Kind'] -and $_.Kind -eq 'RPi5ConnectionResult') {$connection=$_}
+                $connection=& (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') -ConfigPath $ConfigPath -PassThru | ForEach-Object {
+                    if($_ -isnot [string] -and $_.PSObject.Properties['Kind'] -and $_.Kind -eq 'RPi5ConnectionResult') {$_}
                     else { Out-Host -InputObject $_ }
-                }
+                } | Select-Object -Last 1
                 if($null -eq $connection -or -not $connection.Connection.Ready){throw 'Connection not verified.'}
                 if($null -ne $initial -and $initial.Authenticated) {
                     $reconnect.Outcome='Passed';$reconnect.Reason='One requested reconnect reached authenticated IPv4/default-route readiness'
@@ -105,11 +104,10 @@ try {
         }
     }
     Write-Output 'Running the existing bounded performance test once. Disconnect wired Ethernet/VPN for an exclusive Wi-Fi result.'
-    $performance=$null
-    & (Join-Path $PSScriptRoot 'Test-RPi5-WiFi-Performance.ps1') -NoPause -PassThru -SkipConnect:$connectAttempted -ConfigPath $ConfigPath | ForEach-Object {
-        if($_ -isnot [string] -and $_.PSObject.Properties['Kind'] -and $_.Kind -eq 'RPi5PerformanceResult') {$performance=$_}
+    $performance=& (Join-Path $PSScriptRoot 'Test-RPi5-WiFi-Performance.ps1') -NoPause -PassThru -SkipConnect:$connectAttempted -ConfigPath $ConfigPath | ForEach-Object {
+        if($_ -isnot [string] -and $_.PSObject.Properties['Kind'] -and $_.Kind -eq 'RPi5PerformanceResult') {$_}
         else { Out-Host -InputObject $_ }
-    }
+    } | Select-Object -Last 1
     $after=$null
     try {$after=Get-Rpi5ConnectionReadiness} catch { Write-Warning 'Final live status unavailable.' }
     $readiness=[pscustomobject]@{SchemaVersion=1;UtilityVersion='0.6.26';CapturedUtc=[datetime]::UtcNow.ToString('o');
