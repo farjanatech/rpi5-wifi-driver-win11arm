@@ -22,9 +22,19 @@ Expand-Archive -LiteralPath $archive -DestinationPath $stage
 [void](Test-Rpi5PackageManifest $stage -RequiredNames @('rpi5cyw.sys','rpi5cyw.inf','rpi5cyw.cat','rpi5cyw-test.cer'))
 $original=@{}
 foreach ($file in Get-ChildItem -LiteralPath $stage -File) { $original[$file.Name]=(Get-FileHash -LiteralPath $file.FullName).Hash }
-foreach ($name in @('Install-RPi5-WiFi-Driver.cmd','Install-RPi5-WiFi-Driver.ps1')) {
-    Copy-Item -LiteralPath (Join-Path $root ('installer/'+$name)) -Destination (Join-Path $stage $name)
-}
+Copy-Item -LiteralPath (Join-Path $root 'installer/Install-RPi5-WiFi-Driver.cmd') -Destination (Join-Path $stage 'Install-RPi5-WiFi-Driver.cmd')
+# The public CMD deliberately launches the legacy packaged filename, not the
+# source filename. Replace that exact entry point rather than adding a sibling.
+Copy-Item -LiteralPath (Join-Path $root 'installer/Install-RPi5-WiFi-Driver.ps1') -Destination (Join-Path $stage 'install-test-driver.ps1')
+$launcher=Get-Content -LiteralPath (Join-Path $stage 'Install-RPi5-WiFi-Driver.cmd') -Raw
+if ($launcher -notmatch [regex]::Escape('-File "%~dp0install-test-driver.ps1"')) { throw 'Packaged CMD does not launch the verified installer.' }
+if ((Get-FileHash -LiteralPath (Join-Path $stage 'install-test-driver.ps1')).Hash -cne
+    (Get-FileHash -LiteralPath (Join-Path $root 'installer/Install-RPi5-WiFi-Driver.ps1')).Hash) { throw 'Packaged installer differs from tested source.' }
+. (Join-Path $stage 'install-test-driver.ps1') -LibraryOnly
+if ((Get-Rpi5CompatibleUefiRevision '838d87d') -ne '838d87d' -or
+    (Get-Rpi5CompatibleUefiRevision 'bda4c47') -ne 'bda4c47' -or
+    (Get-Rpi5CompatibleUefiRevision '6023be0')) { throw 'Packaged installer has the wrong firmware policy.' }
+Write-Output 'PASS: public CMD points to the tested installer; packaged entry point accepts UEFI exp.0.3/exp.0.5 and rejects exp.0.4.'
 Copy-Item -LiteralPath (Join-Path $root 'docs/EXP0.6.29.1.md') -Destination (Join-Path $stage 'EXP0.6.29.1.md')
 Copy-Item -LiteralPath (Join-Path $root 'docs/EXP0.6.29.1.md') -Destination (Join-Path $stage 'README-TESTING.txt')
 @"
@@ -36,7 +46,7 @@ signed_driver_reused_from=driver-exp0.6.29
 original_zip_sha256=$baseHash
 supported_uefi_revisions=bda4c47,838d87d
 "@ | Add-Content -LiteralPath (Join-Path $stage 'SOURCE_REVISION.txt') -Encoding UTF8
-$allowedChanges=@('Install-RPi5-WiFi-Driver.cmd','Install-RPi5-WiFi-Driver.ps1','README-TESTING.txt','SOURCE_REVISION.txt','SHA256SUMS.txt')
+$allowedChanges=@('Install-RPi5-WiFi-Driver.cmd','install-test-driver.ps1','README-TESTING.txt','SOURCE_REVISION.txt','SHA256SUMS.txt')
 foreach ($name in $original.Keys) {
     if ($name -notin $allowedChanges -and (Get-FileHash -LiteralPath (Join-Path $stage $name)).Hash -cne $original[$name]) {
         throw "Protected original file changed: $name"
@@ -49,7 +59,7 @@ $manifest=@(Get-ChildItem -LiteralPath $stage -File | Where-Object Name -ne 'SHA
     '{0}  {1}' -f (Get-FileHash -LiteralPath $_.FullName).Hash,$_.Name
 })
 $manifest | Set-Content -LiteralPath (Join-Path $stage 'SHA256SUMS.txt') -Encoding ASCII
-$verified=Test-Rpi5PackageManifest $stage -RequiredNames @('rpi5cyw.sys','rpi5cyw.inf','rpi5cyw.cat','rpi5cyw-test.cer','Install-RPi5-WiFi-Driver.ps1','EXP0.6.29.1.md')
+$verified=Test-Rpi5PackageManifest $stage -RequiredNames @('rpi5cyw.sys','rpi5cyw.inf','rpi5cyw.cat','rpi5cyw-test.cer','Install-RPi5-WiFi-Driver.cmd','install-test-driver.ps1','EXP0.6.29.1.md')
 Write-Output "PASS: verified $verified payload files; existing signed driver, certificate, firmware and utilities preserved."
 $output=Join-Path $root 'artifacts/compatibility'
 [void](New-Item -ItemType Directory -Path $output -Force)
