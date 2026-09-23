@@ -3,15 +3,24 @@ param([switch]$LibraryOnly, [switch]$NoPause)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Timing.ps1') -TimingLibraryOnly
+. (Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Transport.ps1') -TransportLibraryOnly
 
 function Get-Rpi5BusAssessment {
     param($Diagnostic)
     if ($null -eq $Diagnostic -or -not $Diagnostic.PSObject.Properties['BusModeStage']) {
         return 'Updated runtime diagnostics missing. Restart after installing exp0.6.14.'
     }
+    $highSpeedVerified=$Diagnostic.DiagVersion -ge 24 -and
+        $Diagnostic.PSObject.Properties['BusHighSpeedActive'] -and
+        $Diagnostic.PSObject.Properties['BusHighSpeedStatus'] -and
+        $Diagnostic.BusHighSpeedActive -eq 1 -and $Diagnostic.BusHighSpeedStatus -eq 0
+    $modeValid=$Diagnostic.BusActualKhz -le 25000 -or
+        ($highSpeedVerified -and $Diagnostic.BusActualKhz -le 50000)
+    if ($Diagnostic.DiagVersion -ge 24 -and $Diagnostic.PSObject.Properties['BusHighSpeedActive'] -and
+        $Diagnostic.BusHighSpeedActive -eq 1 -and -not $highSpeedVerified) { $modeValid=$false }
     if ($Diagnostic.DiagVersion -ge 10 -and $Diagnostic.BusModeStage -eq 6 -and
         $Diagnostic.BusWidth -eq 4 -and $Diagnostic.BusActualKhz -gt 400 -and
-        $Diagnostic.BusActualKhz -le 25000 -and $Diagnostic.BusVerifyReads -eq 16 -and
+        $modeValid -and $Diagnostic.BusVerifyReads -eq 16 -and
         $Diagnostic.BusUpgradeStatus -eq 0 -and $Diagnostic.BusVerifyStatus -eq 0) {
         return "BUS VERIFIED: 4-bit, calculated $($Diagnostic.BusActualKhz) kHz; 16 chip-ID reads passed. Not a throughput result."
     }
@@ -110,7 +119,7 @@ try {
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Output 'Performance utility 0.6.23 for installed exp0.6.14 or newer. This utility does not install drivers.'
+    Write-Output 'Performance utility 0.6.24 for installed exp0.6.14 or newer. This utility does not install drivers.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
     Write-Output 'The test requests example.com and up to 129 MiB of download payload from speed.cloudflare.com (plus protocol overhead). Repeated-download stage: up to 90 seconds. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
@@ -149,7 +158,7 @@ try {
         } catch { Write-Report "TEST ERROR: $($_.Exception.Message)" }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "Performance utility 0.6.23 report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "Performance utility 0.6.24 report; UTC=$([datetime]::UtcNow.ToString('o'))"
     # Explicit radio GET snapshots BEFORE and AFTER the measured workload,
     # never from the sampler or during downloads. Older drivers remain usable.
     $radioTool=Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Radio.ps1'
@@ -302,6 +311,11 @@ try {
     }
     Write-Report "Post-test driver snapshot refreshed=$freshSnapshot. Counters remain periodic/non-atomic."
     $after | Format-List * | Out-String -Width 500 | Set-Content (Join-Path $resultDirectory 'driver-after.txt')
+    try {
+        $transport=Get-Rpi5TransportReport -Diagnostic $after
+        $transport | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $resultDirectory 'transport-history.json') -Encoding UTF8
+        Write-Report 'Saved passive receive/queue history; monotonic timestamps, not a packet capture or proven stall diagnosis.'
+    } catch { Write-Report "Optional transport history unavailable: $($_.Exception.Message)" }
     try {
         $timing=Get-Rpi5TimingReport -Before $before -After $after
         $timing | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $resultDirectory 'timing-report.json') -Encoding UTF8

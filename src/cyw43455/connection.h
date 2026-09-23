@@ -4,6 +4,7 @@
  * Country policy follows Linux v6.12 brcmfmac cfg80211.c (ISC Broadcom).
  */
 #include "join_preference.h"
+#include "band_selection.h"
 static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
 {
     UCHAR country[12]={0},clm[4]={0},pmk[132]={0},ssid[36]={0},countries[1024]={0};
@@ -13,6 +14,8 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
     A->Network->Associated=A->Network->Authorized=FALSE;CywLink(A,FALSE);
     A->NetworkPhase=510;A->NetworkStatus=STATUS_SUCCESS;
     A->JoinPreferenceAccepted=0;A->JoinPreferenceError=0;A->JoinPreferenceStatus=(NTSTATUS)0x103;
+    RtlZeroMemory(A->BandSelection,sizeof(A->BandSelection));A->BandSelection[0]=CYW_BAND_SELECTION_VERSION;
+    A->Network->SelectingBand=TRUE;
     A->CountryRequested=(ULONG)R->Country[0]|((ULONG)R->Country[1]<<8);
     A->CountryApplied=0;A->CountryRevision=0xffffffffUL;
     A->CountryBefore=0;A->CountryBeforeRevision=0xffffffffUL;
@@ -87,9 +90,24 @@ CountryVerified:
     STEP(12,CywCmdInt(A,2,0));
     STEP(18,CywApplyJoinPreference(A));
     CywPut32(ssid,R->SsidLength);RtlCopyMemory(ssid+4,R->Ssid,R->SsidLength);
-    STEP(13,CywFirmwareCommand(A,26,TRUE,ssid,sizeof(ssid)));
-    A->NetworkPhase=520;
+    if(A->JoinPreferenceAccepted) {
+        Status=CywJoinSelectedBand(A,ssid);
+    } else {
+        /* An explicitly unsupported preference retains the working legacy
+         * asynchronous join, without claiming a verified preferred band. */
+        A->BandSelection[1]=7;A->BandSelection[3]=(ULONG)A->JoinPreferenceStatus;
+        A->BandSelection[13]=1;
+        STEP(13,CywFirmwareCommand(A,26,TRUE,ssid,sizeof(ssid)));
+        A->Network->SelectingBand=FALSE;
+        CywLink(A,A->Network->Associated && A->Network->Authorized);
+        A->NetworkPhase=A->Network->Associated && A->Network->Authorized?600:520;
+    }
 Exit:
+    if(!NT_SUCCESS(Status)) {
+        A->BandSelection[1]=Status==STATUS_CANCELLED?8u:6u;A->BandSelection[4]=(ULONG)Status;
+        A->Network->SelectingBand=TRUE;A->Network->Associated=A->Network->Authorized=FALSE;
+        CywLink(A,FALSE);
+    }
     RtlSecureZeroMemory(pmk,sizeof(pmk));RtlSecureZeroMemory(ssid,sizeof(ssid));
     return Status;
 #undef STEP

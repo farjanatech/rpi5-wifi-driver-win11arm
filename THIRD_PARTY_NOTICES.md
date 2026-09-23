@@ -125,6 +125,18 @@ country or arbitrary revision is selected when the requested locale is rejected.
 
 ## Linux brcmfmac register/clock-sequence reference
 
+exp0.6.24 uses the same Linux v6.12 ISC-licensed brcmfmac sources as protocol
+references for BAND/RSSI join preferences, disconnect scb-value layout and
+station authorization flags. Its bounded Windows startup selection and passive
+history implementation are maintained here. Standard SDIO SHS/EHS negotiation
+and SDHCI high-speed capability definitions were checked against Linux v6.12
+drivers/mmc/core/sdio.c, drivers/mmc/host/sdhci.h and include/linux/mmc/sdio.h;
+the independent Windows implementation does not include the Linux MMC stack.
+The corresponding Linux MMC sources are GPL-2.0-or-later; see repository LICENSE.
+https://github.com/torvalds/linux/blob/v6.12/drivers/mmc/core/sdio.c
+https://github.com/torvalds/linux/blob/v6.12/drivers/mmc/host/sdhci.h
+https://github.com/torvalds/linux/blob/v6.12/include/linux/mmc/sdio.h
+
 exp0.6.23 also uses Linux v6.12 brcmfmac/sdio.c as the protocol reference for
 global flow-control state/change debounce, host mailbox fields, SDPCM receive
 sequence tracking, and read-frame termination. Its Windows bounded service and

@@ -37,8 +37,11 @@
 #define CYW_SDIO_BUS_WIDTH_MASK       0x03
 #define CYW_SDIO_BUS_WIDTH_4BIT       0x02
 #define CYW_SDIO_SPEED_BSS_MASK       0x0e
+#define CYW_SDIO_SPEED_SUPPORTS_HS    0x01
+#define CYW_SDIO_SPEED_ENABLE_HS      0x02
 #define CYW_SDIO_CAP_LOW_SPEED        0x40
 #define CYW_SDIO_OPERATING_CLOCK_KHZ  25000UL
+#define CYW_SDIO_HIGH_SPEED_CLOCK_KHZ 50000UL
 
 #define SDHCI_PC_BUS_POWER_ON         0x01
 #define SDHCI_PC_BUS_VOLTAGE_180      0x0A
@@ -73,6 +76,7 @@
 
 #define SDHCI_CAP_BASE_CLK_MASK       0x0000FF00UL
 #define SDHCI_CAP_BASE_CLK_SHIFT      8
+#define SDHCI_CAP_HIGH_SPEED          0x00200000UL
 #define SDHCI_CAP_VOLTAGE_330         0x01000000UL
 #define SDHCI_CAP_VOLTAGE_300         0x02000000UL
 #define SDHCI_CAP_VOLTAGE_180         0x04000000UL
@@ -119,6 +123,9 @@ NTSTATUS SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
 VOID SdioDelayMilliseconds(ULONG Milliseconds);
 NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
                           ULONG Length, BOOLEAN Write);
-/* Serialized PASSIVE_LEVEL only. No high-speed/voltage/DMA changes. */
+/* Serialized PASSIVE_LEVEL only. Optional standards-gated high-speed SDR;
+ * never UHS/DDR, voltage switching, DMA, or a board-specific register guess.
+ * Successful negotiation/restore still requires caller CMD53 verification. */
 NTSTATUS SdioRestoreIdentificationBus(PRPI5CYW_ADAPTER Adapter);
+NTSTATUS SdioRestoreDefaultOperatingBus(PRPI5CYW_ADAPTER Adapter);
 NTSTATUS SdioNegotiateOperatingSpeed(PRPI5CYW_ADAPTER Adapter);

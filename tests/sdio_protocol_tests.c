@@ -63,6 +63,42 @@ main(void)
     CheckUlong("clock already below target",
                SdioCalculateClockDivider(25000, 50000),
                0);
+    CheckUlong("clock 200MHz to 50MHz SDR",
+               SdioCalculateClockDivider(200000,50000),2);
+    CheckUlong("clock 201MHz never exceeds 50MHz target",
+               SdioCalculateClockDivider(201000,50000),3);
+    CheckUlong("known host and card support standard high speed",
+               (ULONG)SdioCanUseHighSpeed(0x1002,0x0020c800,0,3,1),1);
+    CheckUlong("host high speed missing",
+               (ULONG)SdioCanUseHighSpeed(2,0x0000c800,0,3,1),0);
+    CheckUlong("card high speed missing",
+               (ULONG)SdioCanUseHighSpeed(2,0x0020c800,0,3,0),0);
+    CheckUlong("unknown base clock is not performance evidence",
+               (ULONG)SdioCanUseHighSpeed(2,0x00200000,0,3,1),0);
+    CheckUlong("unknown host version stays at baseline",
+               (ULONG)SdioCanUseHighSpeed(0xffff,0x0020c800,0,3,1),0);
+    CheckUlong("CCCR before high speed support stays at baseline",
+               (ULONG)SdioCanUseHighSpeed(2,0x0020c800,0,1,1),0);
+    CheckUlong("unknown CCCR revision stays at baseline",
+               (ULONG)SdioCanUseHighSpeed(2,0x0020c800,0,15,1),0);
+    CheckUlong("UHS timing is not silently reused",
+               (ULONG)SdioCanUseHighSpeed(2,0x0020c800,4,3,1),0);
+    CheckUlong("1.8V signaling needs a separately negotiated path",
+               (ULONG)SdioCanUseHighSpeed(2,0x0020c800,8,3,1),0);
+    CheckUlong("preset controller settings are not overridden",
+               (ULONG)SdioCanUseHighSpeed(2,0x0020c800,0x8000,3,1),0);
+    CheckUlong("unknown card timing is not high speed",
+               (ULONG)SdioCanUseHighSpeed(2,0x0020c800,0,3,9),0);
+    CheckUlong("no beneficial clock avoids unnecessary timing change",
+               (ULONG)SdioCanUseHighSpeed(2,0x00201900,0,3,1),0);
+    CheckUlong("tuned host state rejects standard timing change",
+               SdioHighSpeedRejectReason(2,0x0020c800,0x40,3,1),SDIO_HS_REJECT_HOST_MODE);
+    CheckUlong("v4 clock state rejects divided-clock assumption",
+               SdioHighSpeedRejectReason(2,0x0020c800,0x1000,3,1),SDIO_HS_REJECT_HOST_MODE);
+    CheckUlong("diagnostic preserves all independent rejection reasons",
+               SdioHighSpeedRejectReason(1,0,8,1,8),0x7f);
+    CheckUlong("no faster realizable clock reason",
+               SdioHighSpeedRejectReason(2,0x00201900,0,3,1),SDIO_HS_REJECT_NO_INCREASE);
 
     CheckUlong("R5 data-only response",
                (ULONG)SdioR5HasError(0x000000A5UL),

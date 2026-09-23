@@ -17,6 +17,7 @@
 typedef struct _CYW_NETWORK {
     int Stop;
     BOOLEAN RxPending,RxBatch,RxBatchServiced;
+    BOOLEAN Ready,Authorized,Paused;
     UCHAR TxFlow,TxSeq,TxMax;
     PUCHAR Rx,Tx;
 } CYW_NETWORK;
@@ -78,6 +79,7 @@ static VOID CywReceive(PRPI5CYW_ADAPTER Adapter,PUCHAR Buffer,ULONG Length)
 #include "../src/cyw43455/transport_service.h"
 #include "../src/cyw43455/transport_poll.h"
 #include "../src/cyw43455/transport_send.h"
+#include "../src/cyw43455/transport_trace.h"
 static void Init(void)
 {
     memset(&TestAdapter,0,sizeof(TestAdapter));memset(&TestNetwork,0,sizeof(TestNetwork));memset(StatusScript,0,sizeof(StatusScript));
@@ -99,6 +101,58 @@ int main(void)
     unsigned i,flow;UCHAR payload[4]={0x20,0,0,0};NTSTATUS status;
     /* No interrupt and no cached RX: no speculative F1/F2 operation. */
     Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);CHECK(PendingCalls==1 && !StatusReads && !FifoCalls);
+    /* A quiet CCCR starts a grace period, not a speculative FIFO read. At
+     * 100 ms, F1 status can independently prove actual pending frame work. */
+    Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);
+    Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL-1;
+    CHECK(Poll()==STATUS_NO_MORE_ENTRIES && !StatusReads && !FifoCalls);
+    Clock++;StatusScript[0]=CYW_INT_FRAME;Frame(0,0,2,0);
+    CHECK(Poll()==STATUS_SUCCESS && FifoCalls==1 && Delivered==1);
+    CHECK(TestAdapter.Transport.FallbackReads==1 && TestAdapter.Transport.FallbackFrames==1);
+    CHECK(TestAdapter.Transport.LastPending==0 && TestAdapter.Transport.PendingEmpty==3);
+    CHECK(TestAdapter.Transport.FrameNotifications==1);
+    /* The same fallback with empty status never touches FIFO and remains
+     * rate limited. It cannot silently convert FIFO data-available into FRAME. */
+    Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL;
+    StatusScript[0]=0x00800000u;
+    CHECK(Poll()==STATUS_NO_MORE_ENTRIES && !FifoCalls && StatusReads==1);
+    CHECK(TestAdapter.Transport.StatusNoEvents==1 && !TestAdapter.Transport.FallbackFrames);
+    CHECK(Poll()==STATUS_NO_MORE_ENTRIES && StatusReads==1);
+    Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL;
+    CHECK(Poll()==STATUS_NO_MORE_ENTRIES && StatusReads==2 && !FifoCalls);
+    /* A successful TX-side F1 read postpones fallback; active traffic already
+     * provides fresh status and does not need another forced transaction. */
+    Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);Clock+=900000;
+    CHECK(CywSendFrame(&TestAdapter,2,payload,4)==STATUS_SUCCESS && StatusReads==1);
+    Clock+=100000;CHECK(Poll()==STATUS_NO_MORE_ENTRIES && StatusReads==1);
+    Clock+=900000;CHECK(Poll()==STATUS_NO_MORE_ENTRIES && StatusReads==2);
+    CHECK(TestAdapter.Transport.FallbackReads==1);
+    /* A debounce reread is also a successful freshness observation. */
+    Init();StatusScript[0]=CYW_INT_FC_CHANGE;StatusScript[1]=0;
+    CHECK(CywTransportService(&TestAdapter,FALSE)==STATUS_SUCCESS && StatusReads==2);
+    Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL-1;
+    CHECK(Poll()==STATUS_NO_MORE_ENTRIES && StatusReads==2 && !TestAdapter.Transport.FallbackReads);
+    /* Mailbox-only fallback performs real mailbox service, never F2. */
+    Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL;
+    StatusScript[0]=CYW_INT_MAIL;Mail=CYW_MAIL_READY|(4u<<16);
+    CHECK(Poll()==STATUS_NO_MORE_ENTRIES && MailAcks==1 && !FifoCalls);
+    CHECK(TestAdapter.Transport.FallbackMailbox==1 && !TestNetwork.RxPending);
+    /* NAK-handled is itself documented frame work, unlike CCCR or raw FIFO
+     * availability. Firmware halt and F1 failures retain fail-closed behavior. */
+    Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL;
+    StatusScript[0]=CYW_INT_MAIL;Mail=CYW_MAIL_NAK_HANDLED;Frame(0,0,2,0);
+    CHECK(Poll()==STATUS_SUCCESS && Delivered==1 && TestAdapter.Transport.FallbackMailbox==1);
+    Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL;
+    StatusScript[0]=CYW_INT_MAIL;Mail=CYW_MAIL_HALT;
+    CHECK(Poll()==STATUS_DEVICE_NOT_READY && !FifoCalls && TestAdapter.Transport.Halted);
+    Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL;FailIo=3;
+    CHECK(Poll()==STATUS_IO_DEVICE_ERROR && !FifoCalls && TestAdapter.Transport.ServiceErrors==1);
+    CHECK(TestAdapter.Transport.GlobalFlow && TestAdapter.Transport.FallbackReads==1);
+    /* A backwards test clock does not underflow into repeated forced reads. */
+    Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);Clock=1;
+    CHECK(Poll()==STATUS_NO_MORE_ENTRIES && !StatusReads);
+    Clock+=CYW_TRANSPORT_FALLBACK_INTERVAL;
+    CHECK(Poll()==STATUS_NO_MORE_ENTRIES && StatusReads==1);
     /* A bounded RX batch services pending/status once, yet accepts all frames
      * and wraparound. This is not a new or larger worker packet budget. */
     Init();Pending=2;StatusScript[0]=CYW_INT_FRAME;TestNetwork.RxBatch=TRUE;
@@ -201,6 +255,44 @@ int main(void)
     TestAdapter.Transport.GlobalBlocked100ns=~0ULL-2;CywTransportSetGlobal(&TestAdapter.Transport,1,200);
     CywTransportSetGlobal(&TestAdapter.Transport,0,205);CHECK(TestAdapter.Transport.GlobalBlocked100ns==~0ULL);
     Init();TestNetwork.Stop=1;CHECK(Poll()==STATUS_CANCELLED && !IoCalls && !FifoCalls);
+    /* The actual production sampler is passive and captures at most once per
+     * second. It records observed counters, not an invented stall diagnosis. */
+    Init();TestNetwork.Ready=TestNetwork.Authorized=TRUE;TestNetwork.RxPending=TRUE;
+    TestAdapter.NetworkPhase=600;TestAdapter.TxPackets=0x100000007ULL;TestAdapter.RxPackets=9;
+    TestAdapter.TxQueueFrames=3;TestAdapter.TxQueueFull=4;TestAdapter.TxCreditWaits=5;
+    TestAdapter.Transport.LastPending=2;TestAdapter.Transport.LastInterrupt=CYW_INT_FRAME;
+    TestAdapter.Transport.Frames=11;TestAdapter.PacketProbe.EchoLate=2;TestAdapter.PacketProbe.EchoMaxMs=1234;
+    CywTransportSample(&TestAdapter);
+    CHECK(TestAdapter.Transport.Trace.Version==1 && TestAdapter.Transport.Trace.EntryBytes==128);
+    CHECK(TestAdapter.Transport.Trace.Capacity==128 && TestAdapter.Transport.Trace.Count==1);
+    CHECK(TestAdapter.Transport.Trace.Next==1 && TestAdapter.Transport.Trace.Origin100ns==Clock);
+    CHECK(TestAdapter.Transport.Trace.Entry[0].Flags==(CYW_TRACE_RX_PENDING|CYW_TRACE_READY|CYW_TRACE_AUTHORIZED));
+    CHECK(TestAdapter.Transport.Trace.Entry[0].NetworkPhase==600 && TestAdapter.Transport.Trace.Entry[0].TxPacketsLow==7);
+    CHECK(TestAdapter.Transport.Trace.Entry[0].RxPacketsLow==9 && TestAdapter.Transport.Trace.Entry[0].RxFrames==11);
+    CHECK(TestAdapter.Transport.Trace.Entry[0].LastPending==2 && TestAdapter.Transport.Trace.Entry[0].LastInterrupt==CYW_INT_FRAME);
+    CHECK(TestAdapter.Transport.Trace.Entry[0].QueueDepth==3 && TestAdapter.Transport.Trace.Entry[0].QueueFull==4);
+    CHECK(TestAdapter.Transport.Trace.Entry[0].CreditWaits==5 && TestAdapter.Transport.Trace.Entry[0].TxMaximum==32);
+    CHECK(TestAdapter.Transport.Trace.Entry[0].EchoLate==2 && TestAdapter.Transport.Trace.Entry[0].EchoMaxMs==1234);
+    Clock+=CYW_TRANSPORT_TRACE_INTERVAL-1;CywTransportSample(&TestAdapter);
+    CHECK(TestAdapter.Transport.Trace.Count==1);
+    Clock++;TestAdapter.Transport.PendingEmpty=17;TestAdapter.Transport.FallbackFrames=2;
+    CywTransportSample(&TestAdapter);CHECK(TestAdapter.Transport.Trace.Count==2);
+    CHECK(TestAdapter.Transport.Trace.Entry[1].PendingEmpty==17 && TestAdapter.Transport.Trace.Entry[1].FallbackFrames==2);
+    CHECK(!IoCalls && !FifoCalls);
+    /* Ring retention and counter rollover are explicit in the binary ABI.
+     * Every slot is overwritten in place without growing the allocation. */
+    Init();
+    for(i=0;i<130;i++) {
+        TestAdapter.Transport.Frames=i;Clock=100+(ULONG64)i*CYW_TRANSPORT_TRACE_INTERVAL;
+        CywTransportSample(&TestAdapter);
+    }
+    CHECK(TestAdapter.Transport.Trace.Count==128 && TestAdapter.Transport.Trace.Next==2);
+    CHECK(TestAdapter.Transport.Trace.Serial==130 && TestAdapter.Transport.Trace.Entry[2].Serial==3);
+    CHECK(TestAdapter.Transport.Trace.Entry[1].Serial==130 && TestAdapter.Transport.Trace.Entry[1].RxFrames==129);
+    Clock=1;TestAdapter.Transport.Frames=0xffffffffu;CywTransportSample(&TestAdapter);
+    CHECK(TestAdapter.Transport.Trace.Entry[2].Time100ns==1 && TestAdapter.Transport.Trace.Entry[2].RxFrames==0xffffffffu);
+    Clock+=CYW_TRANSPORT_TRACE_INTERVAL;TestAdapter.Transport.Frames=0;CywTransportSample(&TestAdapter);
+    CHECK(TestAdapter.Transport.Trace.Entry[3].RxFrames==0 && !IoCalls && !FifoCalls);
     printf("%s: production SDPCM service, FIFO poll, and TX gate tests\n",Failures?"FAIL":"PASS");
     return Failures?1:0;
 }

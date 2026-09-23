@@ -4,23 +4,35 @@
 static NTSTATUS CywTransportService(PRPI5CYW_ADAPTER A,BOOLEAN ProbePending)
 {
     CYW_NETWORK *N=A->Network;CYW_TRANSPORT_STATE *T=&A->Transport;
-    ULONG ist,again=0,mail;UCHAR pending;NTSTATUS status;
+    ULONG ist,again=0,mail;UCHAR pending;NTSTATUS status;BOOLEAN fallback=FALSE;
+    ULONG64 now;
     if(N->Stop)return STATUS_CANCELLED;
     if(T->Halted)return STATUS_DEVICE_NOT_READY;
     if(ProbePending && !N->RxPending) {
         T->PendingReads++;
         status=SdioCmd52Read(A,0,5,&pending);
         if(!NT_SUCCESS(status))goto Failed;
-        if(!(pending&6))return STATUS_SUCCESS;
+        T->LastPending=pending;
+        if(!(pending&6)) {
+            T->PendingEmpty++;
+            if(!CywTransportFallbackDue(T,KeQueryInterruptTime()))return STATUS_SUCCESS;
+            /* Bound a summary-register blind spot without inventing FIFO
+             * work: use the same F1 status/ack path as normal service, at
+             * most once per 100 ms since any successful F1 status read.
+             * This is defensive coverage, not a proven hardware stall cause. */
+            fallback=TRUE;T->FallbackReads++;
+        }
         /* CCCR pending can be mailbox/flow-only. It is not by itself a frame
          * indication: only F1 FRAME/NAKHANDLED below establishes new RX work. */
     }
     T->StatusReads++;
     status=CywBpRead(A,A->SdioCoreBase+0x20,&ist);
     if(!NT_SUCCESS(status))goto Failed;
+    now=KeQueryInterruptTime();CywTransportStatusObserved(T,now);
     T->LastInterrupt=ist;
-    CywTransportSetGlobal(T,(ist&CYW_INT_FC_STATE)!=0,KeQueryInterruptTime());
+    CywTransportSetGlobal(T,(ist&CYW_INT_FC_STATE)!=0,now);
     ist&=CYW_INT_MASK;
+    if(!ist)T->StatusNoEvents++;
     if(ist) {
         T->StatusAcks++;
         status=CywBpWrite(A,A->SdioCoreBase+0x20,ist);
@@ -37,15 +49,21 @@ static NTSTATUS CywTransportService(PRPI5CYW_ADAPTER A,BOOLEAN ProbePending)
         T->StatusReads++;
         status=CywBpRead(A,A->SdioCoreBase+0x20,&again);
         if(!NT_SUCCESS(status))goto Failed;
+        now=KeQueryInterruptTime();CywTransportStatusObserved(T,now);
         T->LastInterrupt=again;
+        if(!(again&CYW_INT_MASK))T->StatusNoEvents++;
         if(again&CYW_INT_FC_CHANGE)T->FcRaces++;
-        CywTransportSetGlobal(T,(again&(CYW_INT_FC_STATE|CYW_INT_FC_CHANGE))!=0,KeQueryInterruptTime());
+        CywTransportSetGlobal(T,(again&(CYW_INT_FC_STATE|CYW_INT_FC_CHANGE))!=0,now);
         /* Do not acknowledge new unrelated events here: service them now and
          * leave their hardware indication for the next bounded status pass. */
         ist|=again&CYW_INT_MASK;
     }
-    if(ist&CYW_INT_FRAME)N->RxPending=TRUE;
+    if(ist&CYW_INT_FRAME) {
+        T->FrameNotifications++;N->RxPending=TRUE;
+        if(fallback)T->FallbackFrames++;
+    }
     if(ist&CYW_INT_MAIL) {
+        if(fallback)T->FallbackMailbox++;
         T->MailReads++;
         status=CywBpRead(A,A->SdioCoreBase+0x4c,&mail);
         if(!NT_SUCCESS(status))goto Failed;

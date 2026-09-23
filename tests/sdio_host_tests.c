@@ -18,6 +18,7 @@ LARGE_INTEGER KeQueryPerformanceCounter(LARGE_INTEGER *Frequency)
 }
 static ULONG SleepUs, SleepCount, StallUs, StopOnSleep;
 static ULONG BusClockFault,BusHostFault;
+static ULONG HighSpeedClockSeen,HighSpeedHostFault,HighSpeedCardFault,HighSpeedStateFault;
 static ULONG PhaseMode, PhaseUs[3], ScheduledEvent, PhaseWords, StopOnStall;
 static ULONG64 PhaseDue;
 static PRPI5CYW_ADAPTER ActiveAdapter;
@@ -65,6 +66,7 @@ void WRITE_REGISTER_UCHAR(PUCHAR Address, UCHAR Value)
         *Address = Fault == 7 ? Value : 0;
     }
     else if(Offset(Address)==SDHCI_HOST_CONTROL && BusHostFault && (Value&2)) *Address=0;
+    else if(Offset(Address)==SDHCI_HOST_CONTROL && HighSpeedHostFault && (Value&4)) *Address=(UCHAR)(Value&~4U);
     else *Address = Value;
 }
 void WRITE_REGISTER_ULONG(PULONG Address, ULONG Value)
@@ -94,8 +96,17 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
 {
     ULONG Argument, Fn, Reg, Response = 0, Command;
     *Address = Value;
+    if(Offset(Address)==SDHCI_CLOCK_CONTROL && (Value&1) && (Value&0xff00)==0x0200) {
+        HighSpeedClockSeen=1;
+        if(HighSpeedStateFault==1) *((PUCHAR)Registers+SDHCI_POWER_CONTROL)^=2;
+        if(HighSpeedStateFault==2) *((PUSHORT)((PUCHAR)Registers+SDHCI_HOST_CONTROL2))|=8;
+        HighSpeedStateFault=0;
+    }
     if (Offset(Address) == SDHCI_CLOCK_CONTROL && (Value & 1) &&
-        !(BusClockFault==2 || (BusClockFault==1 && (Value&0xff00)==0x0400)))
+        !(BusClockFault==2 || (BusClockFault==1 && (Value&0xff00)==0x0400) ||
+          (BusClockFault>=3 && (Value&0xff00)==0x0200) ||
+          (BusClockFault==4 && HighSpeedClockSeen && (Value&0xff00)==0x0400) ||
+          (BusClockFault==5 && HighSpeedClockSeen)))
         *Address |= SDHCI_CLK_INT_CLK_STABLE;
     if (Offset(Address) != SDHCI_COMMAND) return;
     CommandCount++;
@@ -161,6 +172,9 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
         if ((Argument & 0x80000000UL) != 0)
         {
             Card[Fn][Reg] = Argument & 0xFF;
+            if(HighSpeedCardFault && Fn==0 && Reg==CYW_SDIO_CCCR_SPEED &&
+                (Card[0][Reg]&CYW_SDIO_SPEED_BSS_MASK)==CYW_SDIO_SPEED_ENABLE_HS)
+                Card[0][Reg]&=~CYW_SDIO_SPEED_ENABLE_HS;
             if (Fn == 0 && Reg == 2 && Fault != 8) Card[0][3] = Card[0][2];
             if (Fn == 1 && Reg == CYW_F1_CLOCK && Fault != 9)
                 Card[1][Reg] |= 0x40;
@@ -205,6 +219,7 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     SimTime=ReadyAt=0;SleepUs=1000;SleepCount=StallUs=StopOnSleep=0;
     ActiveAdapter=Adapter;
     BusClockFault=BusHostFault=0;
+    HighSpeedClockSeen=HighSpeedHostFault=HighSpeedCardFault=HighSpeedStateFault=0;
     PhaseMode=ScheduledEvent=PhaseWords=StopOnStall=0;PhaseDue=0;
     memset(PhaseUs,0,sizeof(PhaseUs));
     Card[1][CYW_F1_WINDOW_LOW] = 0x80;
@@ -224,6 +239,99 @@ static void CheckRestored(void)
 #include "erom_tests.h"
 #include "bus_mode_tests.h"
 
+static void InitHighSpeedBus(PRPI5CYW_ADAPTER A)
+{
+    InitBus(A);A->HostVersion=2;A->Capabilities|=SDHCI_CAP_HIGH_SPEED;
+    SdioWrite8(A,SDHCI_POWER_CONTROL,SDHCI_PC_BUS_VOLTAGE_330|SDHCI_PC_BUS_POWER_ON);
+}
+static void CheckDefaultOperatingBus(PRPI5CYW_ADAPTER A)
+{
+    CHECK(A->BusModeStage==4 && A->BusWidth==4 && A->BusActualKhz==25000);
+    CHECK(!A->BusHighSpeedActive && A->BusRecoveryStatus==0);
+    CHECK(Card[0][CYW_SDIO_CCCR_SPEED]==1 && Card[0][CYW_SDIO_CCCR_BUS_INTERFACE]==0x82);
+    CHECK(SdioRead8(A,SDHCI_HOST_CONTROL)==2 && SdioRead16(A,SDHCI_CLOCK_CONTROL)==0x0407);
+}
+static void RunHighSpeedBusTests(void)
+{
+    RPI5CYW_ADAPTER hsAdapter;
+    ULONG baselineCalls,highSpeedCalls,failedCall,modeFault;
+    InitBus(&hsAdapter);CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);
+    baselineCalls=Commands52;
+    InitHighSpeedBus(&hsAdapter);CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);
+    highSpeedCalls=Commands52;
+    CHECK(highSpeedCalls>baselineCalls);
+    CHECK(hsAdapter.BusHighSpeedEligible==1 && hsAdapter.BusHighSpeedAttempted==1);
+    CHECK(hsAdapter.BusHighSpeedActive==1 && hsAdapter.BusHighSpeedStatus==0);
+    CHECK(hsAdapter.BusHighSpeedRejectMask==0 && hsAdapter.BusModeStage==4);
+    CHECK(hsAdapter.BusWidth==4 && hsAdapter.BusActualKhz==50000);
+    CHECK(hsAdapter.BusTargetKhz==50000 && Card[0][CYW_SDIO_CCCR_SPEED]==3);
+    CHECK(SdioRead8(&hsAdapter,SDHCI_HOST_CONTROL)==6);
+    CHECK(SdioRead16(&hsAdapter,SDHCI_CLOCK_CONTROL)==0x0207);
+    CHECK(SdioRead16(&hsAdapter,SDHCI_HOST_CONTROL2)==0);
+    CHECK(SdioRead8(&hsAdapter,SDHCI_POWER_CONTROL)==15);
+    /* Successful selection is deliberately NOT stage6: caller must perform
+     * real chip-ID CMD53 readback before any firmware association. */
+    CHECK(SdioRestoreDefaultOperatingBus(&hsAdapter)==0);CheckDefaultOperatingBus(&hsAdapter);
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0 && hsAdapter.BusHighSpeedActive==1);
+    CHECK(SdioRestoreIdentificationBus(&hsAdapter)==0);CheckSlow(&hsAdapter);
+    CHECK(hsAdapter.BusHighSpeedActive==0);
+    /* Odd base clocks must use the divider, never round above 50 MHz. */
+    InitHighSpeedBus(&hsAdapter);hsAdapter.Capabilities=SDHCI_CAP_HIGH_SPEED|(201UL<<8);
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);
+    CHECK(hsAdapter.BusActualKhz==33500 && hsAdapter.BusHighSpeedActive==1);
+    /* Missing or unknown evidence preserves the old default-rate path. */
+    InitHighSpeedBus(&hsAdapter);hsAdapter.HostVersion=0xffff;
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);CheckDefaultOperatingBus(&hsAdapter);
+    CHECK(hsAdapter.BusHighSpeedRejectMask==SDIO_HS_REJECT_HOST_VERSION);
+    CHECK(!hsAdapter.BusHighSpeedAttempted && !HighSpeedClockSeen);
+    InitHighSpeedBus(&hsAdapter);hsAdapter.Capabilities&=~SDHCI_CAP_HIGH_SPEED;
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);CheckDefaultOperatingBus(&hsAdapter);
+    CHECK(hsAdapter.BusHighSpeedRejectMask==SDIO_HS_REJECT_HOST_CAP);
+    InitHighSpeedBus(&hsAdapter);Card[0][CYW_SDIO_CCCR_SPEED]=0;
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);
+    CHECK(hsAdapter.BusActualKhz==25000 && !hsAdapter.BusHighSpeedAttempted);
+    CHECK(hsAdapter.BusHighSpeedRejectMask==SDIO_HS_REJECT_CARD_CAP);
+    InitHighSpeedBus(&hsAdapter);SdioWrite16(&hsAdapter,SDHCI_HOST_CONTROL2,8);
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);CheckDefaultOperatingBus(&hsAdapter);
+    CHECK(hsAdapter.BusHighSpeedRejectMask==SDIO_HS_REJECT_HOST_MODE);
+    CHECK(SdioRead16(&hsAdapter,SDHCI_HOST_CONTROL2)==8 && !hsAdapter.BusHighSpeedAttempted);
+    /* Every high-speed CMD52 can fail, including readback after the card has
+     * already changed timing. A successful 25 MHz recovery is the ONLY success. */
+    for(failedCall=baselineCalls+1;failedCall<=highSpeedCalls;++failedCall) {
+        InitHighSpeedBus(&hsAdapter);Fail52At=failedCall;
+        CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);CheckDefaultOperatingBus(&hsAdapter);
+        CHECK(hsAdapter.BusHighSpeedAttempted==1 && !NT_SUCCESS(hsAdapter.BusHighSpeedStatus));
+    }
+    InitHighSpeedBus(&hsAdapter);HighSpeedHostFault=1;
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);CheckDefaultOperatingBus(&hsAdapter);
+    CHECK(hsAdapter.BusHighSpeedStatus==STATUS_DEVICE_DATA_ERROR);
+    InitHighSpeedBus(&hsAdapter);HighSpeedCardFault=1;
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);CheckDefaultOperatingBus(&hsAdapter);
+    CHECK(!NT_SUCCESS(hsAdapter.BusHighSpeedStatus));
+    InitHighSpeedBus(&hsAdapter);BusClockFault=3;
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);CheckDefaultOperatingBus(&hsAdapter);
+    CHECK(hsAdapter.BusHighSpeedStatus==STATUS_IO_TIMEOUT);
+    /* If default-rate recovery itself fails, even successful 400 kHz restore
+     * must fail startup; inconsistent or unrecoverable buses never associate. */
+    InitHighSpeedBus(&hsAdapter);BusClockFault=4;
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==STATUS_IO_TIMEOUT);
+    CHECK(hsAdapter.BusModeStage==90 && !hsAdapter.BusHighSpeedActive);CheckSlow(&hsAdapter);
+    InitHighSpeedBus(&hsAdapter);BusClockFault=5;
+    CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==STATUS_IO_TIMEOUT);
+    CHECK(hsAdapter.BusModeStage==99 && !NT_SUCCESS(hsAdapter.BusRecoveryStatus));
+    for(modeFault=1;modeFault<=2;++modeFault) {
+        InitHighSpeedBus(&hsAdapter);HighSpeedStateFault=modeFault;
+        CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==STATUS_DEVICE_CONFIGURATION_ERROR);
+        CHECK(hsAdapter.BusModeStage==99 && !hsAdapter.BusHighSpeedActive);
+        CHECK(hsAdapter.BusActualKhz==400 && !NT_SUCCESS(hsAdapter.BusRecoveryStatus));
+    }
+    InitHighSpeedBus(&hsAdapter);CHECK(SdioNegotiateOperatingSpeed(&hsAdapter)==0);
+    hsAdapter.IoStopped=1;baselineCalls=CommandCount;
+    CHECK(!NT_SUCCESS(SdioRestoreDefaultOperatingBus(&hsAdapter)) && CommandCount==baselineCalls);
+    CHECK(hsAdapter.BusModeStage==99 && !hsAdapter.BusHighSpeedActive);
+    puts("PASS: capability-checked standard SDR high speed, unchanged voltage, CMD52/clock/host fault matrix, verified rollback gating.");
+}
+
 static void RunPhasePollingTests(void)
 {
     RPI5CYW_ADAPTER a;UCHAR b[512]={0};ULONG write,phase;
@@ -242,6 +350,16 @@ static void RunPhasePollingTests(void)
         a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=25000;
         CHECK(SdioFifoTransfer(&a,b,sizeof(b),(BOOLEAN)write)==0);
         CHECK(StallUs==150 && SleepCount==0);
+        Init(&a);PhaseMode=1;PhaseUs[0]=20;PhaseUs[1]=PhaseUs[2]=40;SleepUs=16000;
+        a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=50000;
+        a.BusHighSpeedActive=1;a.BusCardSpeed=3;a.HostControl=6;
+        CHECK(SdioFifoTransfer(&a,b,sizeof(b),(BOOLEAN)write)==0);
+        CHECK(StallUs==100 && SleepCount==0);
+        Init(&a);PhaseMode=1;PhaseUs[0]=20;PhaseUs[1]=PhaseUs[2]=40;SleepUs=16000;
+        a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=50000;
+        a.BusHighSpeedActive=1;a.BusCardSpeed=1;a.HostControl=6;
+        CHECK(SdioFifoTransfer(&a,b,sizeof(b),(BOOLEAN)write)==0);
+        CHECK(StallUs==40 && SleepCount==2); /* inconsistent timing is not validated HS */
     }
     for(phase=0;phase<3;++phase) {
         Init(&a);PhaseMode=1;PhaseUs[phase]=1000;SleepUs=16000;
@@ -277,6 +395,7 @@ int main(void)
     C_ASSERT(sizeof(NTSTATUS) == 4);
     RunEromTests();
     RunBusModeTests();
+    RunHighSpeedBusTests();
     RunPhasePollingTests();
     Init(&Adapter);Adapter.BpWindowValid=1;
     CHECK(SdioCmd52Write(&Adapter,1,0x1000a,0,0xff)==0 && !Adapter.BpWindowValid);

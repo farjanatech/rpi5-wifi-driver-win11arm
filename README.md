@@ -1,5 +1,6 @@
-> Current candidate: **exp0.6.23**, firmware flow-control corrections, bounded
-> receive-status batching and optimized ARM64 build. See [EXP0.6.23](./docs/EXP0.6.23.md).
+> Current candidate: **exp0.6.24**, bounded receive-notification recovery,
+> verified startup band selection and capability-checked 50 MHz SDR with safe fallback.
+> See [EXP0.6.24](./docs/EXP0.6.24.md). Hardware speed improvement is not yet validated.
 > It is not a hardware-proven speed improvement. Keep exp0.6.16 as the tested fallback.
 > The existing performance command automatically includes firmware/radio evidence
 > before and after load plus timing-report.json. Unknown WMM mapping retains safe

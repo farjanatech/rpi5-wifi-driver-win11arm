@@ -47,6 +47,10 @@ function Get-Rpi5ConnectStepName {
         14 { 'country-initial-read' } 15 { 'regulatory-data-status' } 16 { 'country-full-auto-revision' }
         17 { 'supported-country-query' }
         18 { 'automatic-band-preference' }
+        19 { 'preferred-band-join-readback' } 20 { 'restore-normal-band-selection' }
+        21 { 'fallback-disassociate' } 22 { 'fallback-join-SSID' }
+        23 { 'fallback-band-join-readback' }
+        24 { 'final-band-authorization-readback' }
         default { 'not-recorded' }
     }
 }
@@ -58,6 +62,31 @@ function Get-Rpi5JoinPreferenceSummary {
         }
     }
     if ($Snapshot.DiagVersion -lt 20) { return 'Automatic band preference: not provided by this driver version.' }
+    if ($Snapshot.DiagVersion -ge 24) {
+        if (-not $Snapshot.PSObject.Properties['BandSelectionV1']) {
+            return 'Automatic band selection: current readback unavailable; do not assume 5 GHz.'
+        }
+        try {
+            [byte[]]$selection=$Snapshot.BandSelectionV1
+            if ($selection.Length -ne 64 -or [BitConverter]::ToUInt32($selection,0) -ne 1) {
+                throw 'Invalid band-selection report.'
+            }
+            $outcome=[BitConverter]::ToUInt32($selection,4)
+            $flags=[BitConverter]::ToUInt32($selection,8)
+            $finalStatus=[BitConverter]::ToUInt32($selection,16)
+            $channel=[BitConverter]::ToUInt32($selection,36)
+            $rssi=[BitConverter]::ToInt32($selection,40)
+            $attempts=[BitConverter]::ToUInt32($selection,52)
+            if ($outcome -eq 7) { return 'Automatic band preference unsupported: legacy firmware selection, no verified preferred-band claim.' }
+            if ($outcome -in 2,3,5 -and ($flags -band 24) -eq 24 -and $finalStatus -eq 0 -and
+                $channel -ge 1 -and $channel -le 196 -and $rssi -lt 0 -and $rssi -ge -127) {
+                $band=if($channel -le 14){'2.4 GHz'}else{'5 GHz'}
+                $selectionMode=if($outcome -eq 5){'automatic fallback'}else{'initial selection'}
+                return "Startup band verified: $band, channel $channel, RSSI $rssi dBm; $selectionMode, $attempts join attempt(s). This is not a speed measurement."
+            }
+            return "Automatic band selection not verified: outcome=$outcome; inspect diagnostics."
+        } catch { return 'Automatic band selection: invalid current readback; do not assume 5 GHz.' }
+    }
     if ($Snapshot.JoinPreferenceAccepted -eq 1 -and $Snapshot.JoinPreferenceStatus -eq 0) {
         return 'Automatic band preference accepted: signal-based selection with an 8 dB preference for 5 GHz; 2.4 GHz remains eligible. Actual band is shown by the radio/performance report.'
     }

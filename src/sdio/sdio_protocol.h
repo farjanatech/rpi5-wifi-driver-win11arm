@@ -151,3 +151,42 @@ SdioCalculateClockDivider(
 
     return (USHORT)(RealDivisor >> 1);
 }
+
+/* Standard SD high-speed (single data rate), NOT UHS SDR50 or DDR50.
+ * Linux v6.12 mmc/core/sdio.c mmc_sdio_switch_hs and host/sdhci.h:
+ * host HISPD capability bit21, card CCCR SPEED SHS bit0/EHS bit1.
+ * This implementation knows SDHCI3.0 divided-clock mode only. Unknown host
+ * versions, UHS/1.8V/tuning/preset/v4 modes and absent base-clock evidence do
+ * not authorize changing timing. Those paths stay at the existing baseline.
+ */
+#define SDIO_HS_REJECT_HOST_VERSION 0x01UL
+#define SDIO_HS_REJECT_HOST_CAP     0x02UL
+#define SDIO_HS_REJECT_BASE_CLOCK   0x04UL
+#define SDIO_HS_REJECT_HOST_MODE    0x08UL
+#define SDIO_HS_REJECT_CCCR_VERSION 0x10UL
+#define SDIO_HS_REJECT_CARD_CAP     0x20UL
+#define SDIO_HS_REJECT_CARD_MODE    0x40UL
+#define SDIO_HS_REJECT_NO_INCREASE  0x80UL
+static __forceinline ULONG
+SdioHighSpeedRejectReason(ULONG HostVersion, ULONG Capabilities,
+                         USHORT HostControl2, UCHAR CccrRevision, UCHAR CardSpeed)
+{
+    ULONG BaseKhz, ActualKhz, Reason=0;
+    USHORT Divider;
+    if((HostVersion & 0xffUL)!=2)Reason|=SDIO_HS_REJECT_HOST_VERSION;
+    if(!(Capabilities & 0x00200000UL))Reason|=SDIO_HS_REJECT_HOST_CAP;
+    if(!(Capabilities & 0x0000ff00UL))Reason|=SDIO_HS_REJECT_BASE_CLOCK;
+    if(HostControl2 & 0x90cfU)Reason|=SDIO_HS_REJECT_HOST_MODE;
+    if((CccrRevision & 15U)<2 || (CccrRevision & 15U)>3)Reason|=SDIO_HS_REJECT_CCCR_VERSION;
+    if(!(CardSpeed & 1U))Reason|=SDIO_HS_REJECT_CARD_CAP;
+    if(CardSpeed & 14U)Reason|=SDIO_HS_REJECT_CARD_MODE;
+    if(Reason)return Reason;
+    BaseKhz=((Capabilities >> 8) & 255UL)*1000UL;
+    Divider=SdioCalculateClockDivider(BaseKhz,50000UL);
+    ActualKhz=Divider?BaseKhz/(2UL*Divider):BaseKhz;
+    return ActualKhz>25000UL && ActualKhz<=50000UL?0:SDIO_HS_REJECT_NO_INCREASE;
+}
+static __forceinline int
+SdioCanUseHighSpeed(ULONG HostVersion, ULONG Capabilities,
+                   USHORT HostControl2, UCHAR CccrRevision, UCHAR CardSpeed)
+{return SdioHighSpeedRejectReason(HostVersion,Capabilities,HostControl2,CccrRevision,CardSpeed)==0;}

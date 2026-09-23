@@ -612,7 +612,12 @@ SdioCmd53TransferRaw(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
     if (KeGetCurrentIrql() != PASSIVE_LEVEL) return STATUS_INVALID_DEVICE_STATE;
     OperatingBus = (Function == 1 || Function == 2) &&
         Adapter->BusModeStage == 6 && Adapter->BusWidth == 4 &&
-        Adapter->BusActualKhz > 400 && Adapter->BusActualKhz <= 25000;
+        Adapter->BusActualKhz > 400 &&
+        ((!Adapter->BusHighSpeedActive && Adapter->BusActualKhz <= CYW_SDIO_OPERATING_CLOCK_KHZ) ||
+         (Adapter->BusHighSpeedActive && Adapter->BusHighSpeedStatus == STATUS_SUCCESS &&
+          Adapter->BusActualKhz <= CYW_SDIO_HIGH_SPEED_CLOCK_KHZ &&
+          (Adapter->BusCardSpeed & CYW_SDIO_SPEED_BSS_MASK)==CYW_SDIO_SPEED_ENABLE_HS &&
+          (Adapter->HostControl & SDHCI_HC_HIGH_SPEED_ENABLE)!=0));
     FastLimit = OperatingBus ? 5 : (Function == 2 ? 4 : 0);
     if (!Write) RtlZeroMemory(Buffer, Length);
     Adapter->Cmd53BytesTransferred = 0;

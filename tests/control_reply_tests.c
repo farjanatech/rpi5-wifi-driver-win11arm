@@ -7,7 +7,7 @@
 typedef unsigned long long ULONGLONG;
 typedef struct _CYW_NETWORK {
     USHORT RequestId;UCHAR TxSeq,TxMax;int Stop;
-    PUCHAR Rx;BOOLEAN Associated,Authorized;
+    PUCHAR Rx;BOOLEAN Associated,Authorized,SelectingBand,Powered;int Paused;
 } CYW_NETWORK;
 #define STATUS_UNSUCCESSFUL ((NTSTATUS)0xc0000001L)
 #define STATUS_CANCELLED ((NTSTATUS)0xc0000120L)
@@ -23,7 +23,7 @@ static unsigned PreferenceFault,PreferenceCalls;
 static ULONG PayloadLength,DeclaredLength,ReplyError,RequestCommand,RequestFlags,RequestCapacity;
 static ULONG ActualOffset,ActualLength,ClmValue;
 static ULONGLONG Clock;
-static UCHAR Rx[CYW_WIRE_CAPACITY],Value[64],Country[12];
+static UCHAR Rx[CYW_WIRE_CAPACITY],Value[521],Country[12];
 #define CHECK(x) do {if(!(x)){printf("FAIL line %d: %s\n",__LINE__,#x);++Failures;}}while(0)
 static void *TestAlloc(int flags,size_t n,ULONG tag)
 {void *p;(void)flags;(void)tag;if(++AllocCalls==FailAlloc)return NULL;p=calloc(1,n);if(p)++Outstanding;return p;}
@@ -32,7 +32,9 @@ static void TestFree(void *p,ULONG tag){(void)tag;if(p){--Outstanding;free(p);}}
 #define ExFreePoolWithTag TestFree
 ULONGLONG KeQueryInterruptTime(void){Clock+=1000000;return Clock;}
 static void SdioDelayMilliseconds(ULONG n){(void)n;}
-static VOID CywLink(PRPI5CYW_ADAPTER A,BOOLEAN up){(void)A;CHECK(!up);}
+static VOID CywLink(PRPI5CYW_ADAPTER A,BOOLEAN up)
+{if(up)CHECK(!A->Network->SelectingBand && A->Network->Associated && A->Network->Authorized);}
+static BOOLEAN CywBandRequestPending(PRPI5CYW_ADAPTER A){(void)A;return FALSE;}
 static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG length)
 {
     ULONG payload=PayloadLength,declared=DeclaredLength,error=ReplyError;
@@ -59,7 +61,14 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG 
         }
     } else if(Mode) {
         payload=0;declared=RequestCapacity;error=0;
-        if(RequestCommand==261){
+        if(RequestCommand==23 || RequestCommand==29 || RequestCommand==127) {
+            const UCHAR mac[6]={2,0x10,0x20,0x30,0x40,0x50};
+            CHECK(!(RequestFlags&2) && A->Network->SelectingBand);
+            memset(Value,0,sizeof(Value));payload=RequestCapacity;
+            if(RequestCommand==23){CHECK(RequestCapacity==6);memcpy(Value,mac,6);}
+            else if(RequestCommand==29){CHECK(RequestCapacity==12);CywPut32(Value,36);CywPut32(Value+4,36);}
+            else {CHECK(RequestCapacity==12);CywPut32(Value,0xffffffc9UL);}
+        } else if(RequestCommand==261){
             CHECK(!(RequestFlags&2) && RequestCapacity==1024 && CywLe32(data+16)==1024);
             CHECK(CywLe32(data+20)==0 && CywLe32(data+24)==0 && CywLe32(data+28)==0);
             memset(Value,0,sizeof(Value));CywPut32(Value,1024);CywPut32(Value+12,2);
@@ -71,6 +80,10 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG 
             payload=RequestCapacity;memset(Value,0,sizeof(Value));
             if(strcmp((char*)data+16,"clmload_status")==0){
                 CywPut32(Value,ClmValue);if(Fault==7)payload=3;
+            } else if(strcmp((char*)data+16,"sta_info")==0) {
+                const UCHAR mac[6]={2,0x10,0x20,0x30,0x40,0x50};
+                CHECK(RequestCapacity==521 && !memcmp(data+25,mac,6));
+                CywPut16(Value,4);CywPut16(Value+2,200);CywPut32(Value+8,0x30);memcpy(Value+16,mac,6);payload=200;
             } else {CHECK(strcmp((char*)data+16,"country")==0);memcpy(Value,Country,12);}
         } else if(RequestCommand==263 && strcmp((char*)data+16,"country")==0){
             CHECK(RequestCapacity==20);
@@ -80,15 +93,16 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A,UCHAR channel,PUCHAR data,ULONG 
             if(CywLe32(data+28)==0 && Fault==8)error=0xfffffffe;
             else {CHECK(CywCountryRequest(data+24,Country));if(CywLe32(data+28)==0xffffffff)CywPut32(Country+4,7);}
         } else if(RequestCommand==263 && strcmp((char*)data+16,"join_pref")==0){
-            const UCHAR expected[8]={4,2,8,1,1,2,0,0};
-            CHECK(RadioUp && !Joined && A->CountryApplied==0x4442);
-            CHECK((RequestFlags&2) && RequestCapacity==18 && !memcmp(data+26,expected,8));
+            const UCHAR expected[8]={3,2,0,1,1,2,0,0},rssi[4]={1,2,0,0};
+            CHECK(RadioUp && A->CountryApplied==0x4442 && A->Network->SelectingBand);
+            CHECK((RequestFlags&2) && ((RequestCapacity==18 && !memcmp(data+26,expected,8)) ||
+                (RequestCapacity==14 && !memcmp(data+26,rssi,4))));
             PreferenceCalls++;
             if(PreferenceFault==1)error=0xffffffe9UL;
             if(PreferenceFault==2)error=0xfffffffeUL;
             if(PreferenceFault==3)return STATUS_IO_DEVICE_ERROR;
         } else if(RequestCommand==2){RadioUp=1;CHECK(A->CountryApplied==0x4442);}
-        else if(RequestCommand==26){Joined=1;CHECK(RadioUp);}
+        else if(RequestCommand==26){Joined=1;CHECK(RadioUp);A->Network->Associated=A->Network->Authorized=TRUE;}
     }
     CHECK(payload<=sizeof(Value));memset(Rx,0,sizeof(Rx));
     CywPut32(p,RequestCommand);CywPut32(p+4,declared);
@@ -114,7 +128,7 @@ static NTSTATUS CywCmdInt(PRPI5CYW_ADAPTER A,ULONG command,ULONG value)
 #include "../src/cyw43455/connection.h"
 static void Init(PRPI5CYW_ADAPTER A,CYW_NETWORK *N)
 {
-    CHECK(!Outstanding);memset(A,0,sizeof(*A));memset(N,0,sizeof(*N));A->Network=N;N->Rx=Rx;N->TxMax=1;
+    CHECK(!Outstanding);memset(A,0,sizeof(*A));memset(N,0,sizeof(*N));A->Network=N;N->Rx=Rx;N->TxMax=1;N->Powered=TRUE;
     AllocCalls=FailAlloc=Sent=Polls=Mode=Fault=RadioUp=Joined=RadioCase=0;Clock=0;
     PreferenceFault=PreferenceCalls=0;
     PayloadLength=DeclaredLength=4;ReplyError=ClmValue=0;memset(Value,0,sizeof(Value));memset(Country,0,12);
@@ -161,7 +175,8 @@ int main(void)
     /* Integration: actual transport, actual IOVAR and actual connection checks. */
     request.Version=1;request.Country[0]='B';request.Country[1]='D';request.SsidLength=4;memcpy(request.Ssid,"test",4);
     Init(&a,&n);Mode=1;CHECK(CywConnect(&a,&request)==0 && Joined && RadioUp && a.ClmLoadStatus==0);
-    CHECK(PreferenceCalls==1 && a.JoinPreferenceAccepted==1 && !a.JoinPreferenceStatus);
+    CHECK(PreferenceCalls==2 && a.JoinPreferenceAccepted==1 && !a.JoinPreferenceStatus);
+    CHECK(a.BandSelection[1]==2 && a.BandSelection[9]==36 && a.NetworkPhase==600);
     CHECK(a.CountryListMembership==1 && a.CountryListCount==2 && a.CountryListReplyLength==24);
     Init(&a,&n);Mode=1;Fault=8;CHECK(CywConnect(&a,&request)==0 && Joined && a.CountrySetMode==4 && a.CountryRevision==7);
     Init(&a,&n);Mode=1;Fault=9;CHECK(CywConnect(&a,&request)==0 && Joined && !a.CountryListMembership && a.CountryListError==0xffffffe9);

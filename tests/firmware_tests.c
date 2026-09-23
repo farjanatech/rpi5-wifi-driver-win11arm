@@ -31,6 +31,7 @@ static unsigned RamReads,RamWrites,WindowWrites;
 static unsigned Snapshots;static ULONG LastUploaded,LastVerified;
 static ULONG Window,Bank,Ioctl,Reset,D11Reset;
 static unsigned SpeedBadRead,SpeedRestoreFail;
+static unsigned HighSpeed,HighBadRead,DefaultRestoreFail,DefaultRestores,SpeedReads;
 static UCHAR Card[0x10020],Ram[0xc8000],Vector[4];
 int TestIrql;
 BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A) {return A->IoStopped!=0;}
@@ -49,14 +50,29 @@ void SdioDelayMilliseconds(ULONG u) {(void)u;}
 NTSTATUS SdioRestoreIdentificationBus(PRPI5CYW_ADAPTER A)
 {
     A->BusRecoveryStatus=SpeedRestoreFail?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;
-    if(!SpeedRestoreFail){A->BusWidth=1;A->BusActualKhz=400;}
+    if(!SpeedRestoreFail){A->BusWidth=1;A->BusActualKhz=400;A->BusHighSpeedActive=0;}
     return A->BusRecoveryStatus;
+}
+NTSTATUS SdioRestoreDefaultOperatingBus(PRPI5CYW_ADAPTER A)
+{
+    ++DefaultRestores;
+    A->BusRecoveryStatus=DefaultRestoreFail?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;
+    if(!DefaultRestoreFail){A->BusWidth=4;A->BusActualKhz=25000;A->BusHighSpeedActive=0;}
+    else {
+        (void)SdioRestoreIdentificationBus(A);
+        A->BusModeStage=NT_SUCCESS(A->BusRecoveryStatus)?90:99;
+        return STATUS_IO_DEVICE_ERROR;
+    }
+    return STATUS_SUCCESS;
 }
 NTSTATUS SdioNegotiateOperatingSpeed(PRPI5CYW_ADAPTER A)
 {
     NTSTATUS status=Tick();
     CHECK(Started && A->FirmwareBytes==FirmwareLength && A->NetworkPhase==440);
-    if(NT_SUCCESS(status)){A->BusWidth=4;A->BusActualKhz=25000;}
+    if(NT_SUCCESS(status)){
+        A->BusWidth=4;A->BusActualKhz=HighSpeed?50000:25000;
+        A->BusHighSpeedActive=HighSpeed;A->BusHighSpeedStatus=STATUS_SUCCESS;
+    }
     else {(void)SdioRestoreIdentificationBus(A);}
     return status;
 }
@@ -116,7 +132,10 @@ static NTSTATUS Transfer(PRPI5CYW_ADAPTER A,ULONG Address,PUCHAR Data,ULONG Len,
             if(addr==A->Cr4WrapperBase+0x800)Reset=v;
             if(addr==A->D11WrapperBase+0x800)D11Reset=v;
         } else {
-            if(addr==A->ChipCommonBase)v=SpeedBadRead?0xffffffff:A->ChipIdRaw;
+            if(addr==A->ChipCommonBase) {
+                ++SpeedReads;
+                v=(SpeedBadRead || (HighBadRead && A->BusHighSpeedActive))?0xffffffff:A->ChipIdRaw;
+            }
             if(addr==A->Cr4CoreBase+4)v=0xb44;
             if(addr==A->Cr4CoreBase+0x44)v=BadBank?0xffffffff:(Bank<4?15:8);
             if(addr==A->Cr4WrapperBase+0x408)v=Ioctl;
@@ -136,6 +155,7 @@ static void Init(PRPI5CYW_ADAPTER A)
     CHECK(Outstanding==0);memset(A,0,sizeof(*A));memset(Card,0,sizeof(Card));memset(Ram,0,sizeof(Ram));
     Calls=FailCall=Allocations=FailAlloc=Started=Corrupt=ClockNever=ReadyNever=BadBank=Window=Bank=Reset=D11Reset=0;Ioctl=0x21;
     SpeedBadRead=SpeedRestoreFail=0;
+    HighSpeed=HighBadRead=DefaultRestoreFail=DefaultRestores=SpeedReads=0;
     FirmwareLength=6147;MaxRamChunk=RamReads=RamWrites=WindowWrites=0;
     Snapshots=LastUploaded=LastVerified=0;
     NextWrite=NextRead=0x198000;
@@ -168,6 +188,12 @@ int main(void)
     Init(&a);CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0);
     CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0 && WindowWrites==6 && !a.BpWindowValid);
     a.BpWindowValid=1;a.IoStopped=1;CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==STATUS_CANCELLED && !a.BpWindowValid);
+    Init(&a);a.BusModeStage=6;a.BusWidth=4;a.BusActualKhz=50000;a.BusHighSpeedActive=1;
+    a.BusCardSpeed=CYW_SDIO_SPEED_ENABLE_HS;a.HostControl=SDHCI_HC_HIGH_SPEED_ENABLE;
+    CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0 && a.BpWindowValid);
+    CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0 && WindowWrites==3);
+    a.BusHighSpeedStatus=STATUS_DEVICE_DATA_ERROR;
+    CHECK(CywBpRead(&a,a.ChipCommonBase,&value)==0 && !a.BpWindowValid && WindowWrites==6);
     const ULONG packageSizes[]={609309,631467};
     Init(&a);Window=0x198000;Card[0x110]=64;
     CHECK(SdioCmd53Write(&a,1,0x8000,rejected,512)==STATUS_IO_DEVICE_ERROR);
@@ -188,6 +214,23 @@ int main(void)
     Init(&a);SpeedBadRead=SpeedRestoreFail=1;
     CHECK(CywFirmwareStart(&a)==STATUS_DEVICE_DATA_ERROR && a.BusModeStage==99);
     i=Calls;CywFirmwareStop(&a);CHECK(Calls==i); /* no unsafe cleanup transfers */
+    Init(&a);HighSpeed=1;
+    CHECK(CywFirmwareStart(&a)==0 && a.BusModeStage==6 && a.BusActualKhz==50000);
+    CHECK(a.BusVerifyReads==16 && SpeedReads==16 && DefaultRestores==0);
+    Init(&a);HighSpeed=HighBadRead=1;
+    CHECK(CywFirmwareStart(&a)==0 && a.BusModeStage==6 && a.BusActualKhz==25000);
+    CHECK(a.BusVerifyReads==16 && SpeedReads==17 && DefaultRestores==1);
+    CHECK(!a.BusHighSpeedActive && a.BusHighSpeedStatus==STATUS_DEVICE_DATA_ERROR);
+    Init(&a);HighSpeed=SpeedBadRead=1;
+    CHECK(CywFirmwareStart(&a)==STATUS_DEVICE_DATA_ERROR && a.BusModeStage==90);
+    CHECK(DefaultRestores==1 && a.BusVerifyReads==0 && SpeedReads==2);
+    Init(&a);HighSpeed=HighBadRead=DefaultRestoreFail=SpeedRestoreFail=1;
+    CHECK(CywFirmwareStart(&a)==STATUS_IO_DEVICE_ERROR && a.BusModeStage==99);
+    CHECK(DefaultRestores==1 && SpeedReads==1 && Outstanding==0);
+    i=Calls;CywFirmwareStop(&a);CHECK(Calls==i);
+    Init(&a);HighSpeed=HighBadRead=DefaultRestoreFail=1;
+    CHECK(CywFirmwareStart(&a)==STATUS_IO_DEVICE_ERROR && a.BusModeStage==90);
+    CHECK(a.BusActualKhz==400 && DefaultRestores==1 && SpeedReads==1);
     for(i=1;i<=count;++i) {
         Init(&a);FailCall=i;CHECK(!NT_SUCCESS(CywFirmwareStart(&a)));CHECK(Outstanding==0);
         CHECK(a.FirmwareUploadedBytes==min(NextWrite-0x198000,a.FirmwareTotalBytes));

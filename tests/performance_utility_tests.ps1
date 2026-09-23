@@ -10,6 +10,17 @@ if ((Get-Rpi5BusAssessment $d) -notlike 'BUS VERIFIED:*') { throw 'Valid bus rej
 $d.BusWidth=1
 if ((Get-Rpi5BusAssessment $d) -notlike 'BUS NOT VERIFIED:*') { throw 'Slow fallback misreported as performance success.' }
 if ((Get-Rpi5BusAssessment $null) -notlike '*Restart*') { throw 'Missing runtime not diagnosed.' }
+$fast=[pscustomobject]@{DiagVersion=24;BusModeStage=6;BusWidth=4;BusActualKhz=50000;
+    BusVerifyReads=16;BusUpgradeStatus=0;BusVerifyStatus=0;BusHighSpeedActive=1;BusHighSpeedStatus=0}
+if ((Get-Rpi5BusAssessment $fast) -notlike 'BUS VERIFIED:*') { throw 'Verified high-speed mode rejected.' }
+$fast.BusVerifyReads=15
+if ((Get-Rpi5BusAssessment $fast) -notlike 'BUS NOT VERIFIED:*') { throw 'Partial high-speed verification accepted.' }
+$fast.BusVerifyReads=16;$fast.BusHighSpeedStatus=3221225861L
+if ((Get-Rpi5BusAssessment $fast) -notlike 'BUS NOT VERIFIED:*') { throw 'Failed high-speed verification accepted.' }
+$fast.BusActualKhz=25000;$fast.BusHighSpeedActive=0
+if ((Get-Rpi5BusAssessment $fast) -notlike 'BUS VERIFIED:*') { throw 'Reverified default-timing fallback rejected.' }
+$fast.BusActualKhz=50000;$fast.PSObject.Properties.Remove('BusHighSpeedStatus')
+if ((Get-Rpi5BusAssessment $fast) -notlike 'BUS NOT VERIFIED:*') { throw 'Unknown high-speed evidence accepted.' }
 if (-not (Test-Rpi5ExclusiveRoute @([pscustomobject]@{InterfaceIndex=6}) 6)) { throw 'Correct route rejected.' }
 if (Test-Rpi5ExclusiveRoute @([pscustomobject]@{InterfaceIndex=6},[pscustomobject]@{InterfaceIndex=15}) 6) { throw 'Competing route accepted.' }
 if (Test-Rpi5ExclusiveRoute @() 6) { throw 'Absent route accepted.' }

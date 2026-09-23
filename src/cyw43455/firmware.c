@@ -66,7 +66,11 @@ static NTSTATUS CywWindow(PRPI5CYW_ADAPTER A, ULONG Address)
     ULONG i, Window=Address&0xffff8000UL;
     NTSTATUS Status;
     BOOLEAN cache=A->BusModeStage==6 && A->BusWidth==4 &&
-        A->BusActualKhz>400 && A->BusActualKhz<=25000;
+        A->BusActualKhz>400 && ((!A->BusHighSpeedActive && A->BusActualKhz<=25000) ||
+        (A->BusActualKhz<=50000 && A->BusHighSpeedActive &&
+         A->BusHighSpeedStatus==STATUS_SUCCESS &&
+         (A->BusCardSpeed&CYW_SDIO_SPEED_BSS_MASK)==CYW_SDIO_SPEED_ENABLE_HS &&
+         (A->HostControl&SDHCI_HC_HIGH_SPEED_ENABLE)!=0));
     if(A->IoStopped)return STATUS_CANCELLED;
     /* The single bus worker owns this cache. Never reuse a partial selection.
      * Low-level window writes and failed transfers invalidate it as well. */
@@ -207,6 +211,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
 {
     PUCHAR fw=NULL,raw=NULL,nv=NULL;
     ULONG fwSize=0,fwPadded,rawSize=0,cap,bank,v,i,token,address,off,n;
+    BOOLEAN busRetried=FALSE;
     UCHAR b[4],check[512],byte;
     size_t nvSize=0;
     NTSTATUS Status=STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -292,6 +297,7 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
      * read-only chip-ID CMD53 transfers, not writes into running firmware RAM.
      * Association/control traffic then exercises F2 at this same speed. */
     TRY(SdioNegotiateOperatingSpeed(A));
+VerifyOperatingBus:
     A->BusModeStage=5; A->BusVerifyReads=0;
     for(i=0;i<16;++i) {
         Status=CywNetworkCancelled(A) ? STATUS_CANCELLED :
@@ -299,6 +305,16 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
         if(NT_SUCCESS(Status) && v!=A->ChipIdRaw)Status=STATUS_DEVICE_DATA_ERROR;
         if(!NT_SUCCESS(Status)) {
             A->BusVerifyStatus=Status;
+            /* A selected high-speed mode is not yet a verified data path.
+             * Restore both ends to default timing and recheck all 16 reads.
+             * Never retry cancellation, or associate after inconsistent state. */
+            if(A->BusHighSpeedActive && !busRetried && Status!=STATUS_CANCELLED) {
+                busRetried=TRUE;A->BusHighSpeedStatus=Status;
+                Status=SdioRestoreDefaultOperatingBus(A);
+                if(NT_SUCCESS(Status))
+                    goto VerifyOperatingBus;
+                goto Exit; /* Restore helper already attempted safe recovery. */
+            }
             (void)SdioRestoreIdentificationBus(A);
             A->BusModeStage=NT_SUCCESS(A->BusRecoveryStatus)?90:99;
             goto Exit; /* Never label recovered slow mode a speed success. */

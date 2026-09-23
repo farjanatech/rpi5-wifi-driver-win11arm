@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #pragma once
+#include "transport_trace_protocol.h"
 /* SDPCM interrupt/mailbox definitions follow Linux v6.12 brcmfmac sdio.c
  * (ISC, Broadcom). All state is owned by the one PASSIVE SDIO worker. */
 #define CYW_INT_FC_STATE 0x10u
@@ -22,7 +23,22 @@ typedef struct {
     unsigned int PriorityMaskKnown,PriorityMask,PriorityFlow,PriorityBlocked;
     unsigned long long GlobalBlocked100ns,GlobalStarted100ns;
     unsigned long long PriorityBlocked100ns,PriorityStarted100ns;
+    unsigned int LastPending,PendingEmpty,StatusNoEvents,FrameNotifications;
+    unsigned int FallbackReads,FallbackFrames,FallbackMailbox,StatusClockValid;
+    unsigned long long LastStatus100ns,TraceLast100ns;
+    CYW_TRANSPORT_TRACE Trace;
 } CYW_TRANSPORT_STATE;
+static __inline void CywTransportStatusObserved(CYW_TRANSPORT_STATE *T,unsigned long long Now)
+{T->StatusClockValid=1;T->LastStatus100ns=Now;}
+static __inline int CywTransportFallbackDue(CYW_TRANSPORT_STATE *T,unsigned long long Now)
+{
+    /* First quiet poll starts a grace period. Any real F1 service postpones
+     * fallback, so active RX/TX does not add another status transaction. */
+    if(!T->StatusClockValid || Now<T->LastStatus100ns) {
+        CywTransportStatusObserved(T,Now);return 0;
+    }
+    return Now-T->LastStatus100ns>=CYW_TRANSPORT_FALLBACK_INTERVAL;
+}
 static __inline unsigned long long CywTransportAddTicks(unsigned long long A,unsigned long long B)
 {return ~0ULL-A<B?~0ULL:A+B;}
 static __inline unsigned long long CywTransportElapsed(unsigned long long Start,unsigned long long Now)

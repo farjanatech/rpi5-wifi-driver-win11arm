@@ -122,6 +122,8 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG BusModeStage, BusTargetKhz, BusActualKhz, BusWidth;
     ULONG BusCardInterface, BusCardSpeed, BusVerifyReads;
     NTSTATUS BusUpgradeStatus, BusRecoveryStatus, BusVerifyStatus;
+    ULONG BusHighSpeedEligible, BusHighSpeedAttempted, BusHighSpeedActive, BusHighSpeedRejectMask;
+    NTSTATUS BusHighSpeedStatus;
     ULONG PowerControl;
     ULONG HostControl;
     ULONG HostControl2;
@@ -194,6 +196,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG RamTransferStage;
     ULONG64 FirmwareNextSnapshot;
     ULONG ConnectStep;
+    ULONG BandSelection[16];
     ULONG CountryRequested;
     ULONG CountryApplied;
     ULONG CountryRevision;

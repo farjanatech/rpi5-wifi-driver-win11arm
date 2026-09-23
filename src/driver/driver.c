@@ -121,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 23);
+    SET_DWORD(L"DiagVersion", 24);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -151,6 +151,9 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"RamTransferStatus", Adapter->RamTransferStatus);
     SET_DWORD(L"RamTransferStage", Adapter->RamTransferStage);
     SET_DWORD(L"ConnectStep", Adapter->ConnectStep);
+    RtlInitUnicodeString(&ValueName,L"BandSelectionV1");
+    (VOID)ZwSetValueKey(KeyHandle,&ValueName,0,REG_BINARY,
+                        Adapter->BandSelection,sizeof(Adapter->BandSelection));
     SET_DWORD(L"CountryRequested", Adapter->CountryRequested);
     SET_DWORD(L"CountryApplied", Adapter->CountryApplied);
     SET_DWORD(L"CountryRevision", Adapter->CountryRevision);
@@ -263,6 +266,13 @@ Rpi5CywWriteDiagnostics(
         SET_DWORD(L"TransportMailboxVersion",T->MailboxVersion);
         SET_DWORD(L"TransportFirmwareHalted",T->Halted);
         SET_DWORD(L"TransportPendingReads",T->PendingReads);
+        SET_DWORD(L"TransportLastPending",T->LastPending);
+        SET_DWORD(L"TransportPendingEmpty",T->PendingEmpty);
+        SET_DWORD(L"TransportStatusNoEvents",T->StatusNoEvents);
+        SET_DWORD(L"TransportFrameNotifications",T->FrameNotifications);
+        SET_DWORD(L"TransportFallbackReads",T->FallbackReads);
+        SET_DWORD(L"TransportFallbackFrames",T->FallbackFrames);
+        SET_DWORD(L"TransportFallbackMailbox",T->FallbackMailbox);
         SET_DWORD(L"TransportStatusReads",T->StatusReads);
         SET_DWORD(L"TransportStatusAcks",T->StatusAcks);
         SET_DWORD(L"TransportFcChanges",T->FcChanges);
@@ -292,6 +302,9 @@ Rpi5CywWriteDiagnostics(
         Blocked=CywTransportBlockedTicks(T,0,Now)/10000ULL;
         RtlInitUnicodeString(&ValueName,L"TransportPriorityBlockedMs");
         (VOID)ZwSetValueKey(KeyHandle,&ValueName,0,REG_QWORD,&Blocked,sizeof(Blocked));
+        RtlInitUnicodeString(&ValueName,L"TransportTraceV1");
+        (VOID)ZwSetValueKey(KeyHandle,&ValueName,0,REG_BINARY,
+                            (PVOID)&T->Trace,sizeof(T->Trace));
     }
     /* Worker publishes one complete explicit-query report. Unsupported
      * extension fields remain invalid, never inferred from stale registry data. */
@@ -334,6 +347,11 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"BusUpgradeStatus", Adapter->BusUpgradeStatus);
     SET_DWORD(L"BusRecoveryStatus", Adapter->BusRecoveryStatus);
     SET_DWORD(L"BusVerifyStatus", Adapter->BusVerifyStatus);
+    SET_DWORD(L"BusHighSpeedEligible", Adapter->BusHighSpeedEligible);
+    SET_DWORD(L"BusHighSpeedAttempted", Adapter->BusHighSpeedAttempted);
+    SET_DWORD(L"BusHighSpeedActive", Adapter->BusHighSpeedActive);
+    SET_DWORD(L"BusHighSpeedRejectMask", Adapter->BusHighSpeedRejectMask);
+    SET_DWORD(L"BusHighSpeedStatus", Adapter->BusHighSpeedStatus);
     SET_DWORD(L"PowerControl", Adapter->PowerControl);
     SET_DWORD(L"HostControl", Adapter->HostControl);
     SET_DWORD(L"HostControl2", Adapter->HostControl2);
@@ -692,7 +710,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00060017;
+            Data.Ulong = 0x00060018;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

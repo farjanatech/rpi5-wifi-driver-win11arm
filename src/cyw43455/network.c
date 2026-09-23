@@ -26,6 +26,7 @@ struct _CYW_NETWORK {
     PVOID Thread;
     volatile LONG Stop, Paused;
     volatile BOOLEAN Ready, Associated, Authorized, Published;
+    volatile BOOLEAN SelectingBand;
     BOOLEAN RxPending, Powered, RadioBusy, RxBatch, RxBatchServiced;
     ULONG Request;
     CYW_CONNECT_REQUEST Connect;
@@ -48,6 +49,7 @@ static VOID CywLink(PRPI5CYW_ADAPTER A, BOOLEAN Up)
     NDIS_LINK_STATE Link;
     NDIS_STATUS_INDICATION Indication;
     NDIS_MEDIA_CONNECT_STATE State=Up?MediaConnectStateConnected:MediaConnectStateDisconnected;
+    if(Up && A->Network->SelectingBand)return;
     if(A->MediaConnectState==State)return;
     A->MediaConnectState=State;
     CywRefreshTxGate(A);
@@ -92,7 +94,9 @@ static VOID CywEvent(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
         N->Associated=N->Authorized=FALSE;
     }
     CywLink(A,N->Associated && N->Authorized);
-    A->NetworkPhase=N->Associated && N->Authorized?600:(N->Associated?520:500);
+    A->NetworkPhase=N->SelectingBand?
+        ((A->BandSelection[1]==6 || A->BandSelection[1]==8)?510:520):
+        (N->Associated && N->Authorized?600:(N->Associated?520:500));
 }
 static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
 {
@@ -102,7 +106,7 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     unsigned kind;
     if(!CywEthernetBody(p,n,&off,&len)) {A->RxDropFormat++;Rpi5CywTrafficDrop(A,FALSE,1,TRUE);return;}
     kind=CywPacketKind(p+off,len);A->PacketRxWire[kind]++;
-    if(N->Paused || !N->Published || !N->Authorized || !N->Associated) {
+    if(N->SelectingBand || N->Paused || !N->Published || !N->Authorized || !N->Associated) {
         A->RxDropState++;Rpi5CywTrafficDrop(A,FALSE,1,FALSE);return;
     }
     KeAcquireSpinLock(&N->Lock,&irql);
@@ -140,11 +144,12 @@ static VOID CywReceive(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
 #include "transport_service.h"
 #include "transport_poll.h"
 #include "transport_send.h"
+#include "transport_trace.h"
 static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER A)
 {
     CYW_NETWORK *N=A->Network;
     A->TxCreditSequence=N->TxSeq;A->TxCreditMaximum=N->TxMax;A->TxFlowMask=N->TxFlow;
-    return !A->IoStopped && !N->Stop && !N->Paused && N->Ready &&
+    return !A->IoStopped && !N->Stop && !N->Paused && !N->SelectingBand && N->Ready &&
         N->Authorized && N->Associated && CywTxCredit(N->TxSeq,N->TxMax,0) &&
         CywTransportPriorityAllowed(&A->Transport,N->TxFlow);
 }
@@ -166,7 +171,7 @@ static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A)
     KeAcquireSpinLock(&N->Sends.Lock,&irql);
     N->Sends.Gate=(A->IoStopped || N->Stop)?NDIS_STATUS_LOW_POWER_STATE:
         N->Paused?NDIS_STATUS_PAUSED:
-        (!N->Ready || !N->Associated || !N->Authorized)?NDIS_STATUS_MEDIA_DISCONNECTED:
+        (!N->Ready || !N->Associated || !N->Authorized || N->SelectingBand)?NDIS_STATUS_MEDIA_DISCONNECTED:
         NDIS_STATUS_SUCCESS;
     KeReleaseSpinLock(&N->Sends.Lock,irql);
 }
@@ -202,6 +207,16 @@ static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
     TRY(CywIovar(A,"event_msgs",TRUE,events,sizeof(events)));
     A->NetworkPhase=500;
 Exit: if(clm)ExFreePoolWithTag(clm,RPI5CYW_TAG);return Status;
+}
+/* A newly accepted connect/disconnect request supersedes bounded selection.
+ * Read under the same lock as dispatch; never hold it over firmware I/O. */
+static BOOLEAN CywBandRequestPending(PRPI5CYW_ADAPTER A)
+{
+    KIRQL irql;BOOLEAN pending;
+    KeAcquireSpinLock(&A->Network->Lock,&irql);
+    pending=A->Network->Request==1 || A->Network->Request==2;
+    KeReleaseSpinLock(&A->Network->Lock,irql);
+    return pending;
 }
 #include "connection.h"
 #include "radio.h"
@@ -296,6 +311,7 @@ static VOID CywWorker(PVOID Context)
             Status=op==1?CywConnect(A,&request):CywCmdInt(A,3,0);
             RtlSecureZeroMemory(&request,sizeof(request));
             if(op==2 || !NT_SUCCESS(Status)) {
+                if(op==2)N->SelectingBand=FALSE;
                 N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
                 if(op==2 && NT_SUCCESS(Status))A->NetworkPhase=500;
             }
@@ -322,6 +338,7 @@ static VOID CywWorker(PVOID Context)
         CywTimingEnd(&A->Timing,CywTimeRxBatch,partStart);
 /* TIMING-END */
         if(i && !CywReceiveBudget(i,KeQueryInterruptTime()-rxStart))A->RxBatchYields++;
+        CywTransportSample(A);
         if(A->NetworkPhase!=lastPhase || KeQueryInterruptTime()>=nextSnapshot) {
             CywMeasuredDiagnostics(A,120,A->NetworkStatus);
             lastPhase=A->NetworkPhase;nextSnapshot=KeQueryInterruptTime()+300000000ULL;
@@ -525,7 +542,7 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
             KeAcquireSpinLockAtDpcLevel(&N->Lock);
             RtlCopyMemory(out,A->RadioReport,reportBytes);
             if(reportBytes==20*sizeof(ULONG))out[0]=1; /* Original 80-byte ABI. */
-            if(!N->Ready || !N->Associated || !N->Authorized || N->Paused || N->Stop) {
+            if(!N->Ready || !N->Associated || !N->Authorized || N->SelectingBand || N->Paused || N->Stop) {
                 out[2]=0;out[3]=(ULONG)STATUS_DEVICE_NOT_READY;
                 if(reportBytes>20*sizeof(ULONG))out[20]=0;
             }
@@ -533,7 +550,7 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
             bytes=reportBytes;Status=STATUS_SUCCESS;
         } else if(code==CYW_IOCTL_RADIO_REFRESH && Stack->Parameters.DeviceIoControl.InputBufferLength==0) {
             KeAcquireSpinLockAtDpcLevel(&N->Lock);
-            if(!N->Ready || !N->Associated || !N->Authorized || N->Paused || N->Stop)Status=STATUS_DEVICE_NOT_READY;
+            if(!N->Ready || !N->Associated || !N->Authorized || N->SelectingBand || N->Paused || N->Stop)Status=STATUS_DEVICE_NOT_READY;
             else if(N->Request || N->RadioBusy)Status=STATUS_DEVICE_BUSY;
             else {N->RadioBusy=TRUE;N->Request=3;KeSetEvent(&N->Wake,0,FALSE);Status=STATUS_SUCCESS;}
             KeReleaseSpinLockFromDpcLevel(&N->Lock);

@@ -53,10 +53,11 @@ Copy-Item (Join-Path $root 'utility\Measure-RPi5-WiFi-Load.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.cmd') $stage
 Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Timing.ps1') $stage
+Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Transport.ps1') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.14.1.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.23.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.24.md') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.23.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.24.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -103,18 +104,19 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.23 corrects firmware backpressure/mailbox handling and reduces
-redundant receive-status operations within the existing bounded RX batches.
-The driver is an optimized Release ARM64 build with debugging symbols. Detailed
-per-command timing is disabled by default; worker timing remains enabled and
-timing-report.json distinguishes disabled measurements from observed zeroes.
-The existing performance command captures read-only radio/firmware evidence
-before and after load; no firmware queries are added during downloads.
-Existing queue, bus speed, firmware, country and shared-SSID policy are retained.
-See EXP0.6.23.md for limitations and counters. Hardware improvement is NOT proven;
-keep .16 for rollback. Both Wi-Fi bands remain eligible; no new device experiment.
+Driver exp0.6.24 adds bounded receive-notification recovery and passive history,
+startup-only 5 GHz preference/readback with one automatic normal-selection
+fallback, and capability-checked <=50 MHz standard high-speed SDR operation.
+Both card and host mode are checked; 16 chip-ID reads must pass. A failed
+high-speed attempt restores and verifies default <=25 MHz timing, or stops.
+Unknown/ineligible capabilities retain the verified 25 MHz path. No DDR50,
+voltage switching, UEFI/fan, firmware-binary, regulatory or security changes.
+The 64-frame queue, TX/RX budgets and optimized /O2 /Ot ARM64 build are retained.
+No live firmware radio queries are added during the performance workload.
+See EXP0.6.24.md and PERFORMANCE-0.6.24.md. Physical improvement is NOT proven;
+keep .16 and .23 for rollback. There is no guaranteed throughput claim.
 Install on the Pi, restart once, then run Test-RPi5-WiFi-Performance.cmd.
-No firmware binary, country, UEFI/fan or bus-mode changes. No guaranteed speed claim.
+Historical retained features below describe earlier candidates, not new claims.
 
 Retained exp0.6.14 caches the verified runtime backplane address window, avoiding
 six redundant CMD52 operations on each repeated register access. Partial/failed
@@ -236,7 +238,7 @@ Security:
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.6.23
+driver_version=0.6.24
 build_configuration=$Configuration
 timing_default=worker-only; detailed command and receive-indication clocks disabled
 driver_commit=$env:GITHUB_SHA

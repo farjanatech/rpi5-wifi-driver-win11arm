@@ -7,6 +7,19 @@ if ($errors.Count) { throw 'Connection utility has syntax errors.' }
 . $sourcePath -LibraryOnly
 if ((Get-Rpi5ConnectStepName 18) -ne 'automatic-band-preference') { throw 'Band preference step missing.' }
 if ((Get-Rpi5JoinPreferenceSummary $null) -notmatch 'unavailable') { throw 'Missing snapshot must be unknown.' }
+$newJoin=[pscustomobject]@{DiagVersion=24;JoinPreferenceAccepted=1;JoinPreferenceStatus=0;JoinPreferenceError=0;BandSelectionV1=[byte[]]::new(64)}
+$newWords=@(1,2,27,0,0,36,0,0,0,36,0,0,0,1,200,0)
+for($word=0;$word -lt 16;$word++){[BitConverter]::GetBytes([uint32]$newWords[$word]).CopyTo($newJoin.BandSelectionV1,$word*4)}
+[BitConverter]::GetBytes([int32]-45).CopyTo($newJoin.BandSelectionV1,40)
+if ((Get-Rpi5JoinPreferenceSummary $newJoin) -notmatch 'verified: 5 GHz, channel 36') { throw 'Actual verified5GHz missing.' }
+[BitConverter]::GetBytes([uint32]5).CopyTo($newJoin.BandSelectionV1,4)
+[BitConverter]::GetBytes([uint32]6).CopyTo($newJoin.BandSelectionV1,36)
+if ((Get-Rpi5JoinPreferenceSummary $newJoin) -notmatch 'verified: 2.4 GHz.*automatic fallback') { throw 'Verified2.4fallback hidden.' }
+[BitConverter]::GetBytes([uint32]0).CopyTo($newJoin.BandSelectionV1,8)
+if ((Get-Rpi5JoinPreferenceSummary $newJoin) -notmatch 'not verified') { throw 'Unverified selection reported as success.' }
+$newJoin.BandSelectionV1=@(1,2)
+if ((Get-Rpi5JoinPreferenceSummary $newJoin) -notmatch 'invalid') { throw 'Malformed selection accepted.' }
+if ((Get-Rpi5ConnectStepName 23) -ne 'fallback-band-join-readback') { throw 'Fallback step missing.' }
 $join = [pscustomobject]@{DiagVersion=20;JoinPreferenceAccepted=1;JoinPreferenceStatus=0;JoinPreferenceError=0}
 if ((Get-Rpi5JoinPreferenceSummary $join) -notmatch '8 dB preference.*2.4 GHz remains eligible') { throw 'Accepted preference missing.' }
 $join.JoinPreferenceAccepted=0;$join.JoinPreferenceStatus=3221225473;$join.JoinPreferenceError=4294967273

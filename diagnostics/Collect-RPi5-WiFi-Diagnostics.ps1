@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.23'
+$script:UtilityVersion = '0.6.24'
 
 function Invoke-Rpi5ReadOnlyCapture {
     param([Parameter(Mandatory=$true)][scriptblock]$Command)
@@ -312,6 +312,7 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'CccrRevision','IoEnable','IoReady','F1InterfaceCode','F2InterfaceCode',
                     'BusModeStage','BusTargetKhz','BusActualKhz','BusWidth','BusCardInterface',
                     'BusCardSpeed','BusVerifyReads','BusUpgradeStatus','BusRecoveryStatus','BusVerifyStatus',
+                    'BusHighSpeedEligible','BusHighSpeedAttempted','BusHighSpeedActive','BusHighSpeedRejectMask','BusHighSpeedStatus',
                     'DiagVersion','ProbePhase','Function1Ready','ChipClockCsr','ChipIdRaw',
                     'ChipId','ChipRevision','Cmd53ReadCount','Cmd53BytesTransferred',
                     'Cmd53ResetStatus','ProbeRestoreStatus','Cmd53WriteCount',
@@ -384,6 +385,30 @@ function Invoke-Rpi5WiFiDiagnostic {
                 $diag.PSObject.Properties | Where-Object Name -like 'Transport*' |
                     Select-Object Name,Value | Format-Table -AutoSize
             } else { 'Transport evidence requires exp0.6.23. Missing values are unknown, not zero.' }
+        }
+        Write-Capture '06b-transport-history.json' {
+            $transportDecoder=Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Transport.ps1'
+            if (-not (Test-Path -LiteralPath $transportDecoder)) {
+                $transportDecoder=Join-Path (Split-Path -Parent $PSScriptRoot) 'utility\Get-RPi5-WiFi-Transport.ps1'
+            }
+            . $transportDecoder -TransportLibraryOnly
+            Get-Rpi5TransportReport -Diagnostic $diag | ConvertTo-Json -Depth 8
+        }
+        Write-Capture '06c-band-selection.json' {
+            if (-not $diag -or $diag.DiagVersion -lt 24 -or
+                -not $diag.PSObject.Properties['BandSelectionV1']) { throw 'Startup band evidence unavailable.' }
+            [byte[]]$bandData=$diag.BandSelectionV1
+            if ($bandData.Length -ne 64 -or [BitConverter]::ToUInt32($bandData,0) -ne 1) {
+                throw 'Invalid startup band evidence.'
+            }
+            $bandNames=@('Version','Outcome','Flags','InitialStatus','FinalStatus','InitialChannel',
+                'InitialRssiRaw','InitialBssidLow','InitialBssidHigh','FinalChannel','FinalRssiRaw',
+                'FinalBssidLow','FinalBssidHigh','JoinAttempts','ElapsedMs','FallbackReason')
+            $bandReport=[ordered]@{}
+            for ($bandWord=0;$bandWord -lt 16;$bandWord++) {
+                $bandReport[$bandNames[$bandWord]]=[BitConverter]::ToUInt32($bandData,$bandWord*4)
+            }
+            [pscustomobject]$bandReport | ConvertTo-Json
         }
         Write-Capture '07-driver-service.txt' {
             sc.exe query rpi5cyw

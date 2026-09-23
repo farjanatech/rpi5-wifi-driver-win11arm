@@ -8,7 +8,8 @@ on:
       - 'tests/radio_utility_tests.ps1'
       - 'tests/timing_utility_tests.ps1'
       - 'scripts/package-performance.ps1'
-      - 'docs/PERFORMANCE-0.6.23.md'
+      - 'docs/PERFORMANCE-0.6.24.md'
+      - 'tests/transport_utility_tests.ps1'
       - '.github/workflows/performance-utility.yml'
   workflow_dispatch:
 permissions:
@@ -23,7 +24,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
-          $issues = @('utility/Test-RPi5-WiFi-Performance.ps1','utility/Measure-RPi5-WiFi-Load.ps1','tests/performance_utility_tests.ps1','scripts/package-performance.ps1','utility/Get-RPi5-WiFi-Radio.ps1','tests/radio_utility_tests.ps1','utility/Get-RPi5-WiFi-Timing.ps1','tests/timing_utility_tests.ps1') | ForEach-Object {
+          $issues = @('utility/Test-RPi5-WiFi-Performance.ps1','utility/Measure-RPi5-WiFi-Load.ps1','tests/performance_utility_tests.ps1','scripts/package-performance.ps1','utility/Get-RPi5-WiFi-Radio.ps1','tests/radio_utility_tests.ps1','utility/Get-RPi5-WiFi-Timing.ps1','tests/timing_utility_tests.ps1','utility/Get-RPi5-WiFi-Transport.ps1','tests/transport_utility_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
           }
           $issues | Format-Table -AutoSize
@@ -37,13 +38,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/timing_utility_tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/transport_utility_tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package allowlisted utility
         shell: pwsh
         run: ./scripts/package-performance.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-performance-0.6.23
+          name: rpi5-wifi-performance-0.6.24
           path: |
-            artifacts/RPi5-WiFi-Performance-0.6.23.zip
+            artifacts/RPi5-WiFi-Performance-0.6.24.zip
             artifacts/PERFORMANCE-SHA256SUMS.txt
           if-no-files-found: error
