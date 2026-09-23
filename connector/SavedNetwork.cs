@@ -34,7 +34,7 @@ internal static class Startup
     {
         ValidatePath(info.FullName);
         FileSystemSecurity acl = info is DirectoryInfo directory ? directory.GetAccessControl() : ((FileInfo)info).GetAccessControl();
-        if (acl.GetOwner(typeof(SecurityIdentifier)).Value is not ("S-1-5-18" or "S-1-5-32-544")) throw new IOException("Untrusted startup path owner.");
+        if (acl.GetOwner(typeof(SecurityIdentifier))?.Value is not ("S-1-5-18" or "S-1-5-32-544")) throw new IOException("Untrusted startup path owner.");
         foreach (FileSystemAccessRule rule in acl.GetAccessRules(true, true, typeof(SecurityIdentifier)))
             if (rule.AccessControlType == AccessControlType.Allow && rule.IdentityReference.Value is not ("S-1-5-18" or "S-1-5-32-544"))
                 throw new IOException("Startup files must be accessible only to SYSTEM and Administrators.");
@@ -105,10 +105,10 @@ internal static class Startup
         dynamic service = Scheduler(); dynamic root = service.GetFolder(@"\");
         // Never silently replace the existing PowerShell startup mechanism.
         dynamic? legacy = FindTask(root, "RPi5WiFi-AutoConnect");
-        if (legacy != null && (bool)legacy.Enabled) throw new InvalidOperationException("Disable the old autoconnect task with its original utility before enabling this connector.");
+        if (legacy is not null && (bool)legacy.Enabled) throw new InvalidOperationException("Disable the old autoconnect task with its original utility before enabling this connector.");
         dynamic? current = FindTask(root, TaskName);
-        if (current != null && !OwnedTask((string)current.Xml, ExePath)) throw new IOException("A different task already uses this name.");
-        if (current != null && (int)current.State == 4) throw new IOException("Startup connection is still running. Wait before changing its files.");
+        if (current is not null && !OwnedTask((string)current.Xml, ExePath)) throw new IOException("A different task already uses this name.");
+        if (current is not null && (int)current.State == 4) throw new IOException("Startup connection is still running. Wait before changing its files.");
         EnsureDirectory();
         string source = Environment.ProcessPath ?? throw new IOException("Executable location unavailable.");
         if (!string.Equals(Path.GetFullPath(source), ExePath, StringComparison.OrdinalIgnoreCase))
@@ -123,7 +123,7 @@ internal static class Startup
     {
         using var lease = new OperationLease();
         dynamic service = Scheduler(); dynamic root = service.GetFolder(@"\"); dynamic? task = FindTask(root, TaskName);
-        if (task != null)
+        if (task is not null)
         {
             if (!OwnedTask((string)task.Xml, ExePath)) throw new IOException("Refusing to modify a different startup task.");
             task.Enabled = false;
@@ -135,7 +135,7 @@ internal static class Startup
     public static bool Enabled()
     {
         dynamic service = Scheduler(); dynamic root = service.GetFolder(@"\"); dynamic? task = FindTask(root, TaskName);
-        return task != null && (bool)task.Enabled && OwnedTask((string)task.Xml, ExePath);
+        return task is not null && (bool)task.Enabled && OwnedTask((string)task.Xml, ExePath);
     }
     private static void Receipt(string result)
     {
