@@ -1,5 +1,8 @@
 name: Transfer verified 0.6.29.1 assets to draft release
 on:
+  push:
+    branches: [bringup/cyw43455-sdio-arm64]
+    paths: ['.github/workflows/publish-compatibility-assets.yml']
   workflow_dispatch:
 permissions:
   actions: read
