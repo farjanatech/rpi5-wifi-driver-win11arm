@@ -51,7 +51,7 @@ function Get-ScopeRegion {
     if($regions.Count -ne 1){throw "Missing or ambiguous protected region: $Label"}
     return $regions[0].Value
 }
-function Replace-ScopeRegion {
+function Update-ScopeRegion {
     param([string]$Text,[string]$Pattern,[string]$Replacement,[string]$Label)
     $region=Get-ScopeRegion $Text $Pattern $Label
     return $Text.Replace($region,$Replacement)
@@ -61,7 +61,7 @@ function Replace-ScopeRegion {
 $sdio=Get-ScopeSource 'src/sdio/sdio.c'
 $sdioBefore=Get-ScopeSource 'src/sdio/sdio.c' $baseline
 $operatingGuard='OperatingBus =.*?;(?=\s*FastLimit =)'
-$sdio=Replace-ScopeRegion $sdio $operatingGuard (Get-ScopeRegion $sdioBefore $operatingGuard 'old operating guard') 'operating guard'
+$sdio=Update-ScopeRegion $sdio $operatingGuard (Get-ScopeRegion $sdioBefore $operatingGuard 'old operating guard') 'operating guard'
 Assert-SameSource $sdio $sdioBefore 'SDIO engine outside verified-mode guard'
 $sdioAnchor=ConvertFrom-TimingInstrumentation $sdioBefore
 $sdioAnchor=$sdioAnchor.Replace('SdioSendCommandRaw(', 'SdioSendCommand(').Replace('SdioCmd53TransferRaw(', 'SdioCmd53Transfer(')
@@ -78,7 +78,7 @@ foreach($pattern in @(
     '#define CYW_SDIO_HIGH_SPEED_CLOCK_KHZ\s+50000UL',
     '#define SDHCI_CAP_HIGH_SPEED\s+0x00200000UL',
     'NTSTATUS SdioRestoreDefaultOperatingBus\(PRPI5CYW_ADAPTER Adapter\);')){
-    $sdioHeader=Replace-ScopeRegion $sdioHeader $pattern '' 'high-speed header extension'
+    $sdioHeader=Update-ScopeRegion $sdioHeader $pattern '' 'high-speed header extension'
 }
 Assert-SameSource $sdioHeader (Get-ScopeSource 'src/sdio/sdio.h' $baseline) 'SDIO existing definitions'
 $bus=Get-ScopeSource 'src/sdio/bus_mode.h'
@@ -92,10 +92,10 @@ foreach($pattern in @(
     'A->BusHighSpeedEligible=A->BusHighSpeedAttempted=A->BusHighSpeedActive=0;',
     'A->BusHighSpeedRejectMask=0;',
     'A->BusHighSpeedStatus=\(NTSTATUS\)0xc00000bbL;')){
-    $bus=Replace-ScopeRegion $bus $pattern '' 'high-speed state reset'
+    $bus=Update-ScopeRegion $bus $pattern '' 'high-speed state reset'
 }
 $upgradeTail='A->BusUpgradeStatus = STATUS_SUCCESS;.*?(?=Failed:)'
-$bus=Replace-ScopeRegion $bus $upgradeTail (Get-ScopeRegion $busBefore $upgradeTail 'old upgrade tail') 'high-speed negotiation extension'
+$bus=Update-ScopeRegion $bus $upgradeTail (Get-ScopeRegion $busBefore $upgradeTail 'old upgrade tail') 'high-speed negotiation extension'
 Assert-SameSource $bus $busBefore 'Existing default/identification bus and recovery'
 # Firmware upload, RAM verification, security material and stop/cleanup must
 # stay unchanged. Only the cache eligibility and post-upload speed verification
@@ -103,10 +103,10 @@ Assert-SameSource $bus $busBefore 'Existing default/identification bus and recov
 $firmware=Get-ScopeSource 'src/cyw43455/firmware.c'
 $firmwareBefore=Get-ScopeSource 'src/cyw43455/firmware.c' $baseline
 $cacheGuard='BOOLEAN cache=.*?;'
-$firmware=Replace-ScopeRegion $firmware $cacheGuard (Get-ScopeRegion $firmwareBefore $cacheGuard 'old window-cache guard') 'window-cache guard'
-$firmware=Replace-ScopeRegion $firmware 'BOOLEAN busRetried=FALSE;' '' 'single bus retry declaration'
+$firmware=Update-ScopeRegion $firmware $cacheGuard (Get-ScopeRegion $firmwareBefore $cacheGuard 'old window-cache guard') 'window-cache guard'
+$firmware=Update-ScopeRegion $firmware 'BOOLEAN busRetried=FALSE;' '' 'single bus retry declaration'
 $verification='TRY\(SdioNegotiateOperatingSpeed\(A\)\);.*?A->BusVerifyStatus=STATUS_SUCCESS;A->BusModeStage=6;'
-$firmware=Replace-ScopeRegion $firmware $verification (Get-ScopeRegion $firmwareBefore $verification 'old bus verification') 'bus verification/fallback'
+$firmware=Update-ScopeRegion $firmware $verification (Get-ScopeRegion $firmwareBefore $verification 'old bus verification') 'bus verification/fallback'
 Assert-SameSource $firmware $firmwareBefore 'Firmware outside verified-mode fallback'
 # Preserve the entire credential/country/PMK sequence, including error paths
 # and zeroization. Normalize only the explicitly added band-selection hold,
@@ -114,12 +114,12 @@ Assert-SameSource $firmware $firmwareBefore 'Firmware outside verified-mode fall
 $connection=Get-ScopeSource 'src/cyw43455/connection.h'
 $connectionBefore=Get-ScopeSource 'src/cyw43455/connection.h' $baseline
 $connection=$connection.Replace('#include "band_selection.h"','')
-$connection=Replace-ScopeRegion $connection 'RtlZeroMemory\(A->BandSelection,sizeof\(A->BandSelection\)\);A->BandSelection\[0\]=CYW_BAND_SELECTION_VERSION;\s*A->Network->SelectingBand=TRUE;' '' 'band selection start'
+$connection=Update-ScopeRegion $connection 'RtlZeroMemory\(A->BandSelection,sizeof\(A->BandSelection\)\);A->BandSelection\[0\]=CYW_BAND_SELECTION_VERSION;\s*A->Network->SelectingBand=TRUE;' '' 'band selection start'
 $joinTail='if\(A->JoinPreferenceAccepted\).*?(?=Exit:)'
 $oldJoinTail=Get-ScopeRegion $connectionBefore 'STEP\(13,CywFirmwareCommand\(A,26,TRUE,ssid,sizeof\(ssid\)\)\);\s*A->NetworkPhase=520;\s*(?=Exit:)' 'old join tail'
-$connection=Replace-ScopeRegion $connection $joinTail $oldJoinTail 'bounded join tail'
+$connection=Update-ScopeRegion $connection $joinTail $oldJoinTail 'bounded join tail'
 $failedHold='Exit:\s*if\(!NT_SUCCESS\(Status\)\).*?(?=RtlSecureZeroMemory\(pmk,)'
-$connection=Replace-ScopeRegion $connection $failedHold "Exit:`n    " 'failed band publication hold'
+$connection=Update-ScopeRegion $connection $failedHold "Exit:`n    " 'failed band publication hold'
 Assert-SameSource $connection $connectionBefore 'Country, credentials, PMK and connection cleanup'
 $preference=Get-ScopeSource 'src/cyw43455/join_preference.h'
 $setter=Get-ScopeFunction $preference 'CywSetJoinPreference'
