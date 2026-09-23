@@ -8,12 +8,16 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>RPi5-WiFi-Connector</AssemblyName>
-    <Version>0.6.29</Version>
+    <Version>0.6.29.1</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/RPi5-WiFi-Connector.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
     <DebugType>embedded</DebugType>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Assets/RPi5-WiFi-Connector.ico" LogicalName="Rpi5Wifi.ConnectorIcon" />
+  </ItemGroup>
 </Project>

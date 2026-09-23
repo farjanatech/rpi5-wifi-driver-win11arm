@@ -45,7 +45,12 @@ jobs:
           $pe=[BitConverter]::ToInt32($bytes,0x3c)
           if ([BitConverter]::ToUInt16($bytes,$pe+4) -ne 0xaa64) { throw 'Not an ARM64 executable.' }
           (Get-FileHash $files[0].FullName).Hash+'  RPi5-WiFi-Connector.exe' | Set-Content artifacts/connector/SHA256SUMS.txt -Encoding ASCII
-          "commit=$env:GITHUB_SHA`nrun=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`nversion=0.6.29`narchitecture=ARM64`nself_contained=true" | Set-Content artifacts/connector/BUILD.txt
+          "commit=$env:GITHUB_SHA`nrun=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`nversion=0.6.29.1`narchitecture=ARM64`nself_contained=true" | Set-Content artifacts/connector/BUILD.txt
+      - name: Verify supplied icon in ARM64 EXE resources without executing it
+        shell: pwsh
+        run: |
+          python connector/test_icon_resources.py connector/Assets/RPi5-WiFi-Connector.ico artifacts/connector/RPi5-WiFi-Connector.exe 2>&1 | Tee-Object ci-logs/icon-tests.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: rpi5-wifi-connector-arm64
@@ -57,5 +62,6 @@ jobs:
           name: rpi5-wifi-connector-ci-logs
           path: |
             ci-logs/connector-tests.txt
+            ci-logs/icon-tests.txt
             ci-logs/connector.png
           if-no-files-found: warn

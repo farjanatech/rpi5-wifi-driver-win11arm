@@ -1,0 +1,42 @@
+name: Package 0.6.29.1 installer compatibility update
+on:
+  push:
+    branches: [bringup/cyw43455-sdio-arm64]
+    paths: ['installer/**', 'tests/installer_utility_tests.ps1', 'scripts/package-compatibility.ps1', 'docs/EXP0.6.29.1.md', '.github/workflows/compatibility-package.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prove kernel and connection behaviour unchanged
+        shell: pwsh
+        run: |
+          git diff --exit-code d184bc6c52ecca0c2bdc924c77a93b31f37b0304 HEAD -- src package rpi5-cyw43455.vcxproj connector/Protocol.cs connector/Operations.cs connector/SavedNetwork.cs connector/Program.cs utility
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test installer allowlist and existing safety checks
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/installer_utility_tests.ps1 2>&1 | Tee-Object ci-logs/compatibility-tests.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Repackage hash-pinned existing signed driver without rebuilding it
+        shell: pwsh
+        run: |
+          ./scripts/package-compatibility.ps1 2>&1 | Tee-Object ci-logs/compatibility-package.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpi5-wifi-compatibility-0.6.29.1
+          path: artifacts/compatibility/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rpi5-wifi-compatibility-logs
+          path: ci-logs/compatibility-*.txt
+          if-no-files-found: warn

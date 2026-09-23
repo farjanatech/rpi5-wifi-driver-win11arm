@@ -7,8 +7,23 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.6.29'
-$script:RequiredUefiRevision = 'bda4c47'
+$script:InstallerVersion = '0.6.29.1'
+# Reviewed direct-SDIO ACPI/platform builds only. Do not admit arbitrary firmware.
+$script:SupportedUefiRevisions = @(
+    'bda4c47626ad922229dbefd7175b650562a0a64f', # UEFI exp.0.3
+    '838d87df37fe1b27c75a674fca64c1fa067413e3'  # UEFI exp.0.5 settings-save fix
+)
+
+function Get-Rpi5CompatibleUefiRevision {
+    param([AllowNull()][AllowEmptyString()][string]$BiosText)
+    if ([string]::IsNullOrWhiteSpace($BiosText)) { return $null }
+    foreach ($revision in $script:SupportedUefiRevisions) {
+        $shortRevision = $revision.Substring(0,7)
+        $pattern = '(?i)(?<![0-9a-f])(?:' + $revision + '|' + $shortRevision + ')(?![0-9a-f])'
+        if ([regex]::IsMatch($BiosText,$pattern)) { return $shortRevision }
+    }
+    return $null
+}
 
 function Test-Rpi5PnpSuccess {
     param([int]$Code)
@@ -93,7 +108,7 @@ function Get-Rpi5TargetDevice {
     # inventory class. Accept it only when the exact matching UEFI is running.
     $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
     $biosText = "$($bios.SMBIOSBIOSVersion) $($bios.BIOSVersion -join ' ')"
-    if ($biosText -match [regex]::Escape($script:RequiredUefiRevision)) {
+    if (Get-Rpi5CompatibleUefiRevision -BiosText $biosText) {
         $signedNode = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
             Where-Object { $_.DeviceID -match $hardwarePattern } |
             Select-Object -First 1
@@ -169,10 +184,11 @@ function Invoke-Rpi5DriverInstall {
 
         $bios = Get-CimInstance Win32_BIOS
         $biosText = "$($bios.SMBIOSBIOSVersion) $($bios.BIOSVersion -join ' ')"
-        if ($biosText -notmatch [regex]::Escape($script:RequiredUefiRevision)) {
-            throw "Matching UEFI revision $script:RequiredUefiRevision was not detected. Refusing installation."
+        $compatibleRevision = Get-Rpi5CompatibleUefiRevision -BiosText $biosText
+        if (-not $compatibleRevision) {
+            throw 'Supported direct-SDIO UEFI was not detected. Requires exp.0.3 (bda4c47) or exp.0.5 (838d87d). Unknown revisions are not accepted; do not bypass this check.'
         }
-        Write-InstallMessage "Matching UEFI revision $script:RequiredUefiRevision detected."
+        Write-InstallMessage "Supported direct-SDIO UEFI revision $compatibleRevision detected."
 
         $device = Get-Rpi5TargetDevice
         if (-not $device) {

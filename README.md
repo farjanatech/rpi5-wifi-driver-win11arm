@@ -1,4 +1,9 @@
-> Current candidate: **exp0.6.29** — single C# ARM64 connector EXE, protected saved
+> Current maintenance package: **exp0.6.29.1** — installer support for working
+> UEFI exp.0.5 and the supplied connector EXE/window icon. The signed .29 driver
+> is reused unchanged (Device Manager still shows 0.6.29.0). See
+> [EXP0.6.29.1](./docs/EXP0.6.29.1.md). No speed or startup behaviour changes.
+>
+> Driver candidate: **exp0.6.29** — single C# ARM64 connector EXE, protected saved
 > network and opt-in boot-time connection, plus guarded faster firmware startup.
 > See [EXP0.6.29](./docs/EXP0.6.29.md). No instant-startup or speed guarantee: Pi
 > validation is still required. The connected data path is unchanged. Keep .28.

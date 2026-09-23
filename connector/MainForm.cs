@@ -7,6 +7,7 @@ internal sealed class MainForm : Form
 {
     private readonly IDriver driver;
     private readonly bool preview;
+    private readonly Icon appIcon = Branding.LoadIcon();
     private readonly TextBox country = new() { MaxLength = 2, CharacterCasing = CharacterCasing.Upper, Width = 56 };
     private readonly CheckBox confirm = new() { Text = "I confirm the Pi is physically in this country", AutoSize = true };
     private readonly TextBox ssid = new() { MaxLength = 32, Dock = DockStyle.Fill };
@@ -32,7 +33,8 @@ internal sealed class MainForm : Form
     public MainForm(IDriver device, bool offline = false)
     {
         driver = device; preview = offline;
-        Text = "RPi5 Wi-Fi Connector • 0.6.29"; Font = new("Segoe UI", 10);
+        Text = $"RPi5 Wi-Fi Connector • {Branding.Version}"; Font = new("Segoe UI", 10);
+        Icon = appIcon;
         AutoScaleMode = AutoScaleMode.Dpi; ClientSize = new(920, 650); MinimumSize = new(900, 670); StartPosition = FormStartPosition.CenterScreen;
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new(16), ColumnCount = 1, RowCount = 9 };
         foreach (var style in new[] { new RowStyle(SizeType.Absolute, 38), new RowStyle(SizeType.Absolute, 42), new RowStyle(SizeType.Percent, 100),
@@ -197,7 +199,7 @@ internal sealed class MainForm : Form
     }
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { timer.Dispose(); closing.Dispose(); ClearKey(); }
+        if (disposing) { timer.Dispose(); closing.Dispose(); ClearKey(); appIcon.Dispose(); }
         base.Dispose(disposing);
     }
 }

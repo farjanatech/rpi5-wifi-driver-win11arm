@@ -41,6 +41,8 @@ internal static class SelfTests
     {
         try
         {
+            using (var icon = Branding.LoadIcon()) Check(icon.Width > 0 && icon.Height > 0, "form icon cannot load");
+            using (var iconBytes = Branding.OpenIcon()) Check(Convert.ToHexString(SHA256.HashData(iconBytes)) == "189F68A20CB9A8333E575281A14332C355426F43FBD565302FAF149FBC42D624", "user icon changed");
             Check(Protocol.ValidCountry("BD") && !Protocol.ValidCountry("bd") && !Protocol.ValidCountry("USA"), "country validation");
             Check(Protocol.ValidSsid("a") && !Protocol.ValidSsid("a\nb") && !Protocol.ValidSsid(new string('a', 33)), "SSID validation");
             byte[] pmk = Protocol.Derive("IEEE", "password");

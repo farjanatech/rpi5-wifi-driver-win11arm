@@ -26,7 +26,7 @@ foreach ($pattern in $forbidden) {
 }
 
 foreach ($required in @(
-    'bda4c47','ACPI\\RPI0011','Test-Rpi5PackageManifest','Get-AuthenticodeSignature',
+    'bda4c47','838d87d','ACPI\\RPI0011','Test-Rpi5PackageManifest','Get-AuthenticodeSignature',
     'certutil.exe -addstore','pnputil.exe /add-driver','Collect-RPi5-WiFi-Diagnostics.ps1'
 )) {
     if ($source -notmatch [regex]::Escape($required)) { throw "Required safety/install behavior is missing: $required" }
@@ -39,6 +39,18 @@ if ($source -notmatch [regex]::Escape('-File $startupUpdater -RefreshExisting') 
 if ($source -match 'Copy-Item[^\r\n]*WiFi\.private\.json') { throw 'Installer must not replace a private profile.' }
 
 . $scriptPath -LibraryOnly
+foreach ($bios in @('bda4c47','838d87d','UEFI v0.3-12-g838d87d built 2026',
+    '838D87D','bda4c47626ad922229dbefd7175b650562a0a64f',
+    '838d87df37fe1b27c75a674fca64c1fa067413e3')) {
+    if (-not (Get-Rpi5CompatibleUefiRevision $bios)) { throw "Supported firmware rejected: $bios" }
+}
+foreach ($bios in @($null,'','unknown','6023be0','exp.0.5','838d87d0','0838d87d',
+    '838d87df37fe1b27c75a674fca64c1fa067413e0','bda4c4700000000000000000000000000000000')) {
+    if (Get-Rpi5CompatibleUefiRevision $bios) { throw "Unsupported firmware admitted: $bios" }
+}
+if ([regex]::Matches($source,'Get-Rpi5CompatibleUefiRevision -BiosText \$biosText').Count -ne 2) {
+    throw 'Main installation and unbound-device fallback must use the same firmware allowlist.'
+}
 foreach ($unknownOrError in @($null, '', 'unknown', 22, 10, 28, 50, 56)) {
     if (Test-Rpi5DeviceEnabled $unknownOrError) { throw 'Unknown/problem device classified as enabled.' }
 }
