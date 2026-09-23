@@ -12,18 +12,25 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
       - name: Create output directory
         shell: pwsh
         run: New-Item -ItemType Directory -Path ci-logs,artifacts/connector -Force | Out-Null
+      - name: Require unchanged driver, installer, firmware and connection protocol
+        shell: pwsh
+        run: |
+          git diff --exit-code f4dc733fff854a740e03a1b8482791c9d95aea09 HEAD -- src package installer utility third_party connector/Protocol.cs connector/Operations.cs rpi5-cyw43455.vcxproj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build mocked x64 test host
         shell: pwsh
         run: |
           dotnet build connector/RPi5.WiFi.Connector.csproj -c Release -r win-x64 -p:PublishSingleFile=false --self-contained false -o ci-logs/connector-test
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Test protocols, credentials, lifecycle and validate boot task XML without installing
+      - name: Test protocols, credentials, real form and isolated scheduler lifecycle
         shell: pwsh
         run: |
           dotnet ci-logs/connector-test/RPi5-WiFi-Connector.dll --self-test 2>&1 | Tee-Object ci-logs/connector-tests.txt
@@ -34,18 +41,36 @@ jobs:
           dotnet ci-logs/connector-test/RPi5-WiFi-Connector.dll --preview ci-logs/connector.png
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ((Get-Item ci-logs/connector.png).Length -lt 12000) { throw 'Preview appears blank.' }
-      - name: Publish one self-contained ARM64 executable
+      - name: Exercise the actual compressed standalone packaging on the x64 runner
+        shell: pwsh
+        run: |
+          dotnet publish connector/RPi5.WiFi.Connector.csproj -c Release -r win-x64 --self-contained true -o ci-logs/standalone-smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe=(Resolve-Path ci-logs/standalone-smoke/RPi5-WiFi-Connector.exe).Path
+          $test=Start-Process -FilePath $exe -ArgumentList '--self-test' -WindowStyle Hidden -Wait -PassThru -RedirectStandardOutput ci-logs/compressed-tests.txt -RedirectStandardError ci-logs/compressed-errors.txt
+          Get-Content ci-logs/compressed-tests.txt
+          Get-Content ci-logs/compressed-errors.txt
+          if ($test.ExitCode -ne 0) { throw "Compressed standalone tests failed: $($test.ExitCode)" }
+          if ((Get-Content ci-logs/compressed-tests.txt -Raw) -notmatch 'PASS: [0-9]+ C# connector checks') { throw 'Standalone test result missing.' }
+          $watch=[Diagnostics.Stopwatch]::StartNew()
+          $preview=Start-Process -FilePath $exe -ArgumentList '--preview ci-logs/connector-compressed.png' -WindowStyle Hidden -Wait -PassThru
+          $watch.Stop()
+          if ($preview.ExitCode -ne 0 -or (Get-Item ci-logs/connector-compressed.png).Length -lt 12000) { throw 'Compressed standalone preview failed.' }
+          "x64_ci_compressed_preview_ms=$($watch.ElapsedMilliseconds)`nThis includes offline form rendering; not a Raspberry Pi startup measurement." | Set-Content ci-logs/compression-timing.txt
+      - name: Publish one compressed self-contained ARM64 executable
         shell: pwsh
         run: |
           dotnet publish connector/RPi5.WiFi.Connector.csproj -c Release -r win-arm64 --self-contained true -o artifacts/connector
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $files=@(Get-ChildItem artifacts/connector -File)
           if ($files.Count -ne 1 -or $files[0].Name -ne 'RPi5-WiFi-Connector.exe') { throw 'Publish is not a single EXE.' }
+          if ($files[0].Length -ge 130382050) { throw 'Standalone package did not shrink from 0.6.29.1.' }
           $bytes=[IO.File]::ReadAllBytes($files[0].FullName)
           $pe=[BitConverter]::ToInt32($bytes,0x3c)
           if ([BitConverter]::ToUInt16($bytes,$pe+4) -ne 0xaa64) { throw 'Not an ARM64 executable.' }
           (Get-FileHash $files[0].FullName).Hash+'  RPi5-WiFi-Connector.exe' | Set-Content artifacts/connector/SHA256SUMS.txt -Encoding ASCII
-          "commit=$env:GITHUB_SHA`nrun=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`nversion=0.6.29.1`narchitecture=ARM64`nself_contained=true" | Set-Content artifacts/connector/BUILD.txt
+          "commit=$env:GITHUB_SHA`nrun=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`nversion=0.6.29.2`narchitecture=ARM64`nself_contained=true`ncompressed=true`nsize_bytes=$($files[0].Length)" | Set-Content artifacts/connector/BUILD.txt
+          Get-Content artifacts/connector/BUILD.txt
       - name: Verify supplied icon in ARM64 EXE resources without executing it
         shell: pwsh
         run: |
@@ -62,6 +87,11 @@ jobs:
           name: rpi5-wifi-connector-ci-logs
           path: |
             ci-logs/connector-tests.txt
+            ci-logs/compressed-tests.txt
+            ci-logs/compressed-errors.txt
+            ci-logs/compression-timing.txt
             ci-logs/icon-tests.txt
             ci-logs/connector.png
+            ci-logs/connector-selection.png
+            ci-logs/connector-compressed.png
           if-no-files-found: warn

@@ -6,11 +6,12 @@ internal static class Program
     private static int Main(string[] args)
     {
         // GitHub-only tests/preview never instantiate Driver or touch saved
-        // profiles, network configuration, scheduled tasks or certificates.
+        // user profiles, network configuration or certificates. Self-tests use
+        // and remove an inert, uniquely named CI task to check the scheduler.
         if (args.Length != 0 && args[0] is "--self-test" or "--preview")
         {
             if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") return 4;
-            if (args[0] == "--self-test") return SelfTests.Run();
+            if (args[0] == "--self-test") { ApplicationConfiguration.Initialize(); return SelfTests.Run(); }
             if (args.Length != 2) return 4;
             string root = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "ci-logs")) + Path.DirectorySeparatorChar;
             string file = Path.GetFullPath(args[1]);

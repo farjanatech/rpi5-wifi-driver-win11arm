@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Xml.Linq;
+using System.Runtime.InteropServices;
 namespace Rpi5Wifi;
 internal static class SelfTests
 {
@@ -41,6 +42,12 @@ internal static class SelfTests
     {
         try
         {
+            Check(Startup.LookupTask(() => throw new FileNotFoundException()) == null, "mapped missing-task exception not treated as absent");
+            Check(Startup.LookupTask(() => throw new COMException("synthetic missing task", unchecked((int)0x80070002))) == null, "COM missing-task exception not treated as absent");
+            Check(Startup.LookupTask(() => throw new COMException("synthetic missing task", unchecked((int)0x8004130F))) == null, "scheduler task-not-found not treated as absent");
+            Throws(() => Startup.LookupTask(() => throw new UnauthorizedAccessException()), "scheduler access denied was hidden");
+            Throws(() => Startup.LookupTask(() => throw new DirectoryNotFoundException()), "missing scheduler folder was hidden");
+            var syntheticTask = new object(); Check(ReferenceEquals(Startup.LookupTask(() => syntheticTask), syntheticTask), "existing task lost");
             using (var icon = Branding.LoadIcon()) Check(icon.Width > 0 && icon.Height > 0, "form icon cannot load");
             using (var iconBytes = Branding.OpenIcon()) Check(Convert.ToHexString(SHA256.HashData(iconBytes)) == "189F68A20CB9A8333E575281A14332C355426F43FBD565302FAF149FBC42D624", "user icon changed");
             Check(Protocol.ValidCountry("BD") && !Protocol.ValidCountry("bd") && !Protocol.ValidCountry("USA"), "country validation");
@@ -123,10 +130,29 @@ internal static class SelfTests
             // Schema validation ONLY: flag 1 does not register a task or run it.
             dynamic service = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service", true)!)!;
             service.Connect(); dynamic root = service.GetFolder(@"\"); root.RegisterTask("RPi5-Connector-ValidateOnly", xml, 1, "SYSTEM", null, 5, null);
+            string ciTask = "RPi5-Connector-CI-" + Guid.NewGuid().ToString("N");
+            Check(Startup.FindTask(root, ciTask) is null, "actual scheduler absent-task mapping failed");
+            bool registered = false;
+            try
+            {
+                // Inert, uniquely named CI task: no triggers, never started.
+                // Real register/read/disable/delete proves scheduler operations,
+                // separate from production task names and protected user profiles.
+                var inert = XElement.Parse(xml); inert.Element(ns + "Triggers")!.Remove();
+                root.RegisterTask(ciTask, inert.ToString(SaveOptions.DisableFormatting), 2, "SYSTEM", null, 5, "D:P(A;;FA;;;SY)(A;;FA;;;BA)"); registered = true;
+                dynamic installed = Startup.FindTask(root, ciTask)!;
+                Check((bool)installed.Enabled && Startup.OwnedTask((string)installed.Xml, exe), "actual task creation/readback failed");
+                installed.Enabled = false;
+                Check(!(bool)Startup.FindTask(root, ciTask)!.Enabled, "actual task disable failed");
+                root.DeleteTask(ciTask, 0); registered = false;
+                Check(Startup.FindTask(root, ciTask) is null, "actual task deletion/absent lookup failed");
+            }
+            finally { if (registered) root.DeleteTask(ciTask, 0); }
             byte[] protectedKey = ProtectedData.Protect(pmk, null, DataProtectionScope.LocalMachine);
             byte[] restored = ProtectedData.Unprotect(protectedKey, null, DataProtectionScope.LocalMachine);
             Check(restored.SequenceEqual(pmk), "DPAPI roundtrip"); CryptographicOperations.ZeroMemory(restored); CryptographicOperations.ZeroMemory(pmk);
-            Console.WriteLine($"PASS: {assertions} C# connector checks; no Pi device, task installation or saved user profile used."); return 0;
+            assertions += UiTests.Run();
+            Console.WriteLine($"PASS: {assertions} C# connector checks; no Pi device or saved user profile used. Temporary inert CI task removed."); return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine($"FAIL: {ex.GetType().Name}: {ex.Message}"); return 1; }
     }

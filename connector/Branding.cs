@@ -2,7 +2,7 @@ namespace Rpi5Wifi;
 
 internal static class Branding
 {
-    public const string Version = "0.6.29.1";
+    public const string Version = "0.6.29.2";
     public static Stream OpenIcon() => typeof(Branding).Assembly.GetManifestResourceStream("Rpi5Wifi.ConnectorIcon")
         ?? throw new InvalidOperationException("The embedded connector icon is missing.");
 

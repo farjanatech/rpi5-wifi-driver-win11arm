@@ -104,11 +104,15 @@ internal static class Startup
             (string?)actions[0].Element(ns + "Arguments") == "--autoconnect" &&
             (string?)root.Element(ns + "Principals")?.Element(ns + "Principal")?.Element(ns + "UserId") is "S-1-5-18" or "SYSTEM";
     }
-    private static dynamic? FindTask(dynamic root, string name)
+    internal static object? LookupTask(Func<object> lookup)
     {
-        try { return root.GetTask(name); }
-        catch (COMException ex) when ((uint)ex.HResult is 0x80070002 or 0x8004130F) { return null; }
+        // COM HRESULTs may be translated into specific managed exceptions:
+        // ERROR_FILE_NOT_FOUND is normally FileNotFoundException, not COMException.
+        // Only this GetTask lookup can interpret these exact errors as absent.
+        try { return lookup(); }
+        catch (Exception ex) when ((uint)ex.HResult is 0x80070002 or 0x8004130F) { return null; }
     }
+    internal static dynamic? FindTask(dynamic root, string name) => LookupTask(() => (object)root.GetTask(name));
     public static void Enable(string country, string ssid, byte[] pmk)
     {
         if (!Protocol.ValidCountry(country) || !Protocol.ValidSsid(ssid) || pmk.Length != 32) throw new ArgumentException("Invalid profile.");
