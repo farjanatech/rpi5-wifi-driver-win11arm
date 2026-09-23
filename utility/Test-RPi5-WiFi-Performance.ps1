@@ -119,7 +119,7 @@ try {
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Output 'Performance utility 0.6.24 for installed exp0.6.14 or newer. This utility does not install drivers.'
+    Write-Output 'Performance utility 0.6.25 for installed exp0.6.14 or newer. This utility does not install drivers.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
     Write-Output 'The test requests example.com and up to 129 MiB of download payload from speed.cloudflare.com (plus protocol overhead). Repeated-download stage: up to 90 seconds. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
@@ -158,7 +158,7 @@ try {
         } catch { Write-Report "TEST ERROR: $($_.Exception.Message)" }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "Performance utility 0.6.24 report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "Performance utility 0.6.25 report; UTC=$([datetime]::UtcNow.ToString('o'))"
     # Explicit radio GET snapshots BEFORE and AFTER the measured workload,
     # never from the sampler or during downloads. Older drivers remain usable.
     $radioTool=Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Radio.ps1'

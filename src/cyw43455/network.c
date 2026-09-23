@@ -165,6 +165,9 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
     return Status;
 }
 #include "tx_queue.h"
+/* TX-RETRY-BEGIN */
+#include "tx_retry_gate.h"
+/* TX-RETRY-END */
 static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A)
 {
     CYW_NETWORK *N=A->Network;KIRQL irql;
@@ -259,6 +262,10 @@ static VOID CywWorker(PVOID Context)
     KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0,sentBefore,sentAfter;
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
+/* TX-RETRY-BEGIN */
+    ULONG retryMs;ULONG64 retryStart;NTSTATUS waitStatus;
+    RtlZeroMemory(&A->TxRetry,sizeof(A->TxRetry));
+/* TX-RETRY-END */
     RtlZeroMemory(&A->Transport,sizeof(A->Transport));
 /* TIMING-BEGIN */
     CYW_TIMING_U64 cycleStart,previousCycle=0,partStart,controlStart;
@@ -284,6 +291,9 @@ static VOID CywWorker(PVOID Context)
     CywMeasuredDiagnostics(A,120,STATUS_SUCCESS);
     while(!N->Stop) {
         if(N->Paused) {
+/* TX-RETRY-BEGIN */
+            CywTxRetryReset(&A->TxRetry);wait.QuadPart=-100000;
+/* TX-RETRY-END */
 /* TIMING-BEGIN */
             haveCycle=FALSE;previousBlocked=FALSE;
 /* TIMING-END */
@@ -305,6 +315,9 @@ static VOID CywWorker(PVOID Context)
         if(previousBlocked && !op)CywTimingRecord(&A->Timing,CywTimeCreditRecheck,previousCycle,cycleStart);
         controlStart=CywTimingBegin(&A->Timing);
 /* TIMING-END */
+/* TX-RETRY-BEGIN */
+        if(op)CywTxRetryReset(&A->TxRetry);
+/* TX-RETRY-END */
         if(op==3)CywRadioRequest(A);
         else if(op) {
             CywTxFlush(A,&N->Sends,NDIS_STATUS_MEDIA_DISCONNECTED);
@@ -349,11 +362,24 @@ static VOID CywWorker(PVOID Context)
         CywTimingEnd(&A->Timing,CywTimeWorkerWork,cycleStart);
         previousCycle=cycleStart;haveCycle=TRUE;previousBlocked=A->TxCreditWaits!=creditBefore;
 /* TIMING-END */
+/* TX-RETRY-BEGIN */
+        /* Only an exhausted, otherwise runnable queue gets short event waits.
+         * The policy never grants credits or adds a TX/RX processing budget.
+         * Requested 1 ms is not a promise of Windows timer resolution. */
+        retryMs=CywTxRetrySelect(&A->TxRetry,KeQueryInterruptTime(),
+            sentBefore!=0 || sentAfter!=0,i!=0,CywTxRetryEligible(A));
+/* TX-RETRY-END */
         if(!i && !sentBefore && !sentAfter) {
 /* TIMING-BEGIN */
             partStart=CywTimingBegin(&A->Timing);
 /* TIMING-END */
-            KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);
+/* TX-RETRY-WAIT-BEGIN */
+            wait.QuadPart=-(LONGLONG)retryMs*10000;
+            retryStart=KeQueryInterruptTime();
+            waitStatus=KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);
+            if(retryMs==1)CywTxRetryRecordWait(&A->TxRetry,retryStart,
+                KeQueryInterruptTime(),waitStatus==STATUS_TIMEOUT);
+/* TX-RETRY-WAIT-END */
 /* TIMING-BEGIN */
             CywTimingEnd(&A->Timing,CywTimeIdleWait,partStart);
 /* TIMING-END */

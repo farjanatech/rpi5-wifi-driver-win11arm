@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $baseline='a5b3748d6dd64b6f5bb1de31cad82a667dd4afeb'
 $proven='c0a22eb8a572ae6ee678fa6835e98c37ba750917'
+$fastest='e342399205e59513dc46b98b7bfd973e506c9bd9'
 $root=Split-Path -Parent $PSScriptRoot
 function Get-ScopeSource {
     param([string]$Path,[string]$Revision)
@@ -24,6 +25,23 @@ function Assert-SameSource {
     param([string]$Actual,[string]$Expected,[string]$Label)
     if((ConvertTo-ScopeToken $Actual) -cne (ConvertTo-ScopeToken $Expected)){throw "Unexpected change: $Label"}
 }
+# .25 changes ONLY the otherwise-idle exhausted-credit event wait. Protect
+# every existing SDIO/transport/band/security file exactly against tested .24,
+# not merely against broad .23-to-.24 extension allowances below.
+$protectedFiles=@(& git -C $root ls-tree -r --name-only $fastest -- src/cyw43455 src/sdio)
+if($LASTEXITCODE -ne 0 -or -not $protectedFiles.Count){throw 'Cannot enumerate .24 hardware anchor.'}
+foreach($file in $protectedFiles) {
+    if($file -ne 'src/cyw43455/network.c') {
+        Assert-SameSource (Get-ScopeSource $file) (Get-ScopeSource $file $fastest) "$file .24 hardware anchor"
+    }
+}
+function ConvertFrom-TxRetryInstrumentation {
+    param([string]$Text)
+    $text=[regex]::Replace($Text,'/\* TX-RETRY-BEGIN \*/.*?/\* TX-RETRY-END \*/','',[Text.RegularExpressions.RegexOptions]::Singleline)
+    return [regex]::Replace($text,'/\* TX-RETRY-WAIT-BEGIN \*/.*?/\* TX-RETRY-WAIT-END \*/',
+        'KeWaitForSingleObject(&N->Wake,Executive,KernelMode,FALSE,&wait);',[Text.RegularExpressions.RegexOptions]::Singleline)
+}
+Assert-SameSource (ConvertFrom-TxRetryInstrumentation (Get-ScopeSource 'src/cyw43455/network.c')) (Get-ScopeSource 'src/cyw43455/network.c' $fastest) 'Entire .24 worker except bounded idle retry'
 # Queue ownership, control framing and firmware upload remain the .16 anchor.
 foreach($file in @('src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/control.h','src/cyw43455/firmware.c')) {
     Assert-SameSource (Get-ScopeSource $file $baseline) (Get-ScopeSource $file $proven) "$file .16 anchor"
@@ -128,7 +146,7 @@ $setter=$setter.Replace('UCHAR preference[8];ULONG length=CywBuildJoinPreference
 $setter=$setter.Replace('preference,length);','preference,sizeof(preference));')
 Assert-SameSource $setter (Get-ScopeFunction (Get-ScopeSource 'src/cyw43455/join_preference.h' $baseline) 'CywApplyJoinPreference') 'Join preference transport/error handling'
 Assert-SameSource (Get-ScopeFunction $preference 'CywApplyJoinPreference') 'static NTSTATUS CywApplyJoinPreference(PRPI5CYW_ADAPTER A){return CywSetJoinPreference(A,TRUE);}' 'Bounded initial preference wrapper'
-$network=ConvertFrom-TimingInstrumentation (Get-ScopeSource 'src/cyw43455/network.c')
+$network=ConvertFrom-TimingInstrumentation (ConvertFrom-TxRetryInstrumentation (Get-ScopeSource 'src/cyw43455/network.c'))
 $priorNetwork=ConvertFrom-TimingInstrumentation (Get-ScopeSource 'src/cyw43455/network.c' $baseline)
 $receive=(Get-ScopeFunction $network 'CywReceive').Replace('N->SelectingBand || ','')
 $link=(Get-ScopeFunction $network 'CywLink').Replace('if(Up && A->Network->SelectingBand)return;','')
@@ -169,8 +187,8 @@ if(Test-Path (Join-Path $root 'src/cyw43455/rx_poll.h')){throw 'Retired read-ahe
 $header=Get-ScopeSource 'src/driver/driver.h'
 if($header -notmatch '#define RPI5CYW_TX_LIMIT 64u'){throw 'Queue limit changed.'}
 $driver=Get-ScopeSource 'src/driver/driver.c'
-if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 24\)'){throw 'Diagnostic version incorrect.'}
-if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x00060018;'){throw 'NDIS vendor driver version incorrect.'}
+if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 25\)'){throw 'Diagnostic version incorrect.'}
+if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x00060019;'){throw 'NDIS vendor driver version incorrect.'}
 $project=Get-ScopeSource 'rpi5-cyw43455.vcxproj'
 $workflow=Get-ScopeSource '.github/workflows/build-arm64-driver.yml'
 if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or
@@ -178,4 +196,4 @@ if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or
    $workflow -notmatch 'Configuration: Release'){
     throw 'Optimized Release build is not configured.'
 }
-Write-Output 'PASS: .16 queue/wire/upload anchors, .23 engine/workload/security preserved; scoped verified HS50 fallback, bounded band selection, transport progress and masked timing.'
+Write-Output 'PASS: .24 hardware anchor and .16 ownership/budgets preserved; only bounded exhausted-credit idle wait changes, with unchanged band/HS50/firmware/security/workload.'

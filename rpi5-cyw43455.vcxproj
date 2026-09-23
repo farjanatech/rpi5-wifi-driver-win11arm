@@ -90,6 +90,8 @@
     <ClInclude Include="src\driver\timing_clock.h" />
     <ClInclude Include="src\cyw43455\tx_types.h" />
     <ClInclude Include="src\cyw43455\tx_queue.h" />
+    <ClInclude Include="src\cyw43455\tx_retry.h" />
+    <ClInclude Include="src\cyw43455\tx_retry_gate.h" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -11,6 +11,7 @@
 
 #include "../cyw43455/packet_probe.h"
 #include "../cyw43455/transport_protocol.h"
+#include "../cyw43455/tx_retry.h"
 #include "../cyw43455/radio_protocol.h"
 #include "traffic_stats.h"
 #include "timing.h"
@@ -89,6 +90,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */
+    CYW_TX_RETRY TxRetry; /* Worker-owned bounded idle-credit retry evidence. */
     ULONG TxQueueFrames, TxBurstAdmissions, TxOversizedNbl, TxInterleavedPackets;
     ULONG RadioReport[CYW_RADIO_REPORT_WORDS]; /* Explicit-request-only firmware GET snapshot. */
     ULONG TxNblAccepted, TxNblCompleted, TxCancelled, TxExpired, TxCreditWaits;

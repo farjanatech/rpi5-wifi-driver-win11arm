@@ -1,10 +1,12 @@
-> Current candidate: **exp0.6.24**, bounded receive-notification recovery,
-> verified startup band selection and capability-checked 50 MHz SDR with safe fallback.
-> See [EXP0.6.24](./docs/EXP0.6.24.md). Hardware speed improvement is not yet validated.
-> It is not a hardware-proven speed improvement. Keep exp0.6.16 as the tested fallback.
-> The existing performance command automatically includes firmware/radio evidence
-> before and after load plus timing-report.json. Unknown WMM mapping retains safe
-> priority-flow fallback; no guessed flow-control bypass.
+> Current candidate: **exp0.6.25**, bounded shorter event waits when queued sends
+> are credit-blocked and a worker cycle makes no packet progress.
+> It retains .24's verified band selection, capability-checked 50 MHz SDR and
+> 64-frame queue. See [EXP0.6.25](./docs/EXP0.6.25.md).
+> **Keep exp0.6.24 as the tested fallback:** its Pi report completed 128/128
+> downloads at 28.96 Mbps in 37.07 seconds, but still had queue-full rejects
+> and two NoResources probes. .25's improvement is not yet hardware-proven.
+> Use the same performance command and share its single report ZIP; no router
+> rename, extra device, UEFI change or private-credential publication is needed.
 > Historical version notes below are retained for traceability.
 
 # Raspberry Pi 5 CYW43455 Wi-Fi driver for Windows 11 ARM64

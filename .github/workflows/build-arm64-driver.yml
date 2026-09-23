@@ -114,6 +114,16 @@ jobs:
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\tx-queue-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Test bounded idle-credit retry and production eligibility gates
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $command = 'call "{0}" && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\tx_retry_tests.c /Fe:ci-logs\tx_retry_tests.exe && ci-logs\tx_retry_tests.exe && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\tx_retry_gate_tests.c /Fe:ci-logs\tx_retry_gate_tests.exe && ci-logs\tx_retry_gate_tests.exe' -f $vcvars
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\tx-retry-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Test actual firmware control replies and connection integration
         shell: pwsh
         run: |
@@ -300,7 +310,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.24
+          name: rpi5-wifi-one-click-diagnostics-v0.6.25
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90
