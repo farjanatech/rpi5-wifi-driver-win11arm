@@ -33,10 +33,14 @@ function Get-MeasurementClockFixture {
                 return $value
             }
         }
+        # New-Module exports functions into its caller by default. Keep mocks
+        # private so Add-Type cannot contaminate the later real-API smoke.
+        Export-ModuleMember -Function @()
     }
 }
 
 $fixture=Get-MeasurementClockFixture
+if($fixture.ExportedFunctions.Count -ne 0) { throw 'Clock fixture exported a mock into the caller.' }
 & $fixture {
     if($script:NativeAttempts -ne 0 -or $script:ReaderCalls -ne 0) { throw 'Import queried a native clock.' }
     if($null -ne (Get-Rpi5MeasurementTimestamp)) { throw 'Uninitialized clock is not unknown.' }
@@ -129,13 +133,28 @@ if($NativeSmoke) {
     $native=New-Module -ArgumentList $clockPath -ScriptBlock {
         param($Path)
         . $Path
+        Export-ModuleMember -Function @()
     }
+    if($native.ExportedFunctions.Count -ne 0) { throw 'Native clock fixture exported helper functions.' }
     & $native {
+        $binding=Get-Command -Name Add-Type -ErrorAction Stop
+        if($binding.CommandType -ne 'Cmdlet' -or $binding.ModuleName -ne 'Microsoft.PowerShell.Utility') {
+            throw ('Native clock smoke resolved unexpected Add-Type: {0} from {1}.' -f
+                $binding.CommandType,$binding.ModuleName)
+        }
         $output=@(Initialize-Rpi5MeasurementClock)
         $first=Get-Rpi5MeasurementTimestamp
         $second=Get-Rpi5MeasurementTimestamp
         if($output.Count -ne 0 -or $first -isnot [int64] -or $second -isnot [int64] -or
-           $first -lt 0 -or $second -lt $first) { throw 'Native boot interrupt-time smoke failed.' }
+           $first -lt 0 -or $second -lt $first) {
+            $firstType=if($null -eq $first){'<null>'}else{$first.GetType().FullName}
+            $secondType=if($null -eq $second){'<null>'}else{$second.GetType().FullName}
+            # Initialization intentionally returns unknown to production callers
+            # on failure. CI must fail loudly and retain the exception chain.
+            $failure=if($Error.Count -gt 0){$Error[0].Exception.ToString()}else{'No error record.'}
+            throw ('Native boot interrupt-time smoke failed: output={0}, first={1} ({2}), second={3} ({4}); Add-Type={5}/{6}; latest exception: {7}' -f
+                $output.Count,$first,$firstType,$second,$secondType,$binding.CommandType,$binding.ModuleName,$failure)
+        }
         # Adjacent calls can share the same clock tick. No sleep or resolution
         # change is needed, and strict increase would be an invalid requirement.
     }

@@ -30,8 +30,12 @@ if (Test-Rpi5NewerSnapshot ([pscustomobject]@{}) $stamp) { throw 'Missing timest
 if (Test-Rpi5NewerSnapshot ([pscustomobject]@{SnapshotTimeUtc=$stamp}) $stamp) { throw 'Same end-of-test snapshot accepted.' }
 if (Test-Rpi5NewerSnapshot ([pscustomobject]@{SnapshotTimeUtc=$stamp-1}) $stamp) { throw 'Older/mid-test snapshot accepted.' }
 if (-not (Test-Rpi5NewerSnapshot ([pscustomobject]@{SnapshotTimeUtc=$stamp+1}) $stamp)) { throw 'New post-test snapshot rejected.' }
-$r=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-Command','Write-Output 123; exit 7') 10
-if ($r.ExitCode -ne 7 -or $r.TimedOut -or $r.Output -notmatch '123') { throw 'Native output/exit capture failed.' }
+# Hosted CI can take over 20 seconds to start a fresh PowerShell process.
+# This fixture tests output/exit capture, not the production curl deadline.
+$r=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-Command','Write-Output 123; exit 7') 60
+if ($r.ExitCode -ne 7 -or $r.TimedOut -or $r.Output -notmatch '123') {
+    throw "Native output/exit capture failed: exit=$($r.ExitCode), timedOut=$($r.TimedOut), output=$($r.Output)"
+}
 $r=Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-Command','Start-Sleep -Seconds 20') 1
 if (-not $r.TimedOut) { throw 'Process deadline failed.' }
 $source=Get-Content -LiteralPath $path -Raw
