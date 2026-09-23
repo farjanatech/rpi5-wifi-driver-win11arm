@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Xml.Linq;
 namespace Rpi5Wifi;
 internal static class SelfTests
@@ -69,10 +71,23 @@ internal static class SelfTests
                     Check(held.Wait(TimeSpan.FromSeconds(5)), "operation owner timed out");
                     bool busy = false; try { using var lease = new OperationLease(); } catch (OperationBusyException) { busy = true; }
                     Check(busy, "concurrent operation was admitted");
+                    Check(Startup.TryJoin(new FakeDriver(), () => true, () => throw new Exception("must not load while busy"), _ => throw new Exception("must not decrypt while busy")) == null, "boot competed with manual operation");
                 }
                 finally { release.Set(); owner.GetAwaiter().GetResult(); }
                 using var recovered = new OperationLease(); Check(true, "operation lease released");
             }
+            int loads = 0, decrypts = 0;
+            SavedNetwork SyntheticProfile() { ++loads; return new(1, "BD", "IEEE", "synthetic"); }
+            byte[] bootKey = pmk.ToArray();
+            byte[] SyntheticKey(SavedNetwork _) { ++decrypts; return bootKey; }
+            fake = new() { Busy = true };
+            Check(Startup.TryJoin(fake, () => true, SyntheticProfile, SyntheticKey) == null && loads == 0 && decrypts == 0 && fake.Connects == 0, "boot touched credentials before readiness");
+            fake = new();
+            Check(Startup.TryJoin(fake, () => false, SyntheticProfile, SyntheticKey) == "Disabled" && loads == 0, "disabled task tried to join");
+            fake.Auth = true;
+            Check(Startup.TryJoin(fake, () => true, SyntheticProfile, SyntheticKey) == "AlreadyAuthenticated" && loads == 0 && fake.Connects == 0, "boot replaced existing link");
+            fake.Auth = false;
+            Check(Startup.TryJoin(fake, () => true, SyntheticProfile, SyntheticKey) == "Authenticated" && loads == 1 && decrypts == 1 && fake.Connects == 1 && bootKey.All(b => b == 0), "boot join/key cleanup");
             fake = new() { Busy = true }; Throws(() => Operations.Connect(fake, "BD", "IEEE", pmk, CancellationToken.None, _ => { }), "startup join admitted");
             Check(fake.Connects == 0, "startup caused connect IOCTL");
             fake = new(); Check(Operations.Scan(fake, "BD", CancellationToken.None, _ => { }).Generation == 11 && fake.Starts == 1, "one explicit scan");
@@ -88,6 +103,21 @@ internal static class SelfTests
             Check(task.Descendants(ns + "BootTrigger").Single().Element(ns + "Delay")?.Value == "PT0S", "boot delay introduced");
             Check(task.Descendants(ns + "RunOnlyIfNetworkAvailable").Single().Value == "false", "network-ready circular dependency");
             Check(!xml.Contains("password", StringComparison.OrdinalIgnoreCase) && !xml.Contains("IEEE"), "credential in scheduled task");
+            // Exercise Windows ownership/ACL APIs only on synthetic CI files.
+            string aclPath = Path.Combine(Environment.CurrentDirectory, "ci-logs", "acl-" + Guid.NewGuid().ToString("N"));
+            var privateDir = new DirectoryInfo(aclPath); privateDir.Create(Startup.PrivateAcl());
+            try
+            {
+                Startup.AssertPrivate(privateDir);
+                string file = Path.Combine(aclPath, "synthetic.txt"); File.WriteAllText(file, "no credentials"); Startup.SealFile(file);
+                Startup.AssertPrivate(new FileInfo(file)); Check(true, "private profile ownership and ACL");
+                var acl = new FileInfo(file).GetAccessControl();
+                acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier("S-1-1-0"), FileSystemRights.Read, AccessControlType.Allow));
+                new FileInfo(file).SetAccessControl(acl);
+                Throws(() => Startup.AssertPrivate(new FileInfo(file)), "public-readable profile accepted");
+                Startup.SealFile(file);
+            }
+            finally { privateDir.Delete(true); }
             // Schema validation ONLY: flag 1 does not register a task or run it.
             dynamic service = Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service", true)!)!;
             service.Connect(); dynamic root = service.GetFolder(@"\"); root.RegisterTask("RPi5-Connector-ValidateOnly", xml, 1, "SYSTEM", null, 5, null);

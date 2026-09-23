@@ -21,7 +21,7 @@ internal static class Startup
             if ((File.Exists(current) || Directory.Exists(current)) && (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Refusing a redirected startup path.");
     }
-    private static DirectorySecurity PrivateAcl()
+    internal static DirectorySecurity PrivateAcl()
     {
         var acl = new DirectorySecurity(); acl.SetAccessRuleProtection(true, false);
         acl.SetOwner(new SecurityIdentifier("S-1-5-32-544"));
@@ -30,7 +30,7 @@ internal static class Startup
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
         return acl;
     }
-    private static void AssertPrivate(FileSystemInfo info)
+    internal static void AssertPrivate(FileSystemInfo info)
     {
         ValidatePath(info.FullName);
         FileSystemSecurity acl = info is DirectoryInfo directory ? directory.GetAccessControl() : ((FileInfo)info).GetAccessControl();
@@ -39,11 +39,22 @@ internal static class Startup
             if (rule.AccessControlType == AccessControlType.Allow && rule.IdentityReference.Value is not ("S-1-5-18" or "S-1-5-32-544"))
                 throw new IOException("Startup files must be accessible only to SYSTEM and Administrators.");
     }
+    internal static void SealFile(string path)
+    {
+        ValidatePath(path);
+        var acl = new FileSecurity(); acl.SetAccessRuleProtection(true, false);
+        acl.SetOwner(new SecurityIdentifier("S-1-5-32-544"));
+        foreach (string sid in new[] { "S-1-5-18", "S-1-5-32-544" })
+            acl.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(sid), FileSystemRights.FullControl, AccessControlType.Allow));
+        var file = new FileInfo(path); file.SetAccessControl(acl); AssertPrivate(file);
+    }
     private static void EnsureDirectory()
     {
         ValidatePath(DirectoryPath);
         var directory = new DirectoryInfo(DirectoryPath);
         if (directory.Exists) AssertPrivate(directory); else directory.Create(PrivateAcl());
+        // Create can observe an existing directory if another creator won a race.
+        AssertPrivate(directory);
         foreach (var item in directory.EnumerateFileSystemInfos())
         {
             if (item is not FileInfo || item.Name is not ("RPi5-WiFi-Connector.exe" or "profile.json" or "boot-status.json"))
@@ -113,10 +124,10 @@ internal static class Startup
         string source = Environment.ProcessPath ?? throw new IOException("Executable location unavailable.");
         if (!string.Equals(Path.GetFullPath(source), ExePath, StringComparison.OrdinalIgnoreCase))
         {
-            File.Copy(source, ExePath, true); AssertPrivate(new FileInfo(ExePath));
+            File.Copy(source, ExePath, true); SealFile(ExePath);
         }
         var profile = new SavedNetwork(1, country, ssid, Convert.ToBase64String(ProtectedData.Protect(pmk, Entropy, DataProtectionScope.LocalMachine)));
-        File.WriteAllText(ProfilePath, JsonSerializer.Serialize(profile)); AssertPrivate(new FileInfo(ProfilePath));
+        File.WriteAllText(ProfilePath, JsonSerializer.Serialize(profile)); SealFile(ProfilePath);
         root.RegisterTask(TaskName, TaskXml(ExePath), 6, "SYSTEM", null, 5, "D:P(A;;FA;;;SY)(A;;FA;;;BA)");
     }
     public static void Disable(bool forget)
@@ -140,7 +151,26 @@ internal static class Startup
     private static void Receipt(string result)
     {
         EnsureDirectory();
-        File.WriteAllText(Path.Combine(DirectoryPath, "boot-status.json"), JsonSerializer.Serialize(new { Version = 1, Utc = DateTime.UtcNow, Result = result }));
+        string path = Path.Combine(DirectoryPath, "boot-status.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new { Version = 1, Utc = DateTime.UtcNow, Result = result })); SealFile(path);
+    }
+    internal static string? TryJoin(IDriver driver, Func<bool> enabled, Func<SavedNetwork> load, Func<SavedNetwork, byte[]> unprotect)
+    {
+        try
+        {
+            using var lease = new OperationLease();
+            if (!enabled()) return "Disabled";
+            // Recheck under the shared lease: the GUI might have connected
+            // between the outer readiness observation and acquiring ownership.
+            var current = LiveState.Parse(driver.Call(0x126004));
+            if (current.Status != 0) throw new InvalidOperationException("Driver reported a startup error.");
+            if (current.Authenticated) return "AlreadyAuthenticated";
+            if (!current.Idle) return null;
+            var profile = load(); byte[] pmk = unprotect(profile);
+            try { return Operations.Connect(driver, profile.Country, profile.Ssid, pmk, CancellationToken.None, _ => { }) ? "Authenticated" : "AlreadyAuthenticated"; }
+            finally { CryptographicOperations.ZeroMemory(pmk); }
+        }
+        catch (OperationBusyException) { return null; }
     }
     public static int Run(IDriver driver)
     {
@@ -162,18 +192,9 @@ internal static class Startup
                 {
                     // Acquire the shared operation lock only at readiness, not
                     // throughout firmware startup. Recheck task state under it.
-                    try
-                    {
-                        using var lease = new OperationLease();
-                        if (!Enabled()) return 0;
-                        var profile = Load() ?? throw new InvalidOperationException("Saved profile is unavailable.");
-                        byte[] pmk = Unprotect(profile);
-                        bool joined;
-                        try { joined = Operations.Connect(driver, profile.Country, profile.Ssid, pmk, CancellationToken.None, _ => { }); }
-                        finally { CryptographicOperations.ZeroMemory(pmk); }
-                        Receipt(joined ? "Authenticated" : "AlreadyAuthenticated"); return 0;
-                    }
-                    catch (OperationBusyException) { /* A user's scan/connect owns the radio. Observe again without replacing it. */ }
+                    string? outcome = TryJoin(driver, Enabled,
+                        () => Load() ?? throw new InvalidOperationException("Saved profile is unavailable."), Unprotect);
+                    if (outcome != null) { Receipt(outcome); return 0; }
                 }
                 Thread.Sleep(250); // Poll memory, no extra boot delay or radio request.
             }
