@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:UtilityVersion = '0.6.25'
+$script:UtilityVersion = '0.6.26'
 
 function Invoke-Rpi5ReadOnlyCapture {
     param([Parameter(Mandatory=$true)][scriptblock]$Command)
@@ -329,7 +329,8 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'CountryListStatus','CountryListError','CountryListCount',
                     'CountryListMembership','CountryListReplyLength',
                     'RamTransferAddress','RamTransferLength','RamTransferWrite',
-                    'RamSize','LinkEvent','LinkReason','TxPackets','RxPackets'
+                    'RamSize','LinkEvent','LinkReason','TxPackets','RxPackets',
+                    'TxCompletionBatchCalls','TxCompletionBatchNbls','TxCompletionBatchMax'
                 )
                 foreach ($name in $names) {
                     $value = Get-Rpi5PropertyValue -Object $diag -Name $name

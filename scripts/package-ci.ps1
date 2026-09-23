@@ -43,7 +43,8 @@ Copy-Item (Join-Path $root 'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd') (Join-Pa
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.ps1') $stage
 Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.cmd') $stage
 foreach ($name in @('Set-RPi5-WiFi-Autoconnect.ps1', 'Enable-RPi5-WiFi-Autoconnect.cmd',
-    'Disable-RPi5-WiFi-Autoconnect.cmd', 'WiFi.config.example.json')) {
+    'Disable-RPi5-WiFi-Autoconnect.cmd', 'WiFi.config.example.json',
+    'RPi5-WiFi-Operations.ps1','Check-RPi5-WiFi-Readiness.ps1','Check-RPi5-WiFi-Readiness.cmd')) {
     Copy-Item (Join-Path $root "utility\$name") $stage
 }
 Copy-Item (Join-Path $root 'docs\AUTO-CONNECT.md') $stage
@@ -60,6 +61,8 @@ Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.25.md') $stage
 Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.24.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.25.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.26.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.26.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
@@ -106,24 +109,20 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.25 targets credit-resumption latency without changing admission
-or packet budgets. Only a no-progress worker cycle with explicit TxSeq==TxMax
-credit exhaustion, locked pending sends and open lifecycle/flow/admission gates
-may request a shorter 1 ms event wait. After four short requests or 20 ms elapsed,
-normal 10 ms backoff remains until TX progress or eligibility clears. RX alone
-with exhausted credits does not reset the budget. This is not a busy-wait loop
-or a promise that Windows will schedule at 1 ms. The hypothesis is not a proven
-root cause or a guarantee of fewer queue rejections or higher throughput.
-The .24 Pi report measured 28.96 Mbps: 128/128 downloads in 37.07 seconds,
-with 4537 queue-full rejects and two NoResources router probes. Keep .24 as
-the tested fallback. This single short run does not establish long-term stability.
-Verified startup band selection, <=50 MHz SDR with checked <=25 MHz fallback,
-the 64-held-frame cap, 4 TX / bounded RX / 4 TX budgets, UEFI/fan, firmware,
-country/security and optimized /O2 /Ot build are unchanged from .24.
-No live firmware radio queries are added during the performance workload.
-See EXP0.6.25.md and PERFORMANCE-0.6.25.md. Physical improvement of .25 is
-not yet established; no router rename or additional-device experiment is needed.
-Install on the Pi, restart once, then run Test-RPi5-WiFi-Performance.cmd.
+Driver exp0.6.26 targets initial usability: bounded completion batching of
+actually transferred sends, serialized connection operations, honest readiness
+reporting and optional single reconnect validation. It does not filter TCP ACKs,
+increase the 64-retained-frame cap or change worker packet budgets. Batching
+reduces host callback overhead; it does not create firmware credits or guarantee
+higher throughput. The .25 idle retry remains unchanged.
+The .24/.25 Pi reports measured 28.96/28.99 Mbps with all 128 downloads complete,
+but still had queue-full rejects and two NoResources probes each. Keep .24 as
+the hardware-tested fallback. Neither short run establishes long-term stability.
+Verified band selection, <=50 MHz SDR with checked <=25 MHz fallback, UEFI/fan,
+firmware, country/security and optimized /O2 /Ot build are unchanged.
+See EXP0.6.26.md and PERFORMANCE-0.6.26.md. Install on the Pi, restart once,
+then run Check-RPi5-WiFi-Readiness.cmd. This candidate still needs Pi validation;
+no router rename, additional device or OS reinstall is required.
 Historical retained features below describe earlier candidates, not new claims.
 
 Retained exp0.6.14 caches the verified runtime backplane address window, avoiding
@@ -246,7 +245,7 @@ Security:
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.6.25
+driver_version=0.6.26
 build_configuration=$Configuration
 timing_default=worker-only; detailed command and receive-indication clocks disabled
 driver_commit=$env:GITHUB_SHA

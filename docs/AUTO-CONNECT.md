@@ -34,3 +34,24 @@ The startup task runs once per boot, waits up to 180 seconds for the driver and 
 the existing bounded firmware wait (up to 30 minutes while progressing). It will
 not loop indefinitely, change UEFI/security settings, or reconnect continuously
 after sleep/dropouts. Firmware or association failures still require diagnosis.
+
+## Updates and readiness (0.6.26)
+
+The driver installer refreshes connector code for an already-enabled, matching
+startup task. It preserves the installed private profile and task settings; it
+does not enable autoconnect if it was off. An unsafe/unrecognized task or busy
+operation produces a warning instead of being overwritten. Review the installer
+log if startup utility refresh fails. Re-enabling manually still copies the
+package profile, so do not do that unless you intend to replace the installed one.
+
+Startup and performance use an existing authenticated IPv4/default-route
+connection without requesting another join. Manual Connect remains an explicit
+connection request and can change the profile. Conflicting operations are
+serialized with a bounded wait. One explicit reconnect is bounded; there is no
+perpetual monitoring/reset task.
+
+The startup script records a small protected `Startup-receipt.json` alongside
+the installed scripts. It contains timing, version, boot identity and readiness
+flags, not the SSID/password/PMK. `Check-RPi5-WiFi-Readiness.cmd` uses this evidence
+before any new connection, and labels absent/stale evidence **Not tested**.
+An authenticated link plus IP/route is not by itself proof of Internet access.

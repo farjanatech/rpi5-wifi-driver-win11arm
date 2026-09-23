@@ -1,8 +1,9 @@
 [CmdletBinding()]
 param([switch]$StatusOnly, [switch]$Disconnect, [switch]$LibraryOnly,
-      [string]$ConfigPath, [switch]$Startup)
+      [string]$ConfigPath, [switch]$Startup, [switch]$IfNeeded, [switch]$PassThru)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'RPi5-WiFi-Operations.ps1')
 
 function Test-Rpi5ConnectionInput {
     param([string]$Country, [string]$Ssid)
@@ -141,6 +142,7 @@ function Get-Rpi5StartupDecision {
 }
 # No transcript or command-line credential. An optional user-owned JSON file
 # supplies credentials, but this connector never writes them or includes them in errors.
+if (-not ('Rpi5WifiControl' -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
@@ -189,6 +191,7 @@ public static class Rpi5WifiControl {
     }
 }
 '@
+}
 if ($LibraryOnly) { return }
 if (-not $ConfigPath -and -not $StatusOnly -and -not $Disconnect) {
     $candidate = Join-Path $PSScriptRoot 'WiFi.private.json'
@@ -205,12 +208,17 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     if ($StatusOnly) { $launchArguments += '-StatusOnly' }
     if ($Disconnect) { $launchArguments += '-Disconnect' }
     if ($ConfigPath) { $launchArguments += @('-ConfigPath', ('"{0}"' -f $ConfigPath)) }
+    if ($IfNeeded) { $launchArguments += '-IfNeeded' }
     if ($Startup) { throw 'Startup mode requires the installed SYSTEM task.' }
     # Interactive connection must show its prompts/results; only the SYSTEM
     # startup task is noninteractive and runs without a user desktop window.
     Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launchArguments
     return
 }
+$operationLease=$null; $finalReadiness=$null; $startupOutcome='Failed'
+$connectionStartedUtc=[datetime]::UtcNow.ToString('o')
+try {
+if (-not $StatusOnly) { $operationLease=Enter-Rpi5Operation }
 if ($Startup -and -not $ConfigPath) { throw 'Startup mode requires a configuration file.' }
 if ($Startup) {
     $deviceWatch = [Diagnostics.Stopwatch]::StartNew()
@@ -218,6 +226,16 @@ if ($Startup) {
         try { [void][Rpi5WifiControl]::Call(0x126004, $null); break }
         catch { if ($deviceWatch.Elapsed.TotalSeconds -ge 180) { throw 'Driver control device unavailable after 180 seconds.' } }
         Start-Sleep -Seconds 5
+    }
+}
+if (($IfNeeded -or $Startup) -and -not $StatusOnly -and -not $Disconnect) {
+    $existingReadiness=Get-Rpi5ConnectionReadiness
+    if ($existingReadiness.Status -eq 0 -and $existingReadiness.Authenticated) {
+        $finalReadiness=Wait-Rpi5ConnectionState -Target Ready -Seconds 60
+        $startupOutcome='Ready'
+        Write-Output 'Existing authenticated connection and IPv4/default route are ready. No reconnect requested.'
+        if ($PassThru) { Write-Output ([pscustomobject]@{Kind='RPi5ConnectionResult';Outcome='AlreadyReady';Connection=$finalReadiness}) }
+        return
     }
 }
 
@@ -235,7 +253,12 @@ if ($Disconnect) {
         $idle = $elapsed - $lastAdvance
         Write-Output ('{0} Elapsed={1}s NoProgressObserved={2}s' -f $sample.Text, [int]$elapsed, [int]$idle)
         $decision = Get-Rpi5StartupDecision $sample $elapsed $idle
-        if ($decision -eq 'error') { throw (Get-Rpi5DriverFailure $readyState) }
+        if ($decision -eq 'error') {
+            # An explicit user connection may clear a prior connection error
+            # through one bounded disconnect. Startup never retries hard errors.
+            if (-not $Startup -and -not $IfNeeded -and $sample.Phase -ge 500) { break }
+            throw (Get-Rpi5DriverFailure $readyState)
+        }
         if ($decision -eq 'ready') { break }
         if ($decision -eq 'no-progress') {
             throw 'No startup byte/phase progress observed for 120 seconds. This does not prove a hardware hang. Driver is not stopped. Collect diagnostics now before rebooting.'
@@ -289,6 +312,7 @@ if ($Disconnect) {
         [BitConverter]::GetBytes([uint32]$ssidBytes.Length).CopyTo($request, 4)
         [Text.Encoding]::ASCII.GetBytes($country).CopyTo($request, 8)
         $ssidBytes.CopyTo($request, 12); $pmk.CopyTo($request, 44)
+        Invoke-Rpi5FreshConnectionBoundary -Initial (Get-Rpi5ConnectionReadiness)
         [void][Rpi5WifiControl]::Call(0x12A000, $request)
         try {
             if (-not (Test-Path -LiteralPath $countryKey)) { [void](New-Item -Path $countryKey -Force) }
@@ -328,8 +352,22 @@ for ($attempt = 0; $attempt -lt $limit; $attempt++) {
 $joinSnapshot = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Rpi5CywDirectDiag' -ErrorAction SilentlyContinue
 Write-Output (Get-Rpi5JoinPreferenceSummary $joinSnapshot)
 Get-NetAdapter | Where-Object InterfaceDescription -like '*CYW43455*' |
-    Get-NetIPConfiguration | Format-List InterfaceAlias, IPv4Address, IPv4DefaultGateway
+    Get-NetIPConfiguration | Format-List InterfaceAlias, IPv4Address, IPv4DefaultGateway | Out-String | Write-Output
 Write-Output 'If association failed, collect diagnostics. Do not change UEFI or reinstall Windows.'
 if ($ConfigPath -and -not $StatusOnly -and -not $Disconnect -and (-not $connected -or $errorCode -ne 0)) {
     throw 'Configured connection did not authenticate. Run diagnostics; automatic mode does not imply working Internet.'
+}
+if (-not $StatusOnly -and -not $Disconnect) {
+    if (-not $connected -or $errorCode -ne 0) { throw 'Connection did not authenticate within 120 seconds. No repeated connection was attempted.' }
+    $finalReadiness=Wait-Rpi5ConnectionState -Target Ready -Seconds 60
+    $startupOutcome='Ready'
+    Write-Output 'Authenticated connection with usable IPv4/default route is ready. Internet access is checked separately.'
+    if ($PassThru) { Write-Output ([pscustomobject]@{Kind='RPi5ConnectionResult';Outcome='Connected';Connection=$finalReadiness}) }
+}
+} finally {
+    if ($Startup) {
+        try { Write-Rpi5StartupReceipt -StartedUtc $connectionStartedUtc -Outcome $startupOutcome -Connection $finalReadiness }
+        catch { Write-Warning 'Startup result could not be saved. No credentials were logged.' }
+    }
+    Exit-Rpi5Operation $operationLease
 }

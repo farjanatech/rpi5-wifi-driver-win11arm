@@ -104,7 +104,7 @@ jobs:
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\traffic-stats-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Test actual pending-send ownership and lifecycle
+      - name: Test actual pending-send ownership, bounded completions and lifecycle
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -167,6 +167,9 @@ jobs:
             '.\utility\Connect-RPi5-WiFi.ps1',
             '.\tests\connection_utility_tests.ps1',
             '.\utility\Set-RPi5-WiFi-Autoconnect.ps1',
+            '.\utility\RPi5-WiFi-Operations.ps1',
+            '.\utility\Check-RPi5-WiFi-Readiness.ps1',
+            '.\tests\readiness_utility_tests.ps1',
             '.\tests\autoconnect_utility_tests.ps1',
             '.\utility\Test-RPi5-WiFi-Performance.ps1',
             '.\utility\Measure-RPi5-WiFi-Load.ps1',
@@ -199,6 +202,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\autoconnect_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\autoconnect-utility-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\readiness_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\readiness-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\radio_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\radio-utility-tests.log
@@ -310,7 +316,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.25
+          name: rpi5-wifi-one-click-diagnostics-v0.6.26
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90

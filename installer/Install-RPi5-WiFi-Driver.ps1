@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.6.25'
+$script:InstallerVersion = '0.6.26'
 $script:RequiredUefiRevision = 'bda4c47'
 
 function Test-Rpi5PnpSuccess {
@@ -44,7 +44,7 @@ function Test-Rpi5ManifestName {
 }
 
 function Test-Rpi5PackageManifest {
-    param([Parameter(Mandatory=$true)][string]$Directory)
+    param([Parameter(Mandatory=$true)][string]$Directory,[string[]]$RequiredNames=@())
 
     $manifestPath = Join-Path $Directory 'SHA256SUMS.txt'
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
@@ -52,18 +52,24 @@ function Test-Rpi5PackageManifest {
     }
 
     $verified = 0
+    $members = @{}
     foreach ($line in Get-Content -LiteralPath $manifestPath) {
         $match = [regex]::Match($line, '^([0-9A-Fa-f]{64})\s+(.+)$')
         if (-not $match.Success) { continue }
         $name = $match.Groups[2].Value
         if (-not (Test-Rpi5ManifestName -Name $name)) { throw "Unsafe manifest filename: $name" }
+        if ($members.ContainsKey($name)) { throw "Duplicate manifest filename: $name" }
         $path = Join-Path $Directory $name
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Package file is missing: $name" }
         $actual = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
         if ($actual -ne $match.Groups[1].Value.ToUpperInvariant()) { throw "Package hash mismatch: $name" }
+        $members[$name] = $true
         $verified++
     }
     if ($verified -lt 5) { throw 'The package manifest did not contain enough verified files.' }
+    foreach ($requiredName in $RequiredNames) {
+        if (-not $members.ContainsKey($requiredName)) { throw "Required package file is not covered by the manifest: $requiredName" }
+    }
     return $verified
 }
 
@@ -134,7 +140,7 @@ function Invoke-Rpi5DriverInstall {
     try {
         Write-InstallMessage "RPi5 direct-SDIO driver one-click installer v$script:InstallerVersion"
         Write-InstallMessage 'This installer will not change UEFI, Secure Boot, Test Signing or BCD.'
-        Write-InstallMessage 'Experimental integrated WPA2/AES candidate. Physical Wi-Fi operation is not yet validated. UEFI is unchanged.'
+        Write-InstallMessage 'Experimental initial-usable-release candidate. Earlier versions connected successfully; this update still needs Pi validation. UEFI is unchanged.'
 
         if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.InteropServices.Architecture]::Arm64) {
             throw 'This package can only be installed on Windows ARM64 running on Raspberry Pi 5.'
@@ -155,7 +161,10 @@ function Invoke-Rpi5DriverInstall {
             }
         }
 
-        $verifiedFiles = Test-Rpi5PackageManifest -Directory $directory
+        $verifiedFiles = Test-Rpi5PackageManifest -Directory $directory -RequiredNames @(
+            'rpi5cyw.inf','rpi5cyw.sys','rpi5cyw.cat','rpi5cyw-test.cer',
+            'Set-RPi5-WiFi-Autoconnect.ps1','Connect-RPi5-WiFi.ps1','RPi5-WiFi-Operations.ps1',
+            'Collect-RPi5-WiFi-Diagnostics.ps1')
         Write-InstallMessage "Verified $verifiedFiles package files against SHA256SUMS.txt."
 
         $bios = Get-CimInstance Win32_BIOS
@@ -230,6 +239,20 @@ function Invoke-Rpi5DriverInstall {
         & pnputil.exe /scan-devices | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
         if ($LASTEXITCODE -ne 0) { throw "PnP device rescan failed with exit code $LASTEXITCODE." }
         Write-InstallMessage 'Driver package installation and PnP rescan completed.'
+        # The package was hash/signature checked above. Refresh only an existing
+        # opt-in task's connector code; never enable autoconnect or replace its
+        # private profile as a side effect of installing a driver update.
+        $startupUpdater = Join-Path $directory 'Set-RPi5-WiFi-Autoconnect.ps1'
+        if (Test-Path -LiteralPath $startupUpdater -PathType Leaf) {
+            try {
+                & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $startupUpdater -RefreshExisting 2>&1 |
+                    Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
+                if ($LASTEXITCODE -ne 0) { throw 'Startup refresh returned failure.' }
+                Write-InstallMessage 'Startup utility refresh checked; only an already-enabled matching task can be updated. Private profile preserved.'
+            } catch {
+                Write-InstallMessage 'WARNING: Existing startup utility could not be refreshed. Driver installation remains complete. Review the log before relying on autoconnect; no private profile was replaced.'
+            }
+        }
         if ($rebootRequired) {
             Write-InstallMessage 'Windows requires a reboot. Save your work and restart manually, then run diagnostics again.'
         }

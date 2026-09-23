@@ -1,7 +1,9 @@
 [CmdletBinding()]
-param([switch]$LibraryOnly, [switch]$NoPause)
+param([switch]$LibraryOnly, [switch]$NoPause, [switch]$SkipConnect,
+      [switch]$PassThru, [string]$ConfigPath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'RPi5-WiFi-Operations.ps1')
 . (Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Timing.ps1') -TimingLibraryOnly
 . (Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Transport.ps1') -TransportLibraryOnly
 
@@ -110,26 +112,42 @@ $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $launch = @('-NoProfile','-ExecutionPolicy','Bypass','-File', ('"{0}"' -f $PSCommandPath))
     if ($NoPause) { $launch += '-NoPause' }
+    if ($SkipConnect) { $launch += '-SkipConnect' }
+    if ($ConfigPath) {
+        if ($ConfigPath.Contains('"')) { throw 'Invalid configuration path.' }
+        $launch += @('-ConfigPath',('"{0}"' -f [IO.Path]::GetFullPath($ConfigPath)))
+    }
     Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launch
     return
 }
 $resultDirectory = $null
+$performanceLease=$null
+$performanceResult=[pscustomobject]@{Kind='RPi5PerformanceResult';SchemaVersion=1;UtilityVersion='0.6.26';
+    Outcome='Failed'; Summary=$null; Checks=[ordered]@{}; LoadProbeFailures=$null; QueueRejectsDelta=$null;
+    LoadProbeStatusCounts=@(); DiagnosticsCollected=$false; OutputDirectory=$null; ZipPath=$null}
 try {
     if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64' -or
         -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
-    Write-Output 'Performance utility 0.6.25 for installed exp0.6.14 or newer. This utility does not install drivers.'
+    $performanceLease=Enter-Rpi5Operation
+    & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') -LibraryOnly
+    Write-Output 'Performance utility 0.6.26 for installed exp0.6.14 or newer. This utility does not install drivers.'
     Write-Output 'Unplug wired Ethernet and disconnect VPNs for this test. No adapters or settings are changed.'
     Write-Output 'The test requests example.com and up to 129 MiB of download payload from speed.cloudflare.com (plus protocol overhead). Repeated-download stage: up to 90 seconds. No logs are uploaded.'
     # Never transcript credential entry. The existing utility owns credential
     # prompts/clearing; all saved performance output starts after it returns.
-    try { & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') }
+    try {
+        if (-not $SkipConnect) {
+            & (Join-Path $PSScriptRoot 'Connect-RPi5-WiFi.ps1') -IfNeeded -ConfigPath $ConfigPath
+        }
+    }
     catch { Write-Warning "Connection utility: $($_.Exception.Message). Diagnostics will still be saved." }
     $desktop = [Environment]::GetFolderPath('Desktop')
     if (-not $desktop) { $desktop = $env:TEMP }
     $resultDirectory = Join-Path $desktop ('RPI5-WIFI-PERFORMANCE-' + (Get-Date -Format yyyyMMdd-HHmmss) + '-' + [guid]::NewGuid().ToString('N').Substring(0,6))
     [void](New-Item -ItemType Directory -Path $resultDirectory)
+    $performanceResult.OutputDirectory=$resultDirectory
     $report = Join-Path $resultDirectory 'performance.txt'
     # Machine-wide counters, not a payload capture. Before/after helps locate
     # packets discarded after the miniport indication boundary. Other traffic
@@ -153,12 +171,17 @@ try {
         Write-Report "`r`n--- $Name --- UTC=$([datetime]::UtcNow.ToString('o'))"
         try {
             $result = Invoke-Rpi5BoundedProcess $File $Arguments $Seconds
+            $performanceResult.Checks[$Name]=[pscustomobject]@{ExitCode=$result.ExitCode;TimedOut=$result.TimedOut;
+                ProcessCompleted=(-not $result.TimedOut -and $result.ExitCode -eq 0)}
             Write-Report "ExitCode=$($result.ExitCode) TimedOut=$($result.TimedOut)"
             Write-Report $result.Output
-        } catch { Write-Report "TEST ERROR: $($_.Exception.Message)" }
+        } catch {
+            $performanceResult.Checks[$Name]=[pscustomobject]@{ExitCode=$null;TimedOut=$null;ProcessCompleted=$false}
+            Write-Report "TEST ERROR: $($_.Exception.Message)"
+        }
     }
     $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
-    Write-Report "Performance utility 0.6.25 report; UTC=$([datetime]::UtcNow.ToString('o'))"
+    Write-Report "Performance utility 0.6.26 report; UTC=$([datetime]::UtcNow.ToString('o'))"
     # Explicit radio GET snapshots BEFORE and AFTER the measured workload,
     # never from the sampler or during downloads. Older drivers remain usable.
     $radioTool=Join-Path $PSScriptRoot 'Get-RPi5-WiFi-Radio.ps1'
@@ -253,6 +276,11 @@ try {
                 Write-Information ("Download {0}: {1}, HTTP {2}, {3} bytes, {4:N2}s" -f $sample.Attempt,$sample.Outcome,$sample.Http,$sample.Bytes,$sample.TransferSeconds) -InformationAction Continue
             }
             $summary = Invoke-Rpi5RepeatedDownload -Request $request -OnSample $observe
+            $performanceResult.Summary=$summary
+            $performanceResult.Outcome=if ($summary.StopReason -eq 'ServerRejected') { 'Inconclusive' }
+                elseif ($summary.Completed -gt 0 -and $summary.Failed -eq 0 -and
+                    $summary.StopReason -in @('RequestByteCap','TimeLimit')) { 'Completed' }
+                else { 'Failed' }
             $summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $resultDirectory 'load-summary.json') -Encoding UTF8
             Write-Report ($summary | Format-List * | Out-String)
             Write-Report "Repeated-download END UTC=$([datetime]::UtcNow.ToString('o'))"
@@ -270,6 +298,13 @@ try {
                 Set-Content (Join-Path $resultDirectory 'adapter-traffic-after.txt')
         } catch { Write-Report 'Windows traffic statistics unavailable; retain driver counters.' }
     } catch { Write-Report "PERFORMANCE INCOMPLETE: $($_.Exception.Message)" }
+    try {
+        $probeRows=@(Import-Csv -LiteralPath (Join-Path $resultDirectory 'load-timeline.csv'))
+        if($probeRows.Count -gt 0) {
+            $performanceResult.LoadProbeFailures=@($probeRows | Where-Object GatewayStatus -ne 'Success').Count
+            $performanceResult.LoadProbeStatusCounts=@($probeRows | Group-Object GatewayStatus | Select-Object Name,Count)
+        }
+    } catch { Write-Report 'Load probe summary unavailable; missing observations are not zero failures.' }
     try {
         $protocolAfter = Invoke-Rpi5BoundedProcess (Join-Path $env:windir 'System32\netstat.exe') @('-s') 10
         $protocolAfter | Format-List * | Out-String -Width 500 |
@@ -318,6 +353,10 @@ try {
     } catch { Write-Report "Optional transport history unavailable: $($_.Exception.Message)" }
     try {
         $timing=Get-Rpi5TimingReport -Before $before -After $after
+        if($timing.ComparableSnapshots -and $before.PSObject.Properties['TxQueueFull'] -and
+            $after.PSObject.Properties['TxQueueFull'] -and [long]$after.TxQueueFull -ge [long]$before.TxQueueFull) {
+            $performanceResult.QueueRejectsDelta=[long]$after.TxQueueFull-[long]$before.TxQueueFull
+        }
         $timing | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $resultDirectory 'timing-report.json') -Encoding UTF8
         $timing.Rows | Format-Table -AutoSize | Out-String -Width 500 |
             Set-Content (Join-Path $resultDirectory 'timing-report.txt')
@@ -328,13 +367,26 @@ try {
         $collection = Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Collect-RPi5-WiFi-Diagnostics.ps1'),'-NoPause','-OutputDirectory',$resultDirectory) 180
         Write-Report "Diagnostic collection: ExitCode=$($collection.ExitCode) TimedOut=$($collection.TimedOut)"
         Write-Report $collection.Output
+        $performanceResult.DiagnosticsCollected= -not $collection.TimedOut -and $collection.ExitCode -eq 0 -and
+            @(Get-ChildItem -LiteralPath $resultDirectory -Filter 'RPI5-CYW43455-DIRECT-SDIO-DIAGNOSTICS-*.zip' -File).Count -gt 0
     }
     catch { Write-Report "DIAGNOSTICS ERROR: $($_.Exception.Message)" }
     $zip = "$resultDirectory.zip"
+    $performanceResult.ZipPath=$zip
+    $performanceResult | ConvertTo-Json -Depth 6 |
+        Set-Content -LiteralPath (Join-Path $resultDirectory 'performance-result.json') -Encoding UTF8
     Compress-Archive -Path (Join-Path $resultDirectory '*') -DestinationPath $zip
     Write-Output "`r`nShare this one report ZIP: $zip"
     Write-Output 'It contains local network addresses/device logs. Review before sharing publicly. No password was saved.'
 } catch {
+    $performanceResult.Outcome='Failed'
     Write-Output "Test could not complete: $($_.Exception.Message)"
     if ($resultDirectory) { Write-Output "Partial results: $resultDirectory" }
-} finally { if (-not $NoPause) { [void](Read-Host 'Press Enter to close') } }
+} finally {
+    Exit-Rpi5Operation $performanceLease
+    if (-not $NoPause) { [void](Read-Host 'Press Enter to close') }
+}
+if ($PassThru) { Write-Output $performanceResult }
+elseif ($performanceResult.Outcome -ne 'Completed') {
+    throw "Performance result: $($performanceResult.Outcome). Review the saved report; successful process exit is not implied."
+}

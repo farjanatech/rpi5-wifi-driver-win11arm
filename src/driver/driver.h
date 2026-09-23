@@ -94,6 +94,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG TxQueueFrames, TxBurstAdmissions, TxOversizedNbl, TxInterleavedPackets;
     ULONG RadioReport[CYW_RADIO_REPORT_WORDS]; /* Explicit-request-only firmware GET snapshot. */
     ULONG TxNblAccepted, TxNblCompleted, TxCancelled, TxExpired, TxCreditWaits;
+    ULONG TxCompletionBatchCalls, TxCompletionBatchNbls, TxCompletionBatchMax;
     ULONG TxCreditSequence, TxCreditMaximum, TxFlowMask;
     ULONG PacketTx[7], PacketRxWire[7], PacketRxHost[7];
     ULONG RxDropState, RxDropFormat, RxDropFilter, RxUnicastOther;

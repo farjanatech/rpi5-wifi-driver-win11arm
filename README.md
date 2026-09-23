@@ -1,11 +1,12 @@
-> Current candidate: **exp0.6.25**, bounded shorter event waits when queued sends
-> are credit-blocked and a worker cycle makes no packet progress.
-> It retains .24's verified band selection, capability-checked 50 MHz SDR and
-> 64-frame queue. See [EXP0.6.25](./docs/EXP0.6.25.md).
-> **Keep exp0.6.24 as the tested fallback:** its Pi report completed 128/128
-> downloads at 28.96 Mbps in 37.07 seconds, but still had queue-full rejects
-> and two NoResources probes. .25's improvement is not yet hardware-proven.
-> Use the same performance command and share its single report ZIP; no router
+> Current candidate: **exp0.6.26**, targeting an initial usable release with
+> bounded send-completion batching, reliable connection checks and one readiness
+> report. See [EXP0.6.26](./docs/EXP0.6.26.md). It remains experimental/test-signed;
+> passing CI does not prove hardware speed, reboot reliability or long-term stability.
+> **Keep exp0.6.24 as the tested fallback:** .24/.25 completed 128/128 downloads
+> at 28.96/28.99 Mbps, but both still had queue-full rejects and two NoResources
+> probes. .25 did not materially improve speed. .26 preserves the radio, SDIO,
+> 64-retained-frame limit and worker packet budgets; no TCP ACK filtering.
+> Run `Check-RPi5-WiFi-Readiness.cmd` and share its single report ZIP. No router
 > rename, extra device, UEFI change or private-credential publication is needed.
 > Historical version notes below are retained for traceability.
 

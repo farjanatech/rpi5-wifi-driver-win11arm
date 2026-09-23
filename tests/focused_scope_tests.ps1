@@ -25,13 +25,13 @@ function Assert-SameSource {
     param([string]$Actual,[string]$Expected,[string]$Label)
     if((ConvertTo-ScopeToken $Actual) -cne (ConvertTo-ScopeToken $Expected)){throw "Unexpected change: $Label"}
 }
-# .25 changes ONLY the otherwise-idle exhausted-credit event wait. Protect
-# every existing SDIO/transport/band/security file exactly against tested .24,
-# not merely against broad .23-to-.24 extension allowances below.
+# .26 additionally batches already-transferred send completions. Protect all
+# SDIO/transport/band/security files against tested .24; the worker and .25 idle
+# retry remain identical. Queue admission/lifecycle functions are checked below.
 $protectedFiles=@(& git -C $root ls-tree -r --name-only $fastest -- src/cyw43455 src/sdio)
 if($LASTEXITCODE -ne 0 -or -not $protectedFiles.Count){throw 'Cannot enumerate .24 hardware anchor.'}
 foreach($file in $protectedFiles) {
-    if($file -ne 'src/cyw43455/network.c') {
+    if($file -notin @('src/cyw43455/network.c','src/cyw43455/tx_queue.h')) {
         Assert-SameSource (Get-ScopeSource $file) (Get-ScopeSource $file $fastest) "$file .24 hardware anchor"
     }
 }
@@ -46,7 +46,7 @@ Assert-SameSource (ConvertFrom-TxRetryInstrumentation (Get-ScopeSource 'src/cyw4
 foreach($file in @('src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/control.h','src/cyw43455/firmware.c')) {
     Assert-SameSource (Get-ScopeSource $file $baseline) (Get-ScopeSource $file $proven) "$file .16 anchor"
 }
-foreach($file in @('src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/control.h','utility/Measure-RPi5-WiFi-Load.ps1','utility/Set-RPi5-WiFi-Autoconnect.ps1','utility/WiFi.config.example.json','scripts/fetch-firmware.ps1')) {
+foreach($file in @('src/cyw43455/tx_types.h','src/cyw43455/tx_dispatch.h','src/cyw43455/control.h','utility/Measure-RPi5-WiFi-Load.ps1','utility/WiFi.config.example.json','scripts/fetch-firmware.ps1')) {
     Assert-SameSource (Get-ScopeSource $file) (Get-ScopeSource $file $baseline) $file
 }
 function Get-ScopeFunction {
@@ -69,11 +69,67 @@ function Get-ScopeRegion {
     if($regions.Count -ne 1){throw "Missing or ambiguous protected region: $Label"}
     return $regions[0].Value
 }
+$queue=Get-ScopeSource 'src/cyw43455/tx_queue.h'
+$queueBefore=Get-ScopeSource 'src/cyw43455/tx_queue.h' $fastest
+foreach($name in @('CywTxSetGate','CywTxOutstanding','CywTxSubmit','CywTxCancel','CywTxComplete','CywTxAbortStatus','CywTxFlush')) {
+    Assert-SameSource (Get-ScopeFunction $queue $name) (Get-ScopeFunction $queueBefore $name) "$name .24 queue ownership/admission anchor"
+}
 function ConvertTo-ScopeReplacement {
     param([string]$Text,[string]$Pattern,[string]$Replacement,[string]$Label)
     $region=Get-ScopeRegion $Text $Pattern $Label
     return $Text.Replace($region,$Replacement)
 }
+function ConvertTo-ScopeLiteralReplacement {
+    param([string]$Text,[string]$Before,[string]$After,[string]$Label)
+    # Input is already comment/whitespace-normalized. Every approved splice
+    # must occur exactly once; no broad regex may hide packet-path changes.
+    return ConvertTo-ScopeReplacement $Text ([regex]::Escape((ConvertTo-ScopeToken $Before))) (ConvertTo-ScopeToken $After) $Label
+}
+# The .26 queue exception is narrowly bounded: optional charge retention,
+# worker-local SUCCESS staging, checked age/size flushes and a common flush
+# exit. Prove the complete remaining TX pump is still the .24 implementation.
+$detachFunction=Get-ScopeFunction $queue 'CywTxDetach'
+$removeWrapper=Get-ScopeFunction $queue 'CywTxRemove'
+$oldRemove=Get-ScopeFunction $queueBefore 'CywTxRemove'
+$detach=ConvertTo-ScopeToken $detachFunction
+$detach=ConvertTo-ScopeLiteralReplacement $detach `
+    'CywTxDetach(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status,BOOLEAN HoldCharge)' `
+    'CywTxRemove(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status)' 'retained-charge signature'
+$detach=ConvertTo-ScopeLiteralReplacement $detach `
+    'if(!HoldCharge){Q->Frames-=Q->Entries[Index].HeldFrames;Q->Bytes-=Q->Entries[Index].Bytes;}' `
+    'Q->Frames-=Q->Entries[Index].HeldFrames;Q->Bytes-=Q->Entries[Index].Bytes;' 'retained-charge branch'
+Assert-SameSource $detach $oldRemove 'Detach metadata, drops and charge arithmetic outside optional retention'
+Assert-SameSource $removeWrapper 'static PNET_BUFFER_LIST CywTxRemove(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status){return CywTxDetach(A,Q,Index,Status,FALSE);}' 'Immediate removal always releases its charge'
+
+$pumpFunction=Get-ScopeFunction $queue 'CywTxPump'
+$oldPump=Get-ScopeFunction $queueBefore 'CywTxPump'
+$pump=ConvertTo-ScopeToken $pumpFunction
+$pump=ConvertTo-ScopeLiteralReplacement $pump 'NTSTATUS status,result=STATUS_SUCCESS;' 'NTSTATUS status;' 'common flush status local'
+$pump=ConvertTo-ScopeLiteralReplacement $pump 'CYW_TX_COMPLETION_BATCH batch={0};' '' 'worker-local zeroed batch'
+$pump=ConvertTo-ScopeLiteralReplacement $pump 'while(*Sent<Budget){CywTxBatchFlushIfDue(A,Q,&batch);' 'while(*Sent<Budget){' 'pre-transfer batch deadline boundary'
+$successStaging=@'
+if(completion!=NDIS_STATUS_SUCCESS)nbl=CywTxRemove(A,Q,0,completion);
+else if(!Q->Entries[0].Frames) {
+    CywTxBatchAppend(&batch,Q->Entries[0].Nbl,Q->Entries[0].HeldFrames,
+        Q->Entries[0].Bytes,KeQueryInterruptTime());
+    (void)CywTxDetach(A,Q,0,NDIS_STATUS_SUCCESS,TRUE);
+}
+'@
+$pump=ConvertTo-ScopeLiteralReplacement $pump $successStaging `
+    'if(completion!=NDIS_STATUS_SUCCESS || !Q->Entries[0].Frames)nbl=CywTxRemove(A,Q,0,completion);' 'only fully completed SUCCESS NBLs are staged'
+$pump=ConvertTo-ScopeLiteralReplacement $pump `
+    'if(nbl)CywTxComplete(A,Q,nbl,completion);CywTxBatchFlushIfDue(A,Q,&batch);' `
+    'if(nbl)CywTxComplete(A,Q,nbl,completion);' 'failed ownership handoff precedes success callback'
+$pump=ConvertTo-ScopeLiteralReplacement $pump 'if(!NT_SUCCESS(status) && data){result=status;break;}' `
+    'if(!NT_SUCCESS(status) && data)return status;' 'bus fault routed through common flush'
+$pump=ConvertTo-ScopeLiteralReplacement $pump 'CywTxBatchFlush(A,Q,&batch);return result;' 'return STATUS_SUCCESS;' 'all pump exits flush local completions'
+Assert-SameSource $pump $oldPump 'Entire TX pump outside exact approved completion-batching splices'
+
+# Also reject unrelated helpers, includes, global state or code outside the
+# compared functions. The new completion-only helper has production C tests.
+$normalizedQueue=$queue.Replace($detachFunction,$oldRemove).Replace($removeWrapper,'').Replace($pumpFunction,$oldPump)
+$normalizedQueue=ConvertTo-ScopeReplacement $normalizedQueue '#include "tx_completion_batch\.h"' '' 'completion-only helper include'
+Assert-SameSource $normalizedQueue $queueBefore 'Entire .24 TX queue outside verified completion-batching extension'
 # .24 may extend the verified-mode guard, but not the byte-transfer engine,
 # dividers, phase waits, lengths, reset handling, or existing timing probes.
 $sdio=Get-ScopeSource 'src/sdio/sdio.c'
@@ -175,6 +231,7 @@ foreach($name in @('Invoke-Rpi5RepeatedDownload','ConvertFrom-Rpi5DownloadResult
 # Connect display summaries may change, never credential validation, key
 # derivation/native request serialization, country choice, or secure cleanup.
 $connect=Get-ScopeSource 'utility/Connect-RPi5-WiFi.ps1'
+$connect=$connect.Replace('Invoke-Rpi5FreshConnectionBoundary -Initial (Get-Rpi5ConnectionReadiness)','')
 $connectBefore=Get-ScopeSource 'utility/Connect-RPi5-WiFi.ps1' $baseline
 foreach($name in @('Test-Rpi5ConnectionInput','Read-Rpi5WifiConfig','Resolve-Rpi5Country')){
     $pattern='(?m)^function '+[regex]::Escape($name)+' \{.*?^\}'
@@ -187,8 +244,8 @@ if(Test-Path (Join-Path $root 'src/cyw43455/rx_poll.h')){throw 'Retired read-ahe
 $header=Get-ScopeSource 'src/driver/driver.h'
 if($header -notmatch '#define RPI5CYW_TX_LIMIT 64u'){throw 'Queue limit changed.'}
 $driver=Get-ScopeSource 'src/driver/driver.c'
-if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 25\)'){throw 'Diagnostic version incorrect.'}
-if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x00060019;'){throw 'NDIS vendor driver version incorrect.'}
+if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 26\)'){throw 'Diagnostic version incorrect.'}
+if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x0006001a;'){throw 'NDIS vendor driver version incorrect.'}
 $project=Get-ScopeSource 'rpi5-cyw43455.vcxproj'
 $workflow=Get-ScopeSource '.github/workflows/build-arm64-driver.yml'
 if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or
@@ -196,4 +253,4 @@ if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or
    $workflow -notmatch 'Configuration: Release'){
     throw 'Optimized Release build is not configured.'
 }
-Write-Output 'PASS: .24 hardware anchor and .16 ownership/budgets preserved; only bounded exhausted-credit idle wait changes, with unchanged band/HS50/firmware/security/workload.'
+Write-Output 'PASS: .24 hardware path, queue admission/lifecycle and worker budgets preserved; bounded completion batching and utility readiness are the .26 scope. Band/HS50/firmware/security/workload unchanged.'
