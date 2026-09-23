@@ -121,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 28);
+    SET_DWORD(L"DiagVersion", 29);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -147,6 +147,10 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"FirmwareRequestCapacity", Adapter->FirmwareRequestCapacity);
     SET_DWORD(L"FirmwareValueLength", Adapter->FirmwareValueLength);
     SET_DWORD(L"FirmwareTotalBytes", Adapter->FirmwareTotalBytes);
+    SET_DWORD(L"FirmwareStartupBusKhz", Adapter->FirmwareStartupBusKhz);
+    SET_DWORD(L"FirmwareStartupFallback", Adapter->FirmwareStartupFallback);
+    SET_DWORD(L"FirmwareStartupElapsedMs", Adapter->FirmwareStartupElapsedMs);
+    SET_DWORD(L"FirmwareStartupStatus", Adapter->FirmwareStartupStatus);
     SET_DWORD(L"FirmwareUploadedBytes", Adapter->FirmwareUploadedBytes);
     SET_DWORD(L"RamTransferStatus", Adapter->RamTransferStatus);
     SET_DWORD(L"RamTransferStage", Adapter->RamTransferStage);
@@ -726,7 +730,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x0006001c;
+            Data.Ulong = 0x0006001d;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

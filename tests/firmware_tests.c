@@ -32,6 +32,7 @@ static unsigned Snapshots;static ULONG LastUploaded,LastVerified;
 static ULONG Window,Bank,Ioctl,Reset,D11Reset;
 static unsigned SpeedBadRead,SpeedRestoreFail;
 static unsigned HighSpeed,HighBadRead,DefaultRestoreFail,DefaultRestores,SpeedReads;
+static unsigned StartupSetupFail,StartupBadRead,StartupRestoreFail,StartupReads,StartupSetups;
 static UCHAR Card[0x10020],Ram[0xc8000],Vector[4];
 int TestIrql;
 BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A) {return A->IoStopped!=0;}
@@ -49,12 +50,19 @@ void KeStallExecutionProcessor(ULONG u) {(void)u;}
 void SdioDelayMilliseconds(ULONG u) {(void)u;}
 NTSTATUS SdioRestoreIdentificationBus(PRPI5CYW_ADAPTER A)
 {
-    A->BusRecoveryStatus=SpeedRestoreFail?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;
-    if(!SpeedRestoreFail){A->BusWidth=1;A->BusActualKhz=400;A->BusHighSpeedActive=0;}
+    unsigned fail=Started?SpeedRestoreFail:StartupRestoreFail;
+    A->BusRecoveryStatus=fail?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;
+    if(!fail){A->BusWidth=1;A->BusActualKhz=400;A->BusHighSpeedActive=0;}
     return A->BusRecoveryStatus;
 }
 NTSTATUS SdioRestoreDefaultOperatingBus(PRPI5CYW_ADAPTER A)
 {
+    if(!Started) {
+        NTSTATUS status=Tick();++StartupSetups;
+        if(StartupSetupFail)status=STATUS_IO_DEVICE_ERROR;
+        if(NT_SUCCESS(status)){A->BusWidth=4;A->BusActualKhz=25000;A->BusHighSpeedActive=0;A->BusModeStage=4;}
+        return status;
+    }
     ++DefaultRestores;
     A->BusRecoveryStatus=DefaultRestoreFail?STATUS_IO_DEVICE_ERROR:STATUS_SUCCESS;
     if(!DefaultRestoreFail){A->BusWidth=4;A->BusActualKhz=25000;A->BusHighSpeedActive=0;}
@@ -133,8 +141,8 @@ static NTSTATUS Transfer(PRPI5CYW_ADAPTER A,ULONG Address,PUCHAR Data,ULONG Len,
             if(addr==A->D11WrapperBase+0x800)D11Reset=v;
         } else {
             if(addr==A->ChipCommonBase) {
-                ++SpeedReads;
-                v=(SpeedBadRead || (HighBadRead && A->BusHighSpeedActive))?0xffffffff:A->ChipIdRaw;
+                if(Started){++SpeedReads;v=(SpeedBadRead || (HighBadRead && A->BusHighSpeedActive))?0xffffffff:A->ChipIdRaw;}
+                else {++StartupReads;v=(StartupBadRead && A->BusActualKhz>400)?0xffffffff:A->ChipIdRaw;}
             }
             if(addr==A->Cr4CoreBase+4)v=0xb44;
             if(addr==A->Cr4CoreBase+0x44)v=BadBank?0xffffffff:(Bank<4?15:8);
@@ -156,6 +164,7 @@ static void Init(PRPI5CYW_ADAPTER A)
     Calls=FailCall=Allocations=FailAlloc=Started=Corrupt=ClockNever=ReadyNever=BadBank=Window=Bank=Reset=D11Reset=0;Ioctl=0x21;
     SpeedBadRead=SpeedRestoreFail=0;
     HighSpeed=HighBadRead=DefaultRestoreFail=DefaultRestores=SpeedReads=0;
+    StartupSetupFail=StartupBadRead=StartupRestoreFail=StartupReads=StartupSetups=0;
     FirmwareLength=6147;MaxRamChunk=RamReads=RamWrites=WindowWrites=0;
     Snapshots=LastUploaded=LastVerified=0;
     NextWrite=NextRead=0x198000;
@@ -163,6 +172,7 @@ static void Init(PRPI5CYW_ADAPTER A)
     A->RamBase=0x198000;A->Cr4CoreBase=0x18002000;A->Cr4WrapperBase=0x18102000;A->SdioCoreBase=0x18004000;
     A->D11WrapperBase=0x18101000;
     A->ChipCommonBase=0x18000000;A->ChipIdRaw=0x15264345;
+    A->Capabilities=200u<<8;
 }
 int main(void)
 {
@@ -202,6 +212,8 @@ int main(void)
     CHECK(a.BusModeStage==6 && a.BusVerifyReads==16 && a.BusWidth==4);
     CHECK(Started && a.FirmwareBytes==6147 && Outstanding==0);count=Calls;
     CHECK(a.FirmwareUploadedBytes==6147 && a.FirmwareTotalBytes==6147 && Snapshots>=7);
+    CHECK(a.FirmwareStartupBusKhz==25000 && !a.FirmwareStartupFallback && a.FirmwareStartupStatus==STATUS_SUCCESS);
+    CHECK(StartupReads==32 && StartupSetups==1 && a.FirmwareStartupElapsedMs>0);
     CHECK(MaxRamChunk==64 && RamReads==97 && RamWrites==99);
     CHECK(NextWrite==0x198000+6148 && NextRead==NextWrite);
     CHECK(Card[0x110]==64 && Card[0x111]==0);
@@ -232,7 +244,12 @@ int main(void)
     CHECK(CywFirmwareStart(&a)==STATUS_IO_DEVICE_ERROR && a.BusModeStage==90);
     CHECK(a.BusActualKhz==400 && DefaultRestores==1 && SpeedReads==1);
     for(i=1;i<=count;++i) {
-        Init(&a);FailCall=i;CHECK(!NT_SUCCESS(CywFirmwareStart(&a)));CHECK(Outstanding==0);
+        NTSTATUS result;
+        Init(&a);FailCall=i;result=CywFirmwareStart(&a);
+        /* Only bounded pre-upload negotiation/probe faults can recover to
+         * verified identification mode. RAM/file/post-upload faults still fail. */
+        CHECK(!NT_SUCCESS(result) || (a.FirmwareStartupFallback==1 && a.FirmwareStartupStatus!=STATUS_SUCCESS && a.FirmwareStartupBusKhz==400));
+        CHECK(Outstanding==0);
         CHECK(a.FirmwareUploadedBytes==min(NextWrite-0x198000,a.FirmwareTotalBytes));
         CHECK(LastUploaded==a.FirmwareUploadedBytes && LastVerified==a.FirmwareBytes);
     }
@@ -243,6 +260,17 @@ int main(void)
     Init(&a);ClockNever=1;CHECK(CywFirmwareStart(&a)==STATUS_IO_TIMEOUT);CHECK(!Started);
     Init(&a);ReadyNever=1;CHECK(CywFirmwareStart(&a)==STATUS_IO_TIMEOUT);CHECK(!Started);
     Init(&a);a.ChipRevision=7;CHECK(CywFirmwareStart(&a)==STATUS_DEVICE_CONFIGURATION_ERROR);CHECK(Calls==0);
+    Init(&a);StartupSetupFail=1;CHECK(CywFirmwareStart(&a)==0 && a.FirmwareStartupFallback==1 && a.FirmwareStartupBusKhz==400);
+    CHECK(a.FirmwareBytes==FirmwareLength && Started);
+    Init(&a);StartupBadRead=1;CHECK(CywFirmwareStart(&a)==0 && a.FirmwareStartupFallback==1 && a.FirmwareStartupBusKhz==400);
+    Init(&a);
+    a.Capabilities=0;CHECK(CywFirmwareStart(&a)==0 && a.FirmwareStartupFallback==1 && StartupSetups==0);
+    Init(&a);Card[CYW_SDIO_CCCR_CAPS]=CYW_SDIO_CAP_LOW_SPEED;
+    CHECK(CywFirmwareStart(&a)==0 && a.FirmwareStartupFallback==1 && StartupSetups==0);
+    Init(&a);StartupBadRead=StartupRestoreFail=1;
+    CHECK(CywFirmwareStart(&a)==STATUS_IO_DEVICE_ERROR && a.BusModeStage==99 && !Started && RamWrites==0);
+    Init(&a);StartupRestoreFail=1;
+    CHECK(CywFirmwareStart(&a)==STATUS_IO_DEVICE_ERROR && !Started && a.FirmwareBytes==FirmwareLength);
     /* Old and ReactOS package sizes cross multiple 32KiB windows and end in
      * partial words. These are synthetic bytes, not firmware execution. */
     for(j=0;j<2;++j) {

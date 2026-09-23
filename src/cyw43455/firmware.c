@@ -207,11 +207,13 @@ static NTSTATUS CywD11Hold(PRPI5CYW_ADAPTER A)
     TRY(CywBpWrite(A,w+0x408,7));TRY(CywBpRead(A,w+0x408,&v));
 Exit:return Status;
 }
+#include "startup_bus.h"
 NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
 {
     PUCHAR fw=NULL,raw=NULL,nv=NULL;
     ULONG fwSize=0,fwPadded,rawSize=0,cap,bank,v,i,token,address,off,n;
     BOOLEAN busRetried=FALSE;
+    ULONGLONG startupBegin;
     UCHAR b[4],check[512],byte;
     size_t nvSize=0;
     NTSTATUS Status=STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -262,6 +264,8 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
     }
     if(A->RamSize>4*1024*1024 || nvSize+4>A->RamSize ||
         fwPadded>A->RamSize-nvSize-4) {Status=STATUS_INVALID_IMAGE_FORMAT;goto Exit;}
+    startupBegin=KeQueryInterruptTime();
+    TRY(CywPrepareFirmwareBus(A));
     CywFirmwarePhase(A,420);
     TRY(CywRam(A,A->RamBase,fw,fwPadded,TRUE));
     CywFirmwarePhase(A,421);
@@ -273,6 +277,8 @@ NTSTATUS CywFirmwareStart(PRPI5CYW_ADAPTER A)
         A->FirmwareBytes=min(off+n,fwSize);
         CywFirmwareSnapshot(A,FALSE);
     }
+    A->FirmwareStartupElapsedMs=(ULONG)((KeQueryInterruptTime()-startupBegin)/10000ULL);
+    TRY(CywFinishFirmwareBus(A));
     CywFirmwarePhase(A,422);
     address=A->RamBase+A->RamSize-(ULONG)nvSize-4;
     TRY(CywRam(A,address,nv,(ULONG)nvSize,TRUE));

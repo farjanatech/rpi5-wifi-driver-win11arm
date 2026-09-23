@@ -195,6 +195,8 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG FirmwareCommand;
     ULONG FirmwareBytes;
     ULONG FirmwareTotalBytes;
+    ULONG FirmwareStartupBusKhz, FirmwareStartupFallback, FirmwareStartupElapsedMs;
+    NTSTATUS FirmwareStartupStatus;
     ULONG FirmwareUploadedBytes;
     NTSTATUS RamTransferStatus;
     ULONG RamTransferStage;

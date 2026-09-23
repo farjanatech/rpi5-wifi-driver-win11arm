@@ -1,4 +1,9 @@
-> Current driver candidate: **exp0.6.28**, adding an on-demand, disconnected-only
+> Current candidate: **exp0.6.29** — single C# ARM64 connector EXE, protected saved
+> network and opt-in boot-time connection, plus guarded faster firmware startup.
+> See [EXP0.6.29](./docs/EXP0.6.29.md). No instant-startup or speed guarantee: Pi
+> validation is still required. The connected data path is unchanged. Keep .28.
+>
+> Previous driver candidate: **exp0.6.28**, adding an on-demand, disconnected-only
 > scanner and separate `RPi5-WiFi-App.cmd` connection window. This is **not the
 > native Windows Wi-Fi menu** and is not a speed update. See
 > [EXP0.6.28](./docs/EXP0.6.28.md). Keep the complete **exp0.6.27** package for rollback.

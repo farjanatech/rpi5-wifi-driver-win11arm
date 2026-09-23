@@ -71,6 +71,7 @@ Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.26.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.27.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
+Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -118,7 +119,17 @@ This package deliberately does NOT depend on Microsoft sdbus and does not bind
 to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
 CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
 
-Driver exp0.6.28 adds on-demand disconnected-only network scanning and a separate
+Driver exp0.6.29 adds a checked 4-bit/25MHz firmware-upload/readback startup path.
+It falls back to verified identification mode if the pre-upload bus check fails.
+Full firmware RAM verification, 64-byte transfers and the connected data path
+are retained. An upload/readback failure stops safely, never skips verification.
+No measured startup-time or zero-delay guarantee is available before Pi testing.
+Use the separately released single C# ARM64 RPi5-WiFi-Connector.exe for saved
+networks and opt-in boot-time connection before sign-in. It needs this installed
+driver; it is not a replacement driver installer or native Windows Wi-Fi menu.
+See EXP0.6.29.md; keep the complete .28 driver and existing app for rollback.
+
+Retained exp0.6.28 adds on-demand disconnected-only network scanning and a separate
 RPi5-WiFi-App.cmd connection window. It is not the native Windows Wi-Fi menu,
 does not scan in the background while connected, and does not claim more speed.
 Country must match the Pi's physical location. Connection remains experimental
@@ -257,7 +268,7 @@ Security:
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.6.28
+driver_version=0.6.29
 measurement_utility_version=0.6.27.1
 startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration

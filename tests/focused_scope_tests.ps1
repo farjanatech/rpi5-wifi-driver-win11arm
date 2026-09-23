@@ -87,15 +87,29 @@ function ConvertFrom-ScanControlIntegration {
     $text=ConvertTo-ScanScopeReplacement $text 'else if(N->Request || N->RadioBusy || N->ScanBusy)Status=STATUS_DEVICE_BUSY;' 'else if(N->Request || N->RadioBusy)Status=STATUS_DEVICE_BUSY;' 2 'block connect/radio requests during an active scan'
     return $text
 }
+function ConvertFrom-StartupBusIntegration {
+    param([string]$Text)
+    $text=$Text.Replace("`r`n","`n")
+    foreach($line in @('#include "startup_bus.h"','    ULONGLONG startupBegin;',
+        '    startupBegin=KeQueryInterruptTime();','    TRY(CywPrepareFirmwareBus(A));',
+        '    A->FirmwareStartupElapsedMs=(ULONG)((KeQueryInterruptTime()-startupBegin)/10000ULL);',
+        '    TRY(CywFinishFirmwareBus(A));')) {
+        $text=ConvertTo-ScanScopeReplacement $text ($line+"`n") '' 1 'firmware-start-only checked bus splice'
+    }
+    return $text
+}
+# .29 additionally permits the exact startup-only bus preparation/restore.
+# RAM upload/readback and the entire connected packet path remain protected.
 # .28 permits only the exact scan control-plane splices above. Every other
 # .25 CYW/SDIO source byte stays protected, including the complete live worker,
 # queue, receive dispatch, existing IOCTLs and authentication sequence.
 $protectedFiles=@(& git -C $root ls-tree -r --name-only $immediate -- src/cyw43455 src/sdio)
-$scanHeaders=@('src/cyw43455/scan_protocol.h','src/cyw43455/scan_sequence.h','src/cyw43455/scan_control.h')
+$scanHeaders=@('src/cyw43455/scan_protocol.h','src/cyw43455/scan_sequence.h','src/cyw43455/scan_control.h','src/cyw43455/startup_bus.h')
 if($LASTEXITCODE -ne 0 -or -not $protectedFiles.Count){throw 'Cannot enumerate .25 packet-path anchor.'}
 $networkForScope=ConvertFrom-ScanControlIntegration (Get-ScopeSource 'src/cyw43455/network.c')
 foreach($file in $protectedFiles) {
     $actual=if($file -eq 'src/cyw43455/network.c'){$networkForScope}else{Get-ScopeSource $file}
+    if($file -eq 'src/cyw43455/firmware.c'){$actual=ConvertFrom-StartupBusIntegration $actual}
     Assert-ExactScopeSource $actual (Get-ScopeSource $file $immediate) "$file exact .25 traffic anchor outside explicit scan control plane"
 }
 foreach($directory in @('src/cyw43455','src/sdio')) {
@@ -112,8 +126,16 @@ if($LASTEXITCODE -ne 0 -or -not $driverFiles.Count){throw 'Cannot enumerate .27 
 foreach($file in $driverFiles) {
     $actual=Get-ScopeSource $file
     if($file -eq 'src/driver/driver.c') {
-        $actual=$actual.Replace('SET_DWORD(L"DiagVersion", 28);','SET_DWORD(L"DiagVersion", 27);')
-        $actual=$actual.Replace('Data.Ulong = 0x0006001c;','Data.Ulong = 0x0006001b;')
+        $actual=$actual.Replace('SET_DWORD(L"DiagVersion", 29);','SET_DWORD(L"DiagVersion", 27);')
+        $actual=$actual.Replace('Data.Ulong = 0x0006001d;','Data.Ulong = 0x0006001b;')
+        foreach($name in @('FirmwareStartupBusKhz','FirmwareStartupFallback','FirmwareStartupElapsedMs','FirmwareStartupStatus')) {
+            $actual=ConvertTo-ScanScopeReplacement ($actual.Replace("`r`n","`n")) ('    SET_DWORD(L"'+$name+'", Adapter->'+$name+");`n") '' 1 'startup diagnostic publication'
+        }
+    }
+    if($file -eq 'src/driver/driver.h') {
+        foreach($line in @('    ULONG FirmwareStartupBusKhz, FirmwareStartupFallback, FirmwareStartupElapsedMs;','    NTSTATUS FirmwareStartupStatus;')) {
+            $actual=ConvertTo-ScanScopeReplacement ($actual.Replace("`r`n","`n")) ($line+"`n") '' 1 'startup diagnostic storage'
+        }
     }
     Assert-ExactScopeSource $actual (Get-ScopeSource $file $utilityAnchor) "$file exact .27 anchor outside release labels"
 }
@@ -125,8 +147,8 @@ foreach($file in @('rpi5-cyw43455.vcxproj','utility/Connect-RPi5-WiFi.ps1','util
     Assert-ExactScopeSource (Get-ScopeSource $file) (Get-ScopeSource $file $utilityAnchor) "$file exact .27 utility-only anchor"
 }
 $inf=Get-ScopeSource 'package/rpi5cyw.inf'
-if($inf -notmatch '(?m)^DriverVer\s*=\s*09/23/2026,0\.6\.28\.0\s*$'){throw 'Driver INF version incorrect.'}
-Assert-ExactScopeSource ($inf.Replace('09/23/2026,0.6.28.0','09/23/2026,0.6.27.0')) (Get-ScopeSource 'package/rpi5cyw.inf' $utilityAnchor) 'INF unchanged outside .28 release version'
+if($inf -notmatch '(?m)^DriverVer\s*=\s*09/23/2026,0\.6\.29\.0\s*$'){throw 'Driver INF version incorrect.'}
+Assert-ExactScopeSource ($inf.Replace('09/23/2026,0.6.29.0','09/23/2026,0.6.27.0')) (Get-ScopeSource 'package/rpi5cyw.inf' $utilityAnchor) 'INF unchanged outside .29 release version'
 function ConvertFrom-TxRetryInstrumentation {
     param([string]$Text)
     $text=[regex]::Replace($Text,'/\* TX-RETRY-BEGIN \*/.*?/\* TX-RETRY-END \*/','',[Text.RegularExpressions.RegexOptions]::Singleline)
@@ -249,7 +271,7 @@ Assert-SameSource $bus $busBefore 'Existing default/identification bus and recov
 # Firmware upload, RAM verification, security material and stop/cleanup must
 # stay unchanged. Only the cache eligibility and post-upload speed verification
 # may gain a single conservative high-speed-to-default retry.
-$firmware=Get-ScopeSource 'src/cyw43455/firmware.c'
+$firmware=ConvertFrom-StartupBusIntegration (Get-ScopeSource 'src/cyw43455/firmware.c')
 $firmwareBefore=Get-ScopeSource 'src/cyw43455/firmware.c' $baseline
 $cacheGuard='BOOLEAN cache=.*?;'
 $firmware=ConvertTo-ScopeReplacement $firmware $cacheGuard (Get-ScopeRegion $firmwareBefore $cacheGuard 'old window-cache guard') 'window-cache guard'
@@ -358,8 +380,8 @@ if(Test-Path (Join-Path $root 'src/cyw43455/rx_poll.h')){throw 'Retired read-ahe
 $header=Get-ScopeSource 'src/driver/driver.h'
 if($header -notmatch '#define RPI5CYW_TX_LIMIT 64u'){throw 'Queue limit changed.'}
 $driver=Get-ScopeSource 'src/driver/driver.c'
-if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 28\)'){throw 'Diagnostic version incorrect.'}
-if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x0006001c;'){throw 'NDIS vendor driver version incorrect.'}
+if($driver -notmatch 'SET_DWORD\(L"DiagVersion", 29\)'){throw 'Diagnostic version incorrect.'}
+if($driver -notmatch 'case OID_GEN_VENDOR_DRIVER_VERSION:\s*Data.Ulong = 0x0006001d;'){throw 'NDIS vendor driver version incorrect.'}
 $project=Get-ScopeSource 'rpi5-cyw43455.vcxproj'
 $workflow=Get-ScopeSource '.github/workflows/build-arm64-driver.yml'
 if($project -notmatch '<Optimization>MaxSpeed</Optimization>' -or

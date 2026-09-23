@@ -1,0 +1,61 @@
+name: Build C# Wi-Fi connector
+on:
+  push:
+    branches: [bringup/cyw43455-sdio-arm64]
+    paths: ['connector/**', '.github/workflows/connector.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Create output directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Path ci-logs,artifacts/connector -Force | Out-Null
+      - name: Build mocked x64 test host
+        shell: pwsh
+        run: |
+          dotnet build connector/RPi5.WiFi.Connector.csproj -c Release -r win-x64 -p:PublishSingleFile=false --self-contained false -o ci-logs/connector-test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test protocols, credentials, lifecycle and validate boot task XML without installing
+        shell: pwsh
+        run: |
+          dotnet ci-logs/connector-test/RPi5-WiFi-Connector.dll --self-test 2>&1 | Tee-Object ci-logs/connector-tests.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render real C# form offline
+        shell: pwsh
+        run: |
+          dotnet ci-logs/connector-test/RPi5-WiFi-Connector.dll --preview ci-logs/connector.png
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ((Get-Item ci-logs/connector.png).Length -lt 12000) { throw 'Preview appears blank.' }
+      - name: Publish one self-contained ARM64 executable
+        shell: pwsh
+        run: |
+          dotnet publish connector/RPi5.WiFi.Connector.csproj -c Release -r win-arm64 --self-contained true -o artifacts/connector
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $files=@(Get-ChildItem artifacts/connector -File)
+          if ($files.Count -ne 1 -or $files[0].Name -ne 'RPi5-WiFi-Connector.exe') { throw 'Publish is not a single EXE.' }
+          $bytes=[IO.File]::ReadAllBytes($files[0].FullName)
+          $pe=[BitConverter]::ToInt32($bytes,0x3c)
+          if ([BitConverter]::ToUInt16($bytes,$pe+4) -ne 0xaa64) { throw 'Not an ARM64 executable.' }
+          (Get-FileHash $files[0].FullName).Hash+'  RPi5-WiFi-Connector.exe' | Set-Content artifacts/connector/SHA256SUMS.txt -Encoding ASCII
+          "commit=$env:GITHUB_SHA`nrun=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`nversion=0.6.29`narchitecture=ARM64`nself_contained=true" | Set-Content artifacts/connector/BUILD.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpi5-wifi-connector-arm64
+          path: artifacts/connector/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rpi5-wifi-connector-ci-logs
+          path: |
+            ci-logs/connector-tests.txt
+            ci-logs/connector.png
+          if-no-files-found: warn
