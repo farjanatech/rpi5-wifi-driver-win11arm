@@ -168,7 +168,7 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
-          $analysis = @(
+          $analysisPaths = @(
             '.\diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1',
             '.\installer\Install-RPi5-WiFi-Driver.ps1',
             '.\scripts\package-diagnostics.ps1',
@@ -200,8 +200,9 @@ jobs:
             '.\tests\transport_utility_tests.ps1',
             '.\tests\firmware_package_tests.ps1',
             '.\scripts\fetch-firmware.ps1'
-          ) | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning }
-          $analysis | Format-Table -AutoSize | Out-String -Width 500 |
+          )
+          $analysis = @($analysisPaths | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning })
+          $analysis | Format-List ScriptName,Line,Column,RuleName,Severity,Message | Out-String -Width 500 |
             Tee-Object -FilePath ci-logs\diagnostics-scriptanalyzer.log
           if ($analysis.Count -ne 0) {
             throw "PSScriptAnalyzer reported $($analysis.Count) error(s)/warning(s)."

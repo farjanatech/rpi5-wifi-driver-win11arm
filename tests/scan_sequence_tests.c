@@ -38,7 +38,7 @@ typedef struct _ADAPTER {
 } ADAPTER,*PRPI5CYW_ADAPTER;
 static ADAPTER TestAdapter;static CYW_NETWORK TestNetwork;
 static unsigned Failures,Mode,Calls,CountrySets,MaskSets,EscanCalls,AbortCalls,UpCalls,DownCalls;
-static unsigned ActivePolls,RefreshCalls,FailCall,RestoreReads;
+static unsigned ActivePolls,RefreshCalls,FailCall,RestoreReads,MaskRestores;
 static ULONGLONG TestClock;
 static UCHAR FirmwareCountry[12],FirmwareMask[16],SavedCountry[12],SavedMask[16];
 static int RadioUp;
@@ -107,14 +107,23 @@ static NTSTATUS CywIovar(PRPI5CYW_ADAPTER A,const char *name,BOOLEAN set,PUCHAR 
     } else if(!strcmp(name,"event_msgs")) {
         CHECK(length==16);
         if(set) {
+            UCHAR enabled[16];
             ++MaskSets;
-            if(MaskSets==1)CHECK((data[8]&32u) && !A->Network->ScanAcceptEvents);
-            else {CHECK(!memcmp(data,SavedMask,16));}
-            if(Mode==5 && MaskSets==2) {A->FirmwareError=99;return STATUS_UNSUCCESSFUL;}
+            CHECK(!A->Network->ScanAcceptEvents);
+            /* An injected failure before the enable reaches firmware makes
+             * restoration the first successful SET. Identify intent by the
+             * entire exact payload, not by the successful-call ordinal. */
+            if(!memcmp(data,SavedMask,16)) {
+                ++MaskRestores;
+                if(Mode==5) {A->FirmwareError=99;return STATUS_UNSUCCESSFUL;}
+            } else {
+                memcpy(enabled,SavedMask,16);enabled[8]|=32u;
+                CHECK(MaskSets==1 && !memcmp(data,enabled,16));
+            }
             memcpy(FirmwareMask,data,16);
         } else {
             memcpy(data,FirmwareMask,16);A->FirmwareReplyLength=16;
-            if(MaskSets>=2) {++RestoreReads;if(Mode==10)data[0]^=1;}
+            if(MaskRestores) {++RestoreReads;if(Mode==10)data[0]^=1;}
         }
     } else if(!strcmp(name,"escan")) {
         UCHAR expected[72];++EscanCalls;CHECK(set && length==72 && RadioUp);
@@ -161,7 +170,7 @@ static NTSTATUS CywPoll(PRPI5CYW_ADAPTER A,PULONG channel,PULONG off,PULONG leng
 static void Init(unsigned mode)
 {
     Mode=mode;Calls=CountrySets=MaskSets=EscanCalls=AbortCalls=UpCalls=DownCalls=0;
-    ActivePolls=RefreshCalls=FailCall=RestoreReads=0;TestClock=0;RadioUp=0;
+    ActivePolls=RefreshCalls=FailCall=RestoreReads=MaskRestores=0;TestClock=0;RadioUp=0;
     memset(&TestAdapter,0,sizeof(TestAdapter));memset(&TestNetwork,0,sizeof(TestNetwork));
     TestAdapter.Network=&TestNetwork;TestNetwork.Powered=TestNetwork.Ready=TestNetwork.ScanBusy=TRUE;
     TestAdapter.NetworkPhase=500;
@@ -208,6 +217,8 @@ int main(void)
     for(i=1;i<=14;++i) {
         Init(0);FailCall=i;CywScanRequest(&TestAdapter);EndChecks();
         CHECK(TestNetwork.ScanReport.State!=CYW_SCAN_COMPLETE);
+        if(i==7)CHECK(MaskSets==1 && MaskRestores==1 && RestoreReads==1 &&
+            !memcmp(FirmwareMask,SavedMask,16));
     }
     Init(0);TestNetwork.ScanCancel=1;CywScanRequest(&TestAdapter);EndChecks();
     CHECK(!Calls && TestNetwork.Ready && TestNetwork.ScanReport.State==CYW_SCAN_CANCELLED);

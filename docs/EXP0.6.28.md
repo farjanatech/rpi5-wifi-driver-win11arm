@@ -56,6 +56,13 @@ own version labels, which need not equal the driver version.
 3. Open `RPi5-WiFi-App.cmd`. If already connected, scanning is unavailable until
    you deliberately disconnect; do not interrupt a working connection merely
    to obtain another scan. Confirm the country and use a WPA2-Personal/AES network.
+   After a restart, wait for **Disconnected and ready** before scanning. The
+   existing firmware upload/readback can take several minutes; this feature
+   does not shorten that initialization. Enter `BD` only if the Pi is physically
+   in Bangladesh, tick the country confirmation, then press **Scan networks**.
+   Select a supported SSID, enter its password, and press **Connect**. Closing
+   the app leaves an established connection running. The app does not save the
+   password or automatically create a startup task.
 4. After connecting, use normal browsing. If collecting comparative evidence,
    manually unplug wired Ethernet/disconnect VPNs, then run
    `Check-RPi5-WiFi-Readiness.cmd` once. Share its readiness ZIP, not a password

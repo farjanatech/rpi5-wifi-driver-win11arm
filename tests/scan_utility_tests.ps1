@@ -129,7 +129,10 @@ Assert-ScanTest ($lifecycle.CancelledGeneration -eq 1) 'Wrapped cancellation gen
 $scanContext.ScanGeneration=[uint32]0
 Assert-ScanTest (-not (Invoke-Rpi5AppScanCancel $scanContext $readScan $cancelScan)) 'Reserved generation zero sent to driver.'
 $readsBefore=$lifecycle.Reads;$cancelsBefore=$lifecycle.Cancels
-Assert-ScanThrows {Submit-Rpi5AppScan $scanContext BD {param($Data) throw 'busy start rejected'} $readScan} 'Rejected start ignored.'
+Assert-ScanThrows {Submit-Rpi5AppScan $scanContext BD {param($Data)
+    Assert-ScanTest ($Data.Length -eq 8) 'Rejected-start mock received an invalid request.'
+    throw 'busy start rejected'
+} $readScan} 'Rejected start ignored.'
 Assert-ScanTest (-not $scanContext.ScanSubmitted) 'Rejected start claimed driver scan ownership.'
 Assert-ScanTest (-not (Invoke-Rpi5AppScanCancel $scanContext $readScan $cancelScan)) 'Rejected start tried cancelling another client scan.'
 Assert-ScanTest ($lifecycle.Reads -eq $readsBefore -and $lifecycle.Cancels -eq $cancelsBefore) 'Rejected start made recovery reads/cancellation.'

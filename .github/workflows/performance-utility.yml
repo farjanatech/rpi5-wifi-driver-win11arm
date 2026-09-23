@@ -36,20 +36,21 @@ jobs:
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
-          $issues = @('utility/Test-RPi5-WiFi-Performance.ps1','utility/Measure-RPi5-WiFi-Load.ps1','tests/performance_utility_tests.ps1','scripts/package-performance.ps1','utility/Get-RPi5-WiFi-Radio.ps1','tests/radio_utility_tests.ps1','utility/Get-RPi5-WiFi-Timing.ps1','tests/timing_utility_tests.ps1','utility/Get-RPi5-WiFi-Transport.ps1','tests/transport_utility_tests.ps1') | ForEach-Object {
+          $issues = @()
+          $issues += @(@('utility/Test-RPi5-WiFi-Performance.ps1','utility/Measure-RPi5-WiFi-Load.ps1','tests/performance_utility_tests.ps1','scripts/package-performance.ps1','utility/Get-RPi5-WiFi-Radio.ps1','tests/radio_utility_tests.ps1','utility/Get-RPi5-WiFi-Timing.ps1','tests/timing_utility_tests.ps1','utility/Get-RPi5-WiFi-Transport.ps1','tests/transport_utility_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
-          }
-          $issues += @('utility/RPi5-WiFi-Operations.ps1','utility/Check-RPi5-WiFi-Readiness.ps1','utility/Connect-RPi5-WiFi.ps1','tests/readiness_utility_tests.ps1') | ForEach-Object {
+          })
+          $issues += @(@('utility/RPi5-WiFi-Operations.ps1','utility/Check-RPi5-WiFi-Readiness.ps1','utility/Connect-RPi5-WiFi.ps1','tests/readiness_utility_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
-          }
-          $issues += @('utility/RPi5-WiFi-DownloadTiming.ps1','utility/RPi5-WiFi-MeasurementClock.ps1','tests/download_timing_tests.ps1','tests/measurement_clock_tests.ps1','tests/focused_scope_tests.ps1') | ForEach-Object {
+          })
+          $issues += @(@('utility/RPi5-WiFi-DownloadTiming.ps1','utility/RPi5-WiFi-MeasurementClock.ps1','tests/download_timing_tests.ps1','tests/measurement_clock_tests.ps1','tests/focused_scope_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
-          }
-          $issues += @('utility/RPi5-WiFi-App.ps1','utility/RPi5-WiFi-Scan.ps1','tests/scan_utility_tests.ps1') | ForEach-Object {
+          })
+          $issues += @(@('utility/RPi5-WiFi-App.ps1','utility/RPi5-WiFi-Scan.ps1','tests/scan_utility_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
-          }
-          $issues | Format-Table -AutoSize
-          if ($issues) { throw 'Script analysis failed.' }
+          })
+          $issues | Format-List ScriptName,Line,Column,RuleName,Severity,Message
+          if ($issues.Count -ne 0) { throw "Script analysis reported $($issues.Count) error(s)/warning(s)." }
       - name: Windows PowerShell 5.1 tests (mocked requests, no hardware)
         shell: pwsh
         run: |
