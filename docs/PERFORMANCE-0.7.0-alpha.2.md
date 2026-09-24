@@ -28,7 +28,8 @@ pass by at most four frames when all of these conditions hold:
 The extension stops below 16 retained frames, on unavailable credits/flow,
 pause/stop/disconnect, a busy/error result, or after its two-ms between-frame
 budget. An in-flight transfer/completion cannot be preempted by that budget;
-existing SDIO deadlines still apply. Every frame still uses the original
+existing SDIO deadlines still apply. Clock granularity also applies; this is
+not a hard real-time latency guarantee. Every frame still uses the original
 fresh F1 status check and original send/completion code.
 
 The **64-frame admission cap is unchanged**. No packet is coalesced, reordered,
@@ -46,6 +47,8 @@ New cumulative diagnostic DWORDs (DiagVersion 31):
 
 Use these with `TxQueueFull`, `TxQueueMaxDelayMs`, `TxCreditWaits`, load latency,
 and throughput. A rising `TxPressureFrames` proves use, not a speed improvement.
+Interpret them only with DiagVersion 31 or later and comparable same-boot
+snapshots; older drivers can leave unused values in the diagnostic registry.
 
 ## Firmware receive-error evidence
 

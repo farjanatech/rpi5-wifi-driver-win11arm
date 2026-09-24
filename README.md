@@ -1,4 +1,11 @@
-> **This branch: performance candidate 0.7.0.** Multi-block SDIO PIO, validated
+> **This branch: performance alpha.2 (driver 0.7.0.1).** A bounded, credit-aware
+> send extension targets queue pressure while preserving alpha.1's SDIO and
+> receive implementation. Read [the alpha.2 guide](./docs/PERFORMANCE-0.7.0-alpha.2.md).
+> The user-reported best **alpha.1** remains unchanged on
+> `feature/rpi-os-wifi-performance` and in its original release. Keep it for
+> rollback; alpha.2 has no measured speed advantage yet.
+>
+> **Preserved performance baseline 0.7.0 alpha.1.** Multi-block SDIO PIO, validated
 > receive read-ahead and receive aggregation. Read [the candidate guide](./docs/PERFORMANCE-0.7.0.md)
 > first. Driver exp0.6.29.1, connector exp0.6.29.2 and UEFI are not replaced.
 > No measured speed claim; interrupt/DMA/DDR50 remain follow-up platform work.
