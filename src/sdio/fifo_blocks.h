@@ -12,6 +12,7 @@ NTSTATUS SdioPrepareRuntimeFifo(PRPI5CYW_ADAPTER A)
 {
     UCHAR caps,lo,hi;
     NTSTATUS status;
+    if(!A)return STATUS_INVALID_PARAMETER;
     A->FifoBlockReady=0;
     if(A->BusModeStage!=6 || A->BusWidth!=4 || A->BusActualKhz<=400)
         return STATUS_INVALID_DEVICE_STATE;
@@ -47,7 +48,13 @@ static NTSTATUS SdioFifoWait(PRPI5CYW_ADAPTER A,ULONG Event,ULONG64 Deadline)
         if(Event!=SDHCI_INT_XFER_COMPLETE && (status&SDHCI_INT_XFER_COMPLETE))
             return STATUS_DEVICE_DATA_ERROR;
         if(poll<5) {KeStallExecutionProcessor(10);A->Cmd53FastPolls++;}
-        else {SdioDelayMilliseconds(1);A->Cmd53WaitSleeps++;}
+        else {
+            ULONG phase=Event==SDHCI_INT_CMD_COMPLETE?0:(Event==SDHCI_INT_XFER_COMPLETE?2:1);
+            ULONG64 start=KeQueryInterruptTime();
+            SdioDelayMilliseconds(1);A->Cmd53WaitSleeps++;
+            A->RuntimeF2WaitSleeps++;A->RuntimeCmd53SleepPhase[phase]++;
+            A->RuntimeCmd53Sleep100ns+=KeQueryInterruptTime()-start;
+        }
     }
     A->Cmd53Timeouts++;
     return STATUS_IO_TIMEOUT;

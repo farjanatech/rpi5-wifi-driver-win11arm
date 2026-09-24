@@ -57,6 +57,8 @@ static void TestFifoBlocks(void)
         InitFifoBlock(&a);BlockHoldAt=i;SleepUs=15625;
         CHECK(SdioFifoTransfer(&a,buffer,1536,FALSE)==STATUS_IO_TIMEOUT);
         CHECK(SimTime<2700000ULL && Command53Count==1 && !a.FifoBlockReady);
+        CHECK(a.RuntimeF2WaitSleeps==SleepCount && a.RuntimeCmd53SleepPhase[1]==SleepCount);
+        CHECK(a.RuntimeCmd53Sleep100ns==(ULONG64)SleepCount*SleepUs*10);
     }
     for(mode=1;mode<=3;++mode) {
         InitFifoBlock(&a);Fault=mode;
@@ -73,5 +75,6 @@ static void TestFifoBlocks(void)
     CHECK(SdioFifoBlocks(&a,buffer,0,FALSE)==STATUS_INVALID_PARAMETER);
     CHECK(SdioFifoBlocks(&a,buffer,33,FALSE)==STATUS_INVALID_PARAMETER);
     CHECK(SdioFifoTransfer(NULL,buffer,512,FALSE)==STATUS_INVALID_PARAMETER);
+    CHECK(SdioPrepareRuntimeFifo(NULL)==STATUS_INVALID_PARAMETER);
     puts("Checked production F2 block counts 1..32, 64KiB split, byte tail, capability gates, partial failure/no replay, deadlines and stop.");
 }

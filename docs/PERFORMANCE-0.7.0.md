@@ -28,6 +28,8 @@ cover 1..32 blocks, 64 KiB splitting, byte tails, invalid capabilities, partial
 CRC failures, short transfers, deadlines, cancellation and no replay. RX tests
 cover validated hints, control isolation, mixed event/data aggregates, retained
 buffer ownership, last-child corruption, descriptor bounds and zeroed TX padding.
+They include 20,000 deterministic malformed-descriptor cases, a maximum-size
+aggregate, configuration failure injection and an AddressSanitizer CI run.
 All existing protocol, firmware, queue, signing/installer and utility suites
 remain required. Builds and tests run on GitHub; nothing is installed on the
 development PC.
