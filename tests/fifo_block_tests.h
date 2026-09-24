@@ -24,7 +24,7 @@ static void TestFifoBlocks(void)
         CHECK((a.LastArgument&0x1fffffffUL)==(0x08000000UL|(0x8000UL<<9)|n));
         CHECK(((a.LastArgument>>28)&7)==2 && (a.LastArgument>>31)==write);
         mode=SdioRead16(&a,SDHCI_TRANSFER_MODE);
-        CHECK(mode==(SDHCI_TRNS_BLOCK_COUNT_EN|(n>1?SDHCI_TRNS_MULTI:0)|(write?0:SDHCI_TRNS_READ)));
+        CHECK(mode==(ULONG)(SDHCI_TRNS_BLOCK_COUNT_EN|(n>1?SDHCI_TRNS_MULTI:0)|(write?0:SDHCI_TRNS_READ)));
         CHECK(SdioRead16(&a,SDHCI_BLOCK_COUNT)==n && a.Cmd53BytesTransferred==n*512);
         CHECK(!ResetCount && !SleepCount && !a.FifoBlockFailures);
         if(write) {CHECK(FifoWrites==n*128);for(i=0;i<FifoWrites;++i)CHECK(WriteWords[i]==0x5a5a5a5a);}
