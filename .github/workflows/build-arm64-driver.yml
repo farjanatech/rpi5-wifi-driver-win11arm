@@ -85,6 +85,16 @@ jobs:
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\transport-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Address-sanitize production transport helpers and register model
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $command = 'call "{0}" && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\transport_tests.c /Fe:ci-logs\transport_asan.exe && ci-logs\transport_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\sdio_host_tests.c /Fe:ci-logs\sdio_asan.exe && ci-logs\sdio_asan.exe' -f $vcvars
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\transport-asan.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Test bounded startup band policy
         shell: pwsh
         run: |

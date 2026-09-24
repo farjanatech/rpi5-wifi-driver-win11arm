@@ -16,7 +16,7 @@ static void InitGlom(void)
 }
 static void TestPerformanceRx(void)
 {
-    unsigned i,n;UCHAR payload[1518];CYW_RX_GLOM g;
+    unsigned i,n,j,seed=0x43455u;UCHAR payload[1518],descriptor[64];CYW_RX_GLOM g;
     memset(payload,0x20,sizeof(payload));
     /* A firmware-provided next length removes the separate 64-byte header
      * read. Check alignment/length before dispatch, never guess from MTU. */
@@ -60,6 +60,7 @@ static void TestPerformanceRx(void)
         CHECK(Poll()==0);
         CHECK(!NT_SUCCESS(Poll()) && !Delivered && !Events && !TestNetwork.RxGlom.Count);
         CHECK(Aborts==1 && Terms==1 && TestAdapter.RxGlomErrors==1 && !TestAdapter.RxGlomGroups);
+        CHECK(Poll()==STATUS_INVALID_DEVICE_STATE && FifoCalls==2 && Aborts==1 && !Delivered);
     }
     InitGlom();CHECK(Poll()==0);TestNetwork.Stop=1;
     CHECK(Poll()==STATUS_CANCELLED && FifoCalls==1 && !Delivered);
@@ -72,6 +73,27 @@ static void TestPerformanceRx(void)
     CywPut16(Rx,65532);CywPut16(Rx+2,12);CHECK(!CywRxGlomDescriptor(&g,Rx,4));
     for(i=0;i<32;++i)CywPut16(Rx+2*i,64);
     CHECK(CywRxGlomDescriptor(&g,Rx,64) && g.Count==32 && g.Bytes==2048);
+    /* Maximum retained buffer, mixed valid lengths, last-slot block padding. */
+    memset(Rx,0,sizeof(Rx));
+    for(i=0;i<32;++i) {
+        CywPut16(descriptor+i*2,2040);
+        WireHeader(Rx+i*2040+(i?0:12),i?2040:2028,2,i);
+    }
+    WireHeader(Rx,65280,3,0);
+    CHECK(CywRxGlomDescriptor(&g,descriptor,64) && g.Bytes==65536);
+    CHECK(CywRxGlomValidate(&g,Rx,65536) && !g.Pending && g.Count==32);
+    for(i=0;i<32;++i)CHECK(g.Start[i]<=g.Payload[i] && g.Payload[i]<=g.End[i] && g.End[i]<=65536);
+    /* Deterministic malformed-descriptor sweep; accepted descriptions must
+     * remain within the actual storage even when their headers are random. */
+    for(j=0;j<20000;++j) {
+        for(i=0;i<64;++i) {seed=seed*1664525u+1013904223u;descriptor[i]=(UCHAR)(seed>>24);}
+        n=(seed>>16)%66;
+        if(CywRxGlomDescriptor(&g,descriptor,n)) {
+            CHECK(g.Count<=32 && g.Bytes<=sizeof(Rx) && g.DescriptorBytes<=g.Bytes);
+            if(CywRxGlomValidate(&g,Rx,g.Bytes))
+                for(i=0;i<g.Count;++i)CHECK(g.Start[i]<=g.Payload[i] && g.Payload[i]<=g.End[i] && g.End[i]<=g.Bytes);
+        }
+    }
     /* A single descriptor entry is valid; it still has an outer and child header. */
     InitGlom();WireHeader(RxScript,14,0x83,9);CywPut16(RxScript+12,76);
     WireHeader(RxScript+64,76,3,10);

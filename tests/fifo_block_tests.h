@@ -32,6 +32,11 @@ static void TestFifoBlocks(void)
     }
     InitFifoBlock(&a);CHECK(SdioFifoTransfer(&a,buffer,65536,FALSE)==0);
     CHECK(Command53Count==4 && a.FifoBlockBytes==65536 && FifoReads==16384);
+    for(write=0;write<2;++write) {
+        InitFifoBlock(&a);BlockCoalesced=1;
+        CHECK(SdioFifoTransfer(&a,buffer,1536,(BOOLEAN)write)==0 && Command53Count==1);
+        CHECK(BlockTotalWords==384 && !SleepCount && !ResetCount);
+    }
     InitFifoBlock(&a);CHECK(SdioFifoTransfer(&a,buffer,1540,FALSE)==0);
     CHECK(Command53Count==2 && a.FifoBlockCommands==1 && FifoReads==385);
     /* Legacy byte path stays available only BEFORE a FIFO failure, never as

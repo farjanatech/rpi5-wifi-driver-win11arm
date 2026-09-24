@@ -10,6 +10,7 @@ static ULONG Fault, Fail52At, Commands52, ReadbackMismatch, Command53Events;
 static ULONG FifoWrites, WriteWords[16384], DiscoveryMode, Fail53At;
 static ULONG BlockModel,BlockRemaining,BlockWords,BlockOrdinal;
 static ULONG BlockFailAt,BlockShortAt,BlockHoldAt,BlockStopWord,BlockTotalWords;
+static ULONG BlockCoalesced;
 static ULONG64 SimTime, ReadyAt;
 static ULONG QpcReads;
 LARGE_INTEGER KeQueryPerformanceCounter(LARGE_INTEGER *Frequency)
@@ -44,12 +45,15 @@ static void BlockWord(void)
     if(BlockStopWord==BlockTotalWords)ActiveAdapter->IoStopped=1;
     if(--BlockWords)return;
     BlockWords=128;BlockOrdinal++;BlockRemaining--;
+    Registers[SDHCI_PRESENT_STATE/4]&=~(SDHCI_PS_DATA_AVAILABLE|SDHCI_PS_SPACE_AVAILABLE);
     ready=(Registers[SDHCI_ARGUMENT/4]&0x80000000UL)?
         SDHCI_INT_BUFFER_WRITE_READY:SDHCI_INT_BUFFER_READ_READY;
     if(BlockOrdinal==BlockFailAt)Registers[SDHCI_INT_STATUS/4]|=SDHCI_INT_DATA_CRC;
     else if(BlockOrdinal==BlockHoldAt)return;
     else if(!BlockRemaining || BlockOrdinal==BlockShortAt)
         Registers[SDHCI_INT_STATUS/4]|=SDHCI_INT_XFER_COMPLETE;
+    else if(BlockCoalesced)Registers[SDHCI_PRESENT_STATE/4]|=
+        ready==SDHCI_INT_BUFFER_READ_READY?SDHCI_PS_DATA_AVAILABLE:SDHCI_PS_SPACE_AVAILABLE;
     else Registers[SDHCI_INT_STATUS/4]|=ready;
 }
 UCHAR READ_REGISTER_UCHAR(PUCHAR Address) { return *Address; }
@@ -250,6 +254,7 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     PhaseMode=ScheduledEvent=PhaseWords=StopOnStall=0;PhaseDue=0;
     BlockModel=BlockRemaining=BlockWords=BlockOrdinal=0;
     BlockFailAt=BlockShortAt=BlockHoldAt=BlockStopWord=BlockTotalWords=0;
+    BlockCoalesced=0;
     memset(PhaseUs,0,sizeof(PhaseUs));
     Card[1][CYW_F1_WINDOW_LOW] = 0x80;
     Card[1][CYW_F1_WINDOW_LOW + 1] = 0x12;

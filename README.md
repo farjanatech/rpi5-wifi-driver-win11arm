@@ -1,4 +1,10 @@
-> Current maintenance package: **exp0.6.29.1** — installer support for working
+> **This branch: performance candidate 0.7.0.** Multi-block SDIO PIO, validated
+> receive read-ahead and receive aggregation. Read [the candidate guide](./docs/PERFORMANCE-0.7.0.md)
+> first. Driver exp0.6.29.1, connector exp0.6.29.2 and UEFI are not replaced.
+> No measured speed claim; interrupt/DMA/DDR50 remain follow-up platform work.
+> The notes below describe the preserved baseline and earlier releases.
+
+> Baseline maintenance package: **exp0.6.29.1** — installer support for working
 > UEFI exp.0.5 and the supplied connector EXE/window icon. The signed .29 driver
 > is reused unchanged (Device Manager still shows 0.6.29.0). See
 > [EXP0.6.29.1](./docs/EXP0.6.29.1.md). No speed or startup behaviour changes.

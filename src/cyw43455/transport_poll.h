@@ -5,6 +5,7 @@ static NTSTATUS CywPoll(PRPI5CYW_ADAPTER A,PULONG Channel,PULONG Offset,PULONG L
     CYW_NETWORK *N=A->Network;uint32_t len,off,hint,read,i;
     CYW_RX_GLOM *g=&N->RxGlom;NTSTATUS Status,cleanup;
     if(N->Stop)return STATUS_CANCELLED;
+    if(A->FifoTransportFailed)return STATUS_INVALID_DEVICE_STATE;
     if(g->Count) {
         if(g->Pending) {
             TRY(SdioFifoTransfer(A,N->Rx,g->Bytes,FALSE));
@@ -71,6 +72,7 @@ static NTSTATUS CywPoll(PRPI5CYW_ADAPTER A,PULONG Channel,PULONG Offset,PULONG L
     if(*Channel==2)CywReceive(A,N->Rx+off,len-off);
     return STATUS_SUCCESS;
 Exit:
+    A->FifoTransportFailed=1;
     if(g->Count)A->RxGlomErrors++;
     RtlZeroMemory(g,sizeof(*g));N->RxNextLength=0;
     N->RxPending=FALSE;N->RxBatchServiced=FALSE;

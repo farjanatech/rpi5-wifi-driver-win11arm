@@ -58,10 +58,12 @@ and profile. Security prerequisites and test-signing warnings are unchanged.
 
 After connecting, run the existing `Check-RPi5-WiFi-Readiness.cmd` once. The
 driver-before/after snapshots include `FifoBlockReady`, `FifoBlockCommands`,
-`FifoBlockBytes`, `FifoBlockFailures`, `RxReadAhead`, `RxReadAheadRejected`,
+`FifoBlockBytes`, `FifoBlockFailures`, `FifoTransportFailed`, `RxReadAhead`, `RxReadAheadRejected`,
 `RxGlomEnabled`, `RxGlomGroups`, `RxGlomFrames`, and `RxGlomErrors` (DWORDs;
 long-running byte counters can wrap). Confirm band/channel and compare the same
 workload on the same router. An enabled flag is not proof of aggregate traffic.
+`FifoTransportFailed=1` is terminal until full firmware reinitialization; a
+subsequent connection/control request cannot silently resume a damaged FIFO.
 
 If it regresses or fails, retain the report then use Device Manager's Roll Back
 Driver for this CYW43455 adapter if available. Otherwise select the previous
