@@ -96,6 +96,7 @@ SdioResetHost(
     ULONG Timeout;
 
     Adapter->BpWindowValid=0;
+    Adapter->FifoBlockReady=0;
     SdioWrite8(Adapter, SDHCI_SOFTWARE_RESET, ResetMask);
     for (Timeout = 0; Timeout < 1000; Timeout++)
     {
@@ -763,23 +764,34 @@ SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function, ULONG Address,
     return SdioCmd53Transfer(Adapter, Function, Address, Buffer, Length, TRUE, TRUE);
 }
 
-/* Broadcom F2 RX uses a fixed address; TX uses incrementing writes, matching
- * Linux brcmfmac/bcmsdh.c and the reference driver. Keep bounded byte-mode
- * chunks and the proven PIO engine, rather than adding an untested DMA path. */
+#include "fifo_blocks.h"
+
+/* Use negotiated block-mode for complete blocks; keep the proven byte-mode
+ * engine for tails and cards without SMB. No DMA/address translation here. */
 NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
                           ULONG Length, BOOLEAN Write)
 {
     ULONG Done = 0, Chunk;
     NTSTATUS Status;
-    if (Buffer == NULL || Length == 0 || Length > 65536 || (Length & 3))
+    if (Adapter == NULL || Buffer == NULL || Length == 0 || Length > 65536 || (Length & 3))
         return STATUS_INVALID_PARAMETER;
     while (Done < Length)
     {
         Chunk = Length - Done;
-        if (Chunk > 512) Chunk = 512;
-        Status = SdioCmd53Transfer(Adapter, 2, 0x8000, Buffer + Done,
-                                   Chunk, Write, Write);
-        if (!NT_SUCCESS(Status)) return Status;
+        if (Adapter->FifoBlockReady && Chunk >= CYW_FIFO_BLOCK_SIZE) {
+            ULONG Blocks=Chunk/CYW_FIFO_BLOCK_SIZE;
+            if(Blocks>CYW_FIFO_MAX_BLOCKS)Blocks=CYW_FIFO_MAX_BLOCKS;
+            Chunk=Blocks*CYW_FIFO_BLOCK_SIZE;
+            Status=SdioFifoBlocks(Adapter,Buffer+Done,Blocks,Write);
+        } else {
+            if (Chunk > 512) Chunk = 512;
+            Status = SdioCmd53Transfer(Adapter, 2, 0x8000, Buffer + Done,
+                                       Chunk, Write, Write);
+        }
+        if (!NT_SUCCESS(Status)) {
+            if(!Write)RtlZeroMemory(Buffer,Length);
+            return Status; /* Never replay a partially consumed FIFO. */
+        }
         Done += Chunk;
     }
     return STATUS_SUCCESS;

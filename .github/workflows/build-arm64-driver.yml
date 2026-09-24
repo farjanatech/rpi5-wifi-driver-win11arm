@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - bringup/cyw43455-sdio-arm64
+      - feature/rpi-os-wifi-performance
   workflow_dispatch:
 
 permissions:
@@ -27,10 +28,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce protected queue, firmware, authentication, engine and workload scope
+      - name: Enforce performance-branch isolation and protected baseline scope
         shell: pwsh
         run: |
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/focused_scope_tests.ps1
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_scope_tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Add MSBuild to PATH

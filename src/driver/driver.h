@@ -87,6 +87,10 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG64 RxErrors;
     ULONG64 RxNoBuffer;
     ULONG Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts;
+    /* Performance branch: worker-owned counters, no packet/credential data. */
+    ULONG FifoBlockReady, FifoBlockCommands, FifoBlockBytes, FifoBlockFailures;
+    ULONG RxReadAhead, RxReadAheadRejected, RxGlomGroups, RxGlomFrames, RxGlomErrors;
+    ULONG RxGlomEnabled;
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */

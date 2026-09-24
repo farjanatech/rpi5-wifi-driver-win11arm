@@ -6,6 +6,7 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULO
     ULONG total=Length+12, padded=(total+3)&~3UL;
     NTSTATUS Status;
     if(Length>CYW_CONTROL_CAPACITY-12)return STATUS_INVALID_BUFFER_SIZE;
+    if(A->FifoBlockReady && padded>512)padded=(padded+511)&~511UL;
     if(Channel==2) {
         /* Fresh global state before EVERY data frame, including frames in the
          * same four-frame TX pump. RX batching never makes this gate stale. */

@@ -72,6 +72,7 @@ Copy-Item (Join-Path $root 'docs\EXP0.6.27.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -105,170 +106,54 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - direct SDIO / NDIS build
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance candidate 0.7.0
 
 Configuration: $Configuration
 Platform:      $Platform
 Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-Architecture:
-  ACPI\\RPI0011 -> NDIS 6.30 Ethernet miniport -> direct Pi 5 SDHCI -> CYW43455
+Isolated branch: feature/rpi-os-wifi-performance
+Baseline: driver exp0.6.29.1 / connector exp0.6.29.2 (unchanged releases)
+Architecture: ACPI\\RPI0011 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
 
-This package deliberately does NOT depend on Microsoft sdbus and does not bind
-to SD\\VID_02D0 child IDs. It maps the SDIO2 MMIO resource itself and performs
-CMD0/CMD5/CMD3/CMD7/CMD52 and bounded CMD53 chip-ID reads directly.
+New: negotiated F2 multi-block PIO, validated RX read-ahead, complete-before-
+delivery RX aggregate parsing. No hardware speed or reliability guarantee.
+See PERFORMANCE-0.7.0.md for implementation, limitations, tests and rollback.
+Interrupt/DMA/DDR50 support is NOT implemented in this candidate.
+Firmware 7.45.229, matching CLM/calibration, country/band policy, queue limits,
+authentication, connector ABI and the working UEFI are unchanged.
 
-Driver exp0.6.29 adds a checked 4-bit/25MHz firmware-upload/readback startup path.
-It falls back to verified identification mode if the pre-upload bus check fails.
-Full firmware RAM verification, 64-byte transfers and the connected data path
-are retained. An upload/readback failure stops safely, never skips verification.
-No measured startup-time or zero-delay guarantee is available before Pi testing.
-Use the separately released single C# ARM64 RPi5-WiFi-Connector.exe for saved
-networks and opt-in boot-time connection before sign-in. It needs this installed
-driver; it is not a replacement driver installer or native Windows Wi-Fi menu.
-See EXP0.6.29.md; keep the complete .28 driver and existing app for rollback.
+Install only on the Pi: extract the whole ZIP, run Install-RPi5-WiFi-Driver.cmd
+and approve elevation. Save work and restart if requested. Continue using the
+existing connector exp0.6.29.2 EXE/profile; it is not bundled/rebuilt here.
+The installer checks package hashes, signer, ARM64, ACPI device, matching UEFI
+and existing security prerequisites. It does not enable Test Signing, change
+Secure Boot/BCD/UEFI, delete old drivers, or replace private credentials.
+This test-signed driver requires the already configured test environment.
+Its verified test certificate is added to Root/TrustedPublisher on installation.
 
-Retained exp0.6.28 adds on-demand disconnected-only network scanning and a separate
-RPi5-WiFi-App.cmd connection window. It is not the native Windows Wi-Fi menu,
-does not scan in the background while connected, and does not claim more speed.
-Country must match the Pi's physical location. Connection remains experimental
-WPA2-Personal/AES only. This first app version does not save passwords or enable
-autoconnect; the existing optional startup connector and private profile remain
-unchanged. A refused/unsupported/failed scan must not be called an empty success.
-Keep the complete exp0.6.27 package for rollback. The live TX/RX/SDIO traffic
-path, immediate completion ownership, 64-frame cap, packet budgets, firmware,
-verified band/bus setup and optimized Release settings are preserved. This
-candidate still needs Pi validation; passing CI is not hardware certification.
-See EXP0.6.28.md. Install on the Pi, restart once, then open RPi5-WiFi-App.cmd.
-Measurement utility 0.6.27.1 is retained; Check-RPi5-WiFi-Readiness.cmd collects
-the same workload once into one ZIP. See PERFORMANCE-0.6.27.1.md. No separate
-performance run, UEFI update, router rename or Windows reinstall is required.
-Startup/reconnect marked NotTested means missing evidence, not a failed install.
-Startup receipt compatibility remains 0.6.27; autoconnect is not newly enabled.
-Historical retained features below describe earlier candidates, not new claims.
+Keep working exp0.6.29.1 for rollback. A lower-version installer alone may not
+select an older driver: use the exact adapter's Roll Back Driver, or Have Disk
+with the previous INF if necessary. Never remove unrelated network/storage
+drivers. No Windows reinstall, router rename or UEFI change is needed.
 
-Retained exp0.6.14 caches the verified runtime backplane address window, avoiding
-six redundant CMD52 operations on each repeated register access. Partial/failed
-selections, direct window/reset writes, bus errors and restart invalidate it.
-Slow-mode upload retains the original selection behavior. A single bus worker
-owns the cache; no concurrency, clock, firmware or wire-format changes.
-Adds locked 64-bit Ethernet byte/frame/error/discard statistics and the standard
-NDIS OID_GEN_STATISTICS interface for Windows traffic graphs. Bytes count actual
-chip transfers / host receive indications, not queued work or a fabricated rate.
-Performance utility 0.6.17 retains the 0.6.14.1 workload with sequential
-1 MiB downloads (90s or 128 requests), independent router ping and traffic
-sampling. Up to 129 MiB total payload; see PERFORMANCE-0.6.14.1.md for limits.
-It uploads no logs. HTTP rejection is inconclusive, not a zero-speed result.
-This is a throughput candidate, not a guaranteed or hardware-validated speedup.
-Keep exp0.6.13 for rollback; its Pi test measured 3.17 Mbps and no ping loss.
+After connecting with the existing app, Check-RPi5-WiFi-Readiness.cmd collects
+the existing bounded workload and diagnostics once. Logs stay local. Keep wired
+Ethernet available for recovery, but unplug it during throughput measurement.
+New counters in driver-before/after.txt distinguish fast-path use from mere
+enablement. Passing CI is not hardware certification; compare on the same Pi,
+router, band/channel and workload before choosing this over the stable branch.
 
-Retained exp0.6.13 behavior gives each CMD53 phase its own bounded short-poll
-budget on the verified operating bus: at most 50 us per phase / 150 us total,
-in individual 10-us stalls, then yielding. The previous shared 40-us allowance
-could be exhausted before buffer/transfer completion. No unbounded busy waits.
-Startup/upload/recovery, cancellation and 250-ms phase deadlines are retained.
-New counters separate runtime command/buffer/completion sleeps and F1/F2 waits,
-and record cumulative scheduler sleep time. The performance tool adds download
-hostname DNS and HTTPS phase timings, and waits for a post-test driver snapshot.
-exp0.6.12 confirmed browsing and HTTPS, but still showed queue congestion,
-ping timeouts and DNS failure for the download. This is a targeted latency
-candidate, NOT a hardware-proven speed or reliability fix. Keep .12 for rollback.
-Existing checksum observations and validated ICMP echo matching are retained;
-they never modify packets or export the private in-memory echo ring.
-UEFI, firmware, country, MAC generation, bus mode and queue size are unchanged.
-Retained exp0.6.11 features: optional editable local credentials/startup connection,
-packet-path counters, firmware MAC readback and explicit RX NBL initialization.
-It is NOT a confirmed packet-loss fix. exp0.6.10 verified 4-bit/25 MHz on the
-user's Pi but its performance capture lost every ping and failed DNS/HTTPS.
-See AUTO-CONNECT.md; never publish WiFi.private.json or include it in reports.
-Counters distinguish submitted-to-chip TX, received-from-chip RX and indicated
-Windows RX by protocol, with state/format/filter/allocation drop evidence.
-These are counts only, not payload/MAC/credential captures or AP ACK evidence.
-The 4-bit/25 MHz operating-bus path is retained.
-Firmware upload/readback stays conservative. After F2 startup, default timing
-and 4-bit width are set on both ends, then the clock targets <=25 MHz.
-Sixteen matching read-only chip-ID CMD53 probes are required. Failed upgrades
-restore a verified 1-bit/400 kHz configuration or stop without unsafe cleanup.
-No association is attempted after an upgrade/verification failure.
-Run Test-RPi5-WiFi-Performance.cmd after one reboot: it prompts for connection,
-then saves one desktop report ZIP with bus/route/ping/DNS/HTTPS/download results
-and diagnostics. Unplug wired Ethernet and disconnect VPNs for this test.
-The tool requests example.com and up to 1 MiB from speed.cloudflare.com;
-logs stay local and passwords are not recorded. No settings are changed.
-Firmware, country policy, UEFI and existing pending-send logic are unchanged.
-The exp0.6.9 pending-transmit/backpressure implementation is retained:
-Windows sends remain pending until every frame is transferred to the chip.
-Firmware-busy sends retain their place and retry without duplicating completed
-frames. Bounded bursts run before and after receive polling. No per-packet
-allocation; still at most 64 retained frames and 64 outstanding NBLs.
-Cancellation, pause, disconnect, stop and power-down return pending ownership.
-Requests expire after 30 seconds rather than being held indefinitely.
-New completion/expiry/credit diagnostics and isolated optional Windows stats.
-The exp0.6.8 SDIO polling engine is unchanged; runtime bus speed is upgraded.
-Physical exp0.6.7 showed authentication, DHCP, ping, DNS and HTTPS responses,
-but high latency and intermittent DNS timeouts. exp0.6.8 recorded 1274 queue-full
-rejections matching transmit errors. This build is not a proven speed fix.
-Keep the previous packages for rollback. See INTEGRATED-TESTING.md.
-This release packages the user-requested ReactOS CYW43455 firmware/CLM pair:
-firmware 7.45.229 (631467 bytes), CLM 7163 bytes. The firmware version is OLDER,
-not the newer Infineon 7.45.286. No radio-parameter or regulatory-data edits.
-Calibration bytes are identical; source commit, hashes and licences are retained.
-The exp0.6.6 full country request using revision -1 is unchanged.
-A read-only supported-country query records membership/count/status in diagnostics.
-An unsupported or malformed list is unknown, not proof the country is absent.
-The exp0.6.5 bounded reply decoding is retained.
-This update reuses a matching existing country and, only after revision-zero
-BADARG, tries the same country's firmware-selected revision once. A complete
-matching readback is required before radio-up. It checks loaded CLM status and
-records the country selection path. No USA or alternate-country fallback.
-Without an optional private configuration, the utility remembers only country.
-The upload/readback counters and PIO transfer format are unchanged.
-The utility no longer stops a progressing upload after three minutes. It reports
-120 seconds without observed progress or a 30-minute observation limit without
-stopping/resetting the driver. Collect diagnostics before rebooting on either.
-exp0.6.6 reported 116 country entries without BD and rejected the BD requests.
-The pair demonstrated basic packet traffic on the user's Pi with exp0.6.7,
-but that is not board-specific RF certification or validation of this new build.
-It uploads firmware, checks RAM readback, uses SDPCM/BCDC and a polled packet path.
-It DOES NOT prove successful Wi-Fi until tested physically on the Pi.
-Run Connect-RPi5-WiFi.cmd as administrator AFTER installation and restart.
-Enter your actual country, SSID and WPA2 password, or supply WiFi.private.json.
-NetworkPhase: 400 files, 410 CR4/RAM, 420 upload, 421 readback, 422 NVRAM/vector,
-430 CPU start,
-440 F2 ready, 500 firmware configured/radio down, 520 joining, 600 authenticated.
-Use diagnostics if any step fails. Do not replace UEFI or reinstall Windows.
-First candidate limitations: WPA2-Personal/AES only, no WPA3/enterprise,
-no scanning UI or continuous reconnect service; firmware uploads at 1-bit/400kHz,
-no performance claim. Use Ethernet for recovery and do not use sleep/hibernate.
-MAC is locally administered and regenerated on adapter initialization.
-Keep UEFI exp.0.3 (source bda4c47); this package contains NO UEFI update.
-
-Use only with the matching UEFI build that exposes ACPI\\RPI0011 and leaves
-MAX_50MHZ_MODE untouched. Confirm the physical fan operates normally after boot.
-
-One-click installation:
-  Extract the complete ZIP, then double-click Install-RPi5-WiFi-Driver.cmd.
-  Approve the Administrator prompt. The installer verifies the package and
-  matching UEFI/device before trusting the test certificate or installing.
-  It runs the diagnostic collector automatically after the installation attempt.
-  Save your work before installation. If a reboot is requested, restart manually
-  and run Run-RPi5-WiFi-Diagnostics.cmd again. No uninstall is required first.
-  Recovery: Device Manager -> this adapter -> Driver -> Roll Back Driver (if
-  available), or disable only this adapter and reinstall the previous package.
-  Do not remove unrelated network/storage drivers or reflash Windows.
-
-Security:
-  This is a test-signed kernel driver. The installer refuses to enable Test
-  Signing or change Secure Boot. When those prerequisites are already satisfied,
-  it verifies the package signer and adds the included test certificate to the
-  machine Root and TrustedPublisher stores. Remove the driver and certificate
-  after testing if this experimental package is no longer required.
+Historical EXP/PERFORMANCE documents in the ZIP describe earlier versions;
+PERFORMANCE-0.7.0.md is authoritative for this candidate.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.6.29
+driver_version=0.7.0
+performance_branch=feature/rpi-os-wifi-performance
+performance_baseline=4f8f456b1b72d7f6b534531b02d83863ae9ed60c
 measurement_utility_version=0.6.27.1
 startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration

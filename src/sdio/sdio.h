@@ -90,6 +90,8 @@
 #define SDHCI_CMD_INDEX_CHECK         0x0010
 #define SDHCI_CMD_DATA_PRESENT        0x0020
 #define SDHCI_TRNS_READ               0x0010
+#define SDHCI_TRNS_BLOCK_COUNT_EN     0x0002
+#define SDHCI_TRNS_MULTI              0x0020
 #define SDHCI_CMD_INDEX_SHIFT         8
 #define SDHCI_MAKE_CMD(_idx,_flags)   ((USHORT)(((_idx) << SDHCI_CMD_INDEX_SHIFT) | (_flags)))
 
@@ -123,6 +125,7 @@ NTSTATUS SdioCmd53Write(PRPI5CYW_ADAPTER Adapter, UCHAR Function,
 VOID SdioDelayMilliseconds(ULONG Milliseconds);
 NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
                           ULONG Length, BOOLEAN Write);
+NTSTATUS SdioPrepareRuntimeFifo(PRPI5CYW_ADAPTER Adapter);
 /* Serialized PASSIVE_LEVEL only. Optional standards-gated high-speed SDR;
  * never UHS/DDR, voltage switching, DMA, or a board-specific register guess.
  * Successful negotiation/restore still requires caller CMD53 verification. */

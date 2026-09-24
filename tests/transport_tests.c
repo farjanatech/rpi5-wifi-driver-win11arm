@@ -5,6 +5,7 @@
 #define RPI5CYW_HOST_TEST 1
 #include "../src/driver/driver.h"
 #include "../src/cyw43455/network_protocol.h"
+#include "../src/cyw43455/rx_performance.h"
 #define STATUS_CANCELLED ((NTSTATUS)0xc0000120L)
 #define STATUS_DEVICE_NOT_READY ((NTSTATUS)0xc00000a3L)
 #define STATUS_NO_MORE_ENTRIES ((NTSTATUS)0x8000001aL)
@@ -20,12 +21,16 @@ typedef struct _CYW_NETWORK {
     BOOLEAN Ready,Authorized,Paused;
     UCHAR TxFlow,TxSeq,TxMax;
     PUCHAR Rx,Tx;
+    ULONG RxNextLength;
+    CYW_RX_GLOM RxGlom;
 } CYW_NETWORK;
 static unsigned Failures,IoCalls,FailIo,FifoCalls,FailFifo,PendingCalls,StatusReads;
 static unsigned AckWrites,MailReads,MailAcks,DataWrites,Delivered,Events,Aborts,Terms,FailCleanup;
 static unsigned StatusAt,FrameAt;
 static ULONG StatusScript[16],Mail;
 static UCHAR Pending,Frames[8][64],Rx[CYW_WIRE_CAPACITY],Tx[CYW_CONTROL_CAPACITY];
+static UCHAR RxScript[8192];
+static ULONG ScriptOn,ScriptAt,ScriptBytes,LastWriteLength;
 static ULONG64 Clock;
 static RPI5CYW_ADAPTER TestAdapter;
 static CYW_NETWORK TestNetwork;
@@ -66,7 +71,16 @@ static NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter,PUCHAR Buffer,ULONG Le
 {
     (void)Adapter;
     if(++FifoCalls==FailFifo)return STATUS_IO_DEVICE_ERROR;
-    if(Write) {CHECK(Length>=12 && !(Length&3));DataWrites++;}
+    if(Write) {
+        ULONG i,n=CywLe16(Buffer);
+        CHECK(Length>=12 && !(Length&3));DataWrites++;LastWriteLength=Length;
+        for(i=n;i<Length;++i)CHECK(Buffer[i]==0);
+    }
+    else if(ScriptOn) {
+        CHECK(ScriptAt<=ScriptBytes && Length<=ScriptBytes-ScriptAt);
+        if(ScriptAt>ScriptBytes || Length>ScriptBytes-ScriptAt)return STATUS_DEVICE_DATA_ERROR;
+        memcpy(Buffer,RxScript+ScriptAt,Length);ScriptAt+=Length;
+    }
     else if(Buffer==Rx) {
         CHECK(Length==64 && FrameAt<8);memcpy(Buffer,Frames[FrameAt++],64);
     } else {CHECK(Buffer==Rx+64);memset(Buffer,0,Length);}
@@ -88,6 +102,7 @@ static void Init(void)
     IoCalls=FailIo=FifoCalls=FailFifo=PendingCalls=StatusReads=AckWrites=MailReads=MailAcks=0;
     DataWrites=Delivered=Events=Aborts=Terms=FailCleanup=StatusAt=FrameAt=0;
     Pending=0;Mail=0;Clock=100;
+    ScriptOn=ScriptAt=ScriptBytes=LastWriteLength=0;memset(RxScript,0,sizeof(RxScript));
 }
 static void Frame(unsigned Index,unsigned Sequence,unsigned Channel,unsigned Flow)
 {
@@ -96,6 +111,7 @@ static void Frame(unsigned Index,unsigned Sequence,unsigned Channel,unsigned Flo
     Frames[Index][8]=(UCHAR)Flow;Frames[Index][9]=32;
 }
 static NTSTATUS Poll(void){ULONG channel,off,len;return CywPoll(&TestAdapter,&channel,&off,&len);}
+#include "rx_transport_tests.h"
 int main(void)
 {
     unsigned i,flow;UCHAR payload[4]={0x20,0,0,0};NTSTATUS status;
@@ -293,6 +309,7 @@ int main(void)
     CHECK(TestAdapter.Transport.Trace.Entry[2].Time100ns==1 && TestAdapter.Transport.Trace.Entry[2].RxFrames==0xffffffffu);
     Clock+=CYW_TRANSPORT_TRACE_INTERVAL;TestAdapter.Transport.Frames=0;CywTransportSample(&TestAdapter);
     CHECK(TestAdapter.Transport.Trace.Entry[3].RxFrames==0 && !IoCalls && !FifoCalls);
+    TestPerformanceRx();
     printf("%s: production SDPCM service, FIFO poll, and TX gate tests\n",Failures?"FAIL":"PASS");
     return Failures?1:0;
 }

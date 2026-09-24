@@ -121,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 29);
+    SET_DWORD(L"DiagVersion", 30);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -229,6 +229,16 @@ Rpi5CywWriteDiagnostics(
         }
     }
     SET_DWORD(L"Cmd53FastPolls", Adapter->Cmd53FastPolls);
+    SET_DWORD(L"FifoBlockReady", Adapter->FifoBlockReady);
+    SET_DWORD(L"FifoBlockCommands", Adapter->FifoBlockCommands);
+    SET_DWORD(L"FifoBlockBytes", Adapter->FifoBlockBytes);
+    SET_DWORD(L"FifoBlockFailures", Adapter->FifoBlockFailures);
+    SET_DWORD(L"RxReadAhead", Adapter->RxReadAhead);
+    SET_DWORD(L"RxReadAheadRejected", Adapter->RxReadAheadRejected);
+    SET_DWORD(L"RxGlomEnabled", Adapter->RxGlomEnabled);
+    SET_DWORD(L"RxGlomGroups", Adapter->RxGlomGroups);
+    SET_DWORD(L"RxGlomFrames", Adapter->RxGlomFrames);
+    SET_DWORD(L"RxGlomErrors", Adapter->RxGlomErrors);
     SET_DWORD(L"Cmd53WaitSleeps", Adapter->Cmd53WaitSleeps);
     SET_DWORD(L"Cmd53Timeouts", Adapter->Cmd53Timeouts);
     SET_DWORD(L"TxQueueHighWater", Adapter->TxQueueHighWater);
@@ -730,7 +740,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x0006001d;
+            Data.Ulong = 0x00070000;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

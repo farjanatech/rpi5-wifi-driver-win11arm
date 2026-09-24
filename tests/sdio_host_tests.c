@@ -7,7 +7,9 @@
 static ULONG Registers[64], Card[2][0x20000];
 static ULONG Fifo, FifoReads, ResetCount, CommandCount, Ticks, Command53Count;
 static ULONG Fault, Fail52At, Commands52, ReadbackMismatch, Command53Events;
-static ULONG FifoWrites, WriteWords[128], DiscoveryMode, Fail53At;
+static ULONG FifoWrites, WriteWords[16384], DiscoveryMode, Fail53At;
+static ULONG BlockModel,BlockRemaining,BlockWords,BlockOrdinal;
+static ULONG BlockFailAt,BlockShortAt,BlockHoldAt,BlockStopWord,BlockTotalWords;
 static ULONG64 SimTime, ReadyAt;
 static ULONG QpcReads;
 LARGE_INTEGER KeQueryPerformanceCounter(LARGE_INTEGER *Frequency)
@@ -34,6 +36,22 @@ int TestIrql;
 
 static ULONG Offset(const void *Address)
 { return (ULONG)((const UCHAR *)Address - (const UCHAR *)Registers); }
+static void BlockWord(void)
+{
+    ULONG ready;
+    if(!BlockModel || !(Registers[SDHCI_ARGUMENT/4]&0x08000000UL))return;
+    BlockTotalWords++;
+    if(BlockStopWord==BlockTotalWords)ActiveAdapter->IoStopped=1;
+    if(--BlockWords)return;
+    BlockWords=128;BlockOrdinal++;BlockRemaining--;
+    ready=(Registers[SDHCI_ARGUMENT/4]&0x80000000UL)?
+        SDHCI_INT_BUFFER_WRITE_READY:SDHCI_INT_BUFFER_READ_READY;
+    if(BlockOrdinal==BlockFailAt)Registers[SDHCI_INT_STATUS/4]|=SDHCI_INT_DATA_CRC;
+    else if(BlockOrdinal==BlockHoldAt)return;
+    else if(!BlockRemaining || BlockOrdinal==BlockShortAt)
+        Registers[SDHCI_INT_STATUS/4]|=SDHCI_INT_XFER_COMPLETE;
+    else Registers[SDHCI_INT_STATUS/4]|=ready;
+}
 UCHAR READ_REGISTER_UCHAR(PUCHAR Address) { return *Address; }
 USHORT READ_REGISTER_USHORT(PUSHORT Address) { return *Address; }
 ULONG READ_REGISTER_ULONG(PULONG Address)
@@ -49,6 +67,7 @@ ULONG READ_REGISTER_ULONG(PULONG Address)
     if (Offset(Address) == SDHCI_BUFFER)
     {
         FifoReads++;
+        BlockWord();
         if (PhaseMode && --PhaseWords == 0) {
             ScheduledEvent=SDHCI_INT_XFER_COMPLETE;PhaseDue=SimTime+(ULONG64)PhaseUs[2]*10;
         }
@@ -73,8 +92,9 @@ void WRITE_REGISTER_ULONG(PULONG Address, ULONG Value)
 {
     if (Offset(Address) == SDHCI_BUFFER)
     {
-        CHECK(FifoWrites < 128);
-        if (FifoWrites < 128) WriteWords[FifoWrites++] = Value;
+        CHECK(FifoWrites < 16384);
+        if (FifoWrites < 16384) WriteWords[FifoWrites++] = Value;
+        BlockWord();
         if (PhaseMode && --PhaseWords == 0) {
             ScheduledEvent=SDHCI_INT_XFER_COMPLETE;PhaseDue=SimTime+(ULONG64)PhaseUs[2]*10;
         }
@@ -162,6 +182,13 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
             PhaseWords=(Registers[SDHCI_BLOCK_SIZE/4]&0xfff)+3;
             PhaseWords/=4;
         }
+        if(BlockModel && (Argument&0x08000000UL)) {
+            BlockRemaining=Argument&511;BlockWords=128;BlockOrdinal=0;
+            Registers[SDHCI_INT_STATUS/4]=SDHCI_INT_CMD_COMPLETE|
+                ((Argument&0x80000000UL)?SDHCI_INT_BUFFER_WRITE_READY:SDHCI_INT_BUFFER_READ_READY);
+            if(Fault==1 || Fault==7)Registers[SDHCI_INT_STATUS/4]=0;
+            if(Fault==2 || Command53Count==Fail53At)Registers[SDHCI_INT_STATUS/4]|=SDHCI_INT_DATA_CRC;
+        }
     }
     else if (Command == 52)
     {
@@ -221,6 +248,8 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     BusClockFault=BusHostFault=0;
     HighSpeedClockSeen=HighSpeedHostFault=HighSpeedCardFault=HighSpeedStateFault=0;
     PhaseMode=ScheduledEvent=PhaseWords=StopOnStall=0;PhaseDue=0;
+    BlockModel=BlockRemaining=BlockWords=BlockOrdinal=0;
+    BlockFailAt=BlockShortAt=BlockHoldAt=BlockStopWord=BlockTotalWords=0;
     memset(PhaseUs,0,sizeof(PhaseUs));
     Card[1][CYW_F1_WINDOW_LOW] = 0x80;
     Card[1][CYW_F1_WINDOW_LOW + 1] = 0x12;
@@ -238,6 +267,7 @@ static void CheckRestored(void)
 
 #include "erom_tests.h"
 #include "bus_mode_tests.h"
+#include "fifo_block_tests.h"
 
 static void InitHighSpeedBus(PRPI5CYW_ADAPTER A)
 {
@@ -624,6 +654,7 @@ int main(void)
     CHECK(SdioCmd53Read(&Adapter,1,0x8000,Buffer,64)==STATUS_SUCCESS);
     CHECK(QpcReads==0 && Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].Count==0);
     CHECK(SdioCmd53Transfer(NULL,1,0x8000,Buffer,64,FALSE,TRUE)==STATUS_INVALID_PARAMETER);
+    TestFifoBlocks();
     if (Failures) { printf("%d failures\n", Failures); return 1; }
     puts("PASS: actual CMD52/CMD53 read/write + core probe, 512 lengths each, bounds, errors, timeouts, cleanup.");
     return 0;

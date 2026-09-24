@@ -1,5 +1,19 @@
 # Third-party notices
 
+## Isolated performance branch 0.7.0
+
+`src/sdio/fifo_blocks.h`, `rx_performance.h` and the poll/send integration
+reference Raspberry Pi Linux commit `8e8c07957368233228a9af82b9e99209653ef1e7`,
+brcmfmac `bcmsdh.c` (`brcmf_sdiod_sglist_rw`) and `sdio.c`
+(`brcmf_sdio_hdparse`, `brcmf_sdio_readframes`, `brcmf_sdio_rxglom`).
+These Broadcom ISC sources are covered by the complete notice below.
+The bounded Windows PIO engine, no-replay failure policy, retained aggregate
+buffer/budget integration and production-helper fault tests are local work.
+Linux MMC, DMA and cfg80211 implementations are not installed or copied as a
+Windows platform layer.
+
+https://github.com/raspberrypi/linux/tree/8e8c07957368233228a9af82b9e99209653ef1e7/drivers/net/wireless/broadcom/brcm80211/brcmfmac
+
 ## Explicit disconnected scan references (exp0.6.28)
 
 The byte-oriented escan v1 request, BSS-info v109 layout, event69 result
