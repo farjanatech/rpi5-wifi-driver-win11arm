@@ -198,9 +198,9 @@ static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A)
     KeReleaseSpinLock(&N->Sends.Lock,irql);
 }
 #include "control.h"
-#include "rx_config.h"
 static NTSTATUS CywInt(PRPI5CYW_ADAPTER A,const char *Name,ULONG Value)
 {UCHAR b[4];CywPut32(b,Value);return CywIovar(A,Name,TRUE,b,4);}
+#include "rx_config.h"
 static NTSTATUS CywCmdInt(PRPI5CYW_ADAPTER A,ULONG Command,ULONG Value)
 {UCHAR b[4];CywPut32(b,Value);return CywFirmwareCommand(A,Command,TRUE,b,4);}
 static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
