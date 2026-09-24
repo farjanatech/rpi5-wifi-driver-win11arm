@@ -35,14 +35,15 @@ static NTSTATUS SdioFifoWait(PRPI5CYW_ADAPTER A,ULONG Event,ULONG64 Deadline)
         if(status&(SDHCI_INT_ERROR|SDHCI_INT_CMD_ERROR_MASK|SDHCI_INT_DATA_ERROR_MASK))
             return STATUS_IO_DEVICE_ERROR;
         if(KeQueryInterruptTime()>=Deadline)break;
-        if(status&Event)return STATUS_SUCCESS;
         /* Buffer-ready interrupts may coalesce across blocks. PRESENT_STATE
          * is level state, as used by Linux sdhci_transfer_pio; consume exactly
-         * one block per readiness observation, with errors checked first. */
-        if(Event==SDHCI_INT_BUFFER_READ_READY &&
-           (SdioRead32(A,SDHCI_PRESENT_STATE)&SDHCI_PS_DATA_AVAILABLE))return STATUS_SUCCESS;
-        if(Event==SDHCI_INT_BUFFER_WRITE_READY &&
-           (SdioRead32(A,SDHCI_PRESENT_STATE)&SDHCI_PS_SPACE_AVAILABLE))return STATUS_SUCCESS;
+         * one block per readiness observation, with errors checked first.
+         * A stale latched event alone must not authorize another FIFO block. */
+        if(Event==SDHCI_INT_BUFFER_READ_READY) {
+            if(SdioRead32(A,SDHCI_PRESENT_STATE)&SDHCI_PS_DATA_AVAILABLE)return STATUS_SUCCESS;
+        } else if(Event==SDHCI_INT_BUFFER_WRITE_READY) {
+            if(SdioRead32(A,SDHCI_PRESENT_STATE)&SDHCI_PS_SPACE_AVAILABLE)return STATUS_SUCCESS;
+        } else if(status&Event)return STATUS_SUCCESS;
         /* Completing before the requested block is available is a short
          * transfer, not permission to consume uninitialised FIFO words. */
         if(Event!=SDHCI_INT_XFER_COMPLETE && (status&SDHCI_INT_XFER_COMPLETE))

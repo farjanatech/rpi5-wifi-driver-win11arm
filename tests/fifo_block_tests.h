@@ -67,6 +67,11 @@ static void TestFifoBlocks(void)
         CHECK(a.RuntimeF2WaitSleeps==SleepCount && a.RuntimeCmd53SleepPhase[1]==SleepCount);
         CHECK(a.RuntimeCmd53Sleep100ns==(ULONG64)SleepCount*SleepUs*10);
     }
+    for(write=0;write<2;++write) {
+        InitFifoBlock(&a);BlockHoldAt=1;BlockStaleReady=1;
+        CHECK(SdioFifoTransfer(&a,buffer,1536,(BOOLEAN)write)==STATUS_IO_TIMEOUT);
+        CHECK(BlockTotalWords==128 && a.FifoTransportFailed); /* no overrun of a stale event */
+    }
     for(mode=1;mode<=3;++mode) {
         InitFifoBlock(&a);Fault=mode;
         CHECK(!NT_SUCCESS(SdioFifoTransfer(&a,buffer,1536,FALSE)) && !FifoReads && ResetCount==1);
