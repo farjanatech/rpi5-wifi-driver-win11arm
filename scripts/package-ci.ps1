@@ -73,6 +73,7 @@ Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0-alpha.2.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -106,20 +107,20 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance candidate 0.7.0
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance alpha.2 (0.7.0.1)
 
 Configuration: $Configuration
 Platform:      $Platform
 Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-Isolated branch: feature/rpi-os-wifi-performance
-Baseline: driver exp0.6.29.1 / connector exp0.6.29.2 (unchanged releases)
+Isolated branch: feature/perf-alpha2-queue-pressure
+Baseline: driver-perf0.7.0-alpha.1, user-reported best (preserved exactly)
 Architecture: ACPI\\RPI0011 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
 
-New: negotiated F2 multi-block PIO, validated RX read-ahead, complete-before-
-delivery RX aggregate parsing. No hardware speed or reliability guarantee.
-See PERFORMANCE-0.7.0.md for implementation, limitations, tests and rollback.
+New: bounded credit-aware post-receive queue-pressure relief. Alpha.1's block
+transfers, read-ahead and aggregation are unchanged. No speed guarantee.
+See PERFORMANCE-0.7.0-alpha.2.md for implementation, tests and rollback.
 Interrupt/DMA/DDR50 support is NOT implemented in this candidate.
 Firmware 7.45.229, matching CLM/calibration, country/band policy, queue limits,
 authentication, connector ABI and the working UEFI are unchanged.
@@ -133,7 +134,7 @@ Secure Boot/BCD/UEFI, delete old drivers, or replace private credentials.
 This test-signed driver requires the already configured test environment.
 Its verified test certificate is added to Root/TrustedPublisher on installation.
 
-Keep working exp0.6.29.1 for rollback. A lower-version installer alone may not
+Keep working perf0.7.0-alpha.1 for rollback. A lower-version installer may not
 select an older driver: use the exact adapter's Roll Back Driver, or Have Disk
 with the previous INF if necessary. Never remove unrelated network/storage
 drivers. No Windows reinstall, router rename or UEFI change is needed.
@@ -146,14 +147,14 @@ enablement. Passing CI is not hardware certification; compare on the same Pi,
 router, band/channel and workload before choosing this over the stable branch.
 
 Historical EXP/PERFORMANCE documents in the ZIP describe earlier versions;
-PERFORMANCE-0.7.0.md is authoritative for this candidate.
+PERFORMANCE-0.7.0-alpha.2.md is authoritative for this candidate.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.7.0
-performance_branch=feature/rpi-os-wifi-performance
-performance_baseline=4f8f456b1b72d7f6b534531b02d83863ae9ed60c
+driver_version=0.7.0.1
+performance_branch=feature/perf-alpha2-queue-pressure
+performance_baseline=6e652fb86aef595cf6f6fbf6f05c1769d5673055
 measurement_utility_version=0.6.27.1
 startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration

@@ -261,6 +261,9 @@ static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *S,ULONG Budge
 }
 /* TIMING-END */
 
+#include "tx_pressure_gate.h"
+#include "tx_pressure_pump.h"
+
 static VOID CywRadioRequest(PRPI5CYW_ADAPTER A)
 {
     CYW_NETWORK *N=A->Network;ULONG report[CYW_RADIO_REPORT_WORDS];KIRQL irql;
@@ -382,7 +385,7 @@ static VOID CywWorker(PVOID Context)
             CywMeasuredDiagnostics(A,120,A->NetworkStatus);
             lastPhase=A->NetworkPhase;nextSnapshot=KeQueryInterruptTime()+300000000ULL;
         }
-        Status=CywMeasuredTxPump(A,&N->Sends,4,&sentAfter);
+        Status=CywTxPostReceivePump(A,&N->Sends,&sentAfter);
         if(!NT_SUCCESS(Status))goto Failed;
 /* TIMING-BEGIN */
         CywTimingEnd(&A->Timing,CywTimeWorkerWork,cycleStart);

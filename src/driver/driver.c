@@ -121,7 +121,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 30);
+    SET_DWORD(L"DiagVersion", 31);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -240,6 +240,9 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"RxGlomGroups", Adapter->RxGlomGroups);
     SET_DWORD(L"RxGlomFrames", Adapter->RxGlomFrames);
     SET_DWORD(L"RxGlomErrors", Adapter->RxGlomErrors);
+    SET_DWORD(L"TxPressurePasses", Adapter->TxPressurePasses);
+    SET_DWORD(L"TxPressureFrames", Adapter->TxPressureFrames);
+    SET_DWORD(L"TxPressureDeadlineYields", Adapter->TxPressureDeadlineYields);
     SET_DWORD(L"Cmd53WaitSleeps", Adapter->Cmd53WaitSleeps);
     SET_DWORD(L"Cmd53Timeouts", Adapter->Cmd53Timeouts);
     SET_DWORD(L"TxQueueHighWater", Adapter->TxQueueHighWater);

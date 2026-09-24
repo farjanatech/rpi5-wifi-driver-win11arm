@@ -55,6 +55,21 @@ static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER adapter) {(void)adapter;CHECK(!
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
 static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags);
 #include "../src/cyw43455/tx_queue.h"
+/* Production pressure wrapper around the ACTUAL queue/pump. The network-state
+ * gate is exercised separately by tx_retry_gate_tests.c; this fixture models
+ * its queue/credit inputs and cancellation/flow changes during a transfer. */
+static ULONG PressureBlocked;
+static BOOLEAN CywTxPressureEligible(PRPI5CYW_ADAPTER A,ULONG Threshold)
+{
+    KIRQL irql;BOOLEAN eligible;(void)A;
+    KeAcquireSpinLock(&TestQueue.Lock,&irql);
+    eligible=(BOOLEAN)(!PressureBlocked && Credits && TestQueue.Count &&
+        TestQueue.Frames>=Threshold && TestQueue.Gate==NDIS_STATUS_SUCCESS);
+    KeReleaseSpinLock(&TestQueue.Lock,irql);return eligible;
+}
+static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG Sent)
+{return CywTxPump(A,Q,Budget,Sent);}
+#include "../src/cyw43455/tx_pressure_pump.h"
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
 {
     (void)adapter;CHECK(!Locks);
@@ -74,6 +89,7 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
         }
         if(Hook==5)CywTxCancel(&TestQueue,CancelCompletedId);
         if(Hook==6)Clock=0;
+        if(Hook==7)PressureBlocked=1;
     }
     if(Busy || (BusyAt && BusyAt==TransferCalls))return STATUS_DEVICE_BUSY;
     if(FailTransfer || (FailAt && FailAt==TransferCalls))return STATUS_IO_DEVICE_ERROR;
@@ -127,11 +143,87 @@ static void Init(void)
     CallbackProbeCalls=0;CallbackProbeStatus[0]=CallbackProbeStatus[1]=NDIS_STATUS_FAILURE;
     CallbackProbeStatus[2]=CallbackProbeStatus[3]=NDIS_STATUS_FAILURE;
     CallbackProbeNbl=MustCompleteBeforeProbe=NULL;
+    PressureBlocked=0;
 }
 static void Packet(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG length,PVOID id)
 {
     memset(nbl,0,sizeof(*nbl));memset(nb,0,sizeof(*nb));nb->Length=length;
     nbl->First=nb;nbl->CancelId=id;
+}
+static void PressureFill(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,ULONG count,PVOID id)
+{
+    ULONG i;
+    Init();for(i=0;i<count;i++) {
+        Packet(&nbl[i],&nb[i],100,id);
+        CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[i])==NDIS_STATUS_PENDING);
+    }
+}
+static void PressureTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
+{
+    ULONG sent,i;
+    /* Low-pressure scheduling remains exactly four. Start threshold is tested
+     * AFTER the normal pump; no ownership or admission limits are enlarged. */
+    PressureFill(nbl,nb,35,id);
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==4);
+    CHECK(!TestAdapter.TxPressurePasses && TestQueue.Frames==31);
+    PressureFill(nbl,nb,36,id);
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==8);
+    CHECK(TestAdapter.TxPressurePasses==1 && TestAdapter.TxPressureFrames==4);
+    CHECK(TestQueue.Frames==28 && !TestAdapter.TxQueueFull);
+
+    PressureFill(nbl,nb,64,id);Credits=4;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==4);
+    CHECK(!TestAdapter.TxPressurePasses && !TestAdapter.TxPressureFrames);
+    PressureFill(nbl,nb,64,id);Credits=5;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==5);
+    CHECK(TestAdapter.TxPressureFrames==1 && TransferCalls==5 && TestQueue.Frames==59);
+    PressureFill(nbl,nb,64,id);PressureBlocked=1;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==4);
+    CHECK(!TestAdapter.TxPressurePasses);
+
+    /* Extension deadline: actual completed frames remain owned/completed once.
+     * A backward monotonic clock also ends the extension safely. */
+    PressureFill(nbl,nb,64,id);TransferTicks=10000;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==6);
+    CHECK(TestAdapter.TxPressureFrames==2 && TestAdapter.TxPressureDeadlineYields==1);
+    PressureFill(nbl,nb,64,id);TransferTicks=1000;Hook=6;HookAt=5;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==5);
+    CHECK(TestAdapter.TxPressureDeadlineYields==1 && TestAdapter.TxPressureFrames==1);
+
+    PressureFill(nbl,nb,64,id);BusyAt=6;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==5);
+    CHECK(TransferCalls==6 && TestQueue.Frames==59 && !nbl[5].Completions);
+    CHECK(TestAdapter.TxPressureFrames==1);
+    PressureFill(nbl,nb,64,id);FailAt=6;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==STATUS_IO_DEVICE_ERROR && sent==5);
+    CHECK(TransferCalls==6 && TestAdapter.TxPressureFrames==1 && TestQueue.Frames==58);
+    CHECK(nbl[5].Completions==1 && nbl[5].Status==NDIS_STATUS_FAILURE);
+    CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_FAILURE);
+    for(i=0;i<64;i++)CHECK(nbl[i].Completions==1);
+
+    PressureFill(nbl,nb,64,id);Hook=2;HookAt=5;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==5);
+    CHECK(nbl[4].Status==NDIS_STATUS_PAUSED && TestQueue.Frames==59);
+    CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);
+    CHECK(!CywTxOutstanding(&TestQueue));
+    PressureFill(nbl,nb,64,id);Hook=7;HookAt=5;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==5);
+    CHECK(TestAdapter.TxPressureFrames==1);
+    PressureFill(nbl,nb,64,id);Hook=1;HookAt=5;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==5);
+    CHECK(TransferCalls==5 && TestAdapter.TxCancelled==60 && !CywTxOutstanding(&TestQueue));
+    for(i=0;i<64;i++)CHECK(nbl[i].Completions==1);
+
+    /* Full-queue completion reentry and poisoned returned NBLs are safe even
+     * when additional sends are selected. No completed packet is replayed. */
+    PressureFill(nbl,nb,64,id);Poison=CheckCompleting=1;
+    Packet(&Reentrant,&ReentrantNb,100,id);Reenter=1;
+    CHECK(CywTxPostReceivePump(&TestAdapter,&TestQueue,&sent)==0 && sent==8);
+    CHECK(TestQueue.Frames==57 && !TestAdapter.TxQueueFull && !Reentrant.Completions);
+    CHECK(CompletionNbls==8 && LargestCompletion==1);
+    CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);
+    CHECK(!CywTxOutstanding(&TestQueue) && Reentrant.Completions==1);
+    CHECK(!Locks);
 }
 static void ImmediateOwnershipTests(PNET_BUFFER_LIST nbl,PNET_BUFFER nb,PVOID id)
 {
@@ -392,6 +484,7 @@ int main(void)
     CHECK(nbl[1].Status==NDIS_STATUS_INVALID_LENGTH && TestAdapter.TxNblCompleted==2 && !TestQueue.Outstanding);
     CHECK(TestAdapter.Traffic.Errors[1]==1 && TestAdapter.Traffic.Discards[1]==0);
     ImmediateOwnershipTests(nbl,nb,id);
+    PressureTests(nbl,nb,id);
     CHECK(!Locks);if(Failures)return 1;
     puts("PASS: actual immediate TX/dispatch: retained 64-frame cap, multi-NB, credit/busy/error exits, cancel/pause, same-pump reentry and poisoned returned ownership");return 0;
 }

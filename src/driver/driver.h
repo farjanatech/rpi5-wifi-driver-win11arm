@@ -92,6 +92,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG RxReadAhead, RxReadAheadRejected, RxGlomGroups, RxGlomFrames, RxGlomErrors;
     ULONG RxGlomEnabled;
     ULONG FifoTransportFailed;
+    ULONG TxPressurePasses, TxPressureFrames, TxPressureDeadlineYields;
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #define RPI5CYW_HOST_TEST 1
 #include "../src/driver/driver.h"
+#include "../src/cyw43455/network_protocol.h"
 typedef unsigned long NDIS_STATUS;
 typedef int KSPIN_LOCK,KIRQL;
 typedef struct TEST_NB *PNET_BUFFER;
@@ -34,6 +35,7 @@ static void KeReleaseSpinLock(KSPIN_LOCK *Lock,KIRQL Irql)
     *Lock=0;Locks--;Releases++;
 }
 #include "../src/cyw43455/tx_retry_gate.h"
+#include "../src/cyw43455/tx_pressure_gate.h"
 static void InitGate(void)
 {
     CHECK(!Locks && Acquires==Releases);
@@ -54,6 +56,58 @@ static void CheckGate(BOOLEAN Expected,unsigned ExpectedLocks)
      * cancellation, queue gates, diagnostics, or transport state. */
     CHECK(!memcmp(&AdapterBefore,&GateAdapter,sizeof(AdapterBefore)));
     CHECK(!memcmp(&NetworkBefore,&GateNetwork,sizeof(NetworkBefore)));
+}
+static void CheckPressure(BOOLEAN Expected,unsigned ExpectedLocks,ULONG Threshold)
+{
+    unsigned acquired=Acquires,released=Releases;
+    memcpy(&AdapterBefore,&GateAdapter,sizeof(AdapterBefore));
+    memcpy(&NetworkBefore,&GateNetwork,sizeof(NetworkBefore));
+    CHECK(CywTxPressureEligible(&GateAdapter,Threshold)==Expected);
+    CHECK(Acquires-acquired==ExpectedLocks && Releases-released==ExpectedLocks && !Locks);
+    CHECK(!memcmp(&AdapterBefore,&GateAdapter,sizeof(AdapterBefore)));
+    CHECK(!memcmp(&NetworkBefore,&GateNetwork,sizeof(NetworkBefore)));
+}
+static void InitPressure(void)
+{
+    InitGate();GateNetwork.Sends.Count=GateNetwork.Sends.Frames=32;
+    GateNetwork.TxMax=40;
+}
+static void PressureGateTests(void)
+{
+    unsigned sequence,window;
+    CHECK(!CywTxPressureEligible(NULL,32));
+    InitPressure();GateAdapter.Network=NULL;CheckPressure(FALSE,0,32);
+    InitPressure();CheckPressure(TRUE,1,32);
+    GateNetwork.Sends.Frames=31;CheckPressure(FALSE,1,32);
+    GateNetwork.Sends.Frames=16;CheckPressure(TRUE,1,16);
+    GateNetwork.Sends.Frames=15;CheckPressure(FALSE,1,16);
+    InitPressure();GateAdapter.IoStopped=1;CheckPressure(FALSE,0,32);
+    InitPressure();GateAdapter.FifoTransportFailed=1;CheckPressure(FALSE,0,32);
+    InitPressure();GateNetwork.Stop=1;CheckPressure(FALSE,0,32);
+    InitPressure();GateNetwork.Paused=1;CheckPressure(FALSE,0,32);
+    InitPressure();GateNetwork.SelectingBand=1;CheckPressure(FALSE,0,32);
+    InitPressure();GateNetwork.Ready=0;CheckPressure(FALSE,0,32);
+    InitPressure();GateNetwork.Associated=0;CheckPressure(FALSE,0,32);
+    InitPressure();GateNetwork.Authorized=0;CheckPressure(FALSE,0,32);
+    InitPressure();GateNetwork.Published=0;CheckPressure(FALSE,0,32);
+    InitPressure();GateAdapter.Transport.Halted=1;CheckPressure(FALSE,0,32);
+    InitPressure();GateAdapter.Transport.GlobalFlow=1;CheckPressure(FALSE,0,32);
+    InitPressure();GateNetwork.Sends.Gate=NDIS_STATUS_PAUSED;CheckPressure(FALSE,1,32);
+    InitPressure();GateNetwork.Sends.Gate=NDIS_STATUS_LOW_POWER_STATE;CheckPressure(FALSE,1,32);
+    InitPressure();GateNetwork.Sends.Gate=NDIS_STATUS_MEDIA_DISCONNECTED;CheckPressure(FALSE,1,32);
+    InitPressure();GateNetwork.Sends.Count=0;GateNetwork.Sends.Completing=1;CheckPressure(FALSE,1,32);
+    InitPressure();GateNetwork.TxFlow=1;CheckPressure(FALSE,0,32);
+    InitPressure();GateAdapter.Transport.PriorityMaskKnown=1;GateAdapter.Transport.PriorityMask=4;
+    GateNetwork.TxFlow=4;CheckPressure(FALSE,0,32);
+    GateNetwork.TxFlow=1;CheckPressure(TRUE,1,32);
+    /* Exhaustive modulo-256 credit windows, including zero and invalid stale
+     * windows. This hint never widens the sender's legal 1..64 credit window. */
+    for(sequence=0;sequence<256;++sequence)for(window=0;window<256;++window) {
+        BOOLEAN expected=(BOOLEAN)(window>0 && window<=64);
+        InitPressure();GateNetwork.TxSeq=(UCHAR)sequence;
+        GateNetwork.TxMax=(UCHAR)(sequence+window);
+        CheckPressure(expected,expected?1u:0u,32);
+    }
 }
 int main(void)
 {
@@ -102,6 +156,7 @@ int main(void)
     InitGate();GateAdapter.Transport.PriorityMaskKnown=1;GateAdapter.Transport.PriorityMask=256;
     GateNetwork.TxFlow=1;CheckGate(FALSE,0);
     GateNetwork.TxFlow=0;CheckGate(TRUE,1);
+    PressureGateTests();
     CHECK(!Locks && Acquires==Releases);
     if(Failures)return 1;
     puts("PASS: actual read-only retry eligibility, all stop/link/queue/flow gates, exact wrapped exhaustion, no fabricated credits or I/O.");
