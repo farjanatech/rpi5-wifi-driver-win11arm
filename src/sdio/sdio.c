@@ -775,6 +775,13 @@ NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
     NTSTATUS Status;
     if (Adapter == NULL || Buffer == NULL || Length == 0 || Length > 65536 || (Length & 3))
         return STATUS_INVALID_PARAMETER;
+    /* A control request may catch an error without exiting the worker. Latch
+     * FIFO failure too, so that path cannot fall back/replay on a later call.
+     * Only completed firmware reinitialization re-arms runtime transport. */
+    if(Adapter->FifoTransportFailed) {
+        if(!Write)RtlZeroMemory(Buffer,Length);
+        return STATUS_INVALID_DEVICE_STATE;
+    }
     while (Done < Length)
     {
         Chunk = Length - Done;
@@ -789,6 +796,7 @@ NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter, PUCHAR Buffer,
                                        Chunk, Write, Write);
         }
         if (!NT_SUCCESS(Status)) {
+            Adapter->FifoTransportFailed=1;
             if(!Write)RtlZeroMemory(Buffer,Length);
             return Status; /* Never replay a partially consumed FIFO. */
         }

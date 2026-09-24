@@ -17,11 +17,11 @@ NTSTATUS SdioPrepareRuntimeFifo(PRPI5CYW_ADAPTER A)
         return STATUS_INVALID_DEVICE_STATE;
     status=SdioCmd52Read(A,0,CYW_SDIO_CCCR_CAPS,&caps);
     if(!NT_SUCCESS(status))return status;
-    if(!(caps&2))return STATUS_SUCCESS; /* Card does not advertise SMB. */
+    if(!(caps&2)) {A->FifoTransportFailed=0;return STATUS_SUCCESS;} /* no SMB */
     status=SdioCmd52Read(A,0,0x210,&lo);if(!NT_SUCCESS(status))return status;
     status=SdioCmd52Read(A,0,0x211,&hi);if(!NT_SUCCESS(status))return status;
     if(lo!=0 || hi!=2)return STATUS_DEVICE_CONFIGURATION_ERROR;
-    A->FifoBlockReady=1;
+    A->FifoBlockReady=1;A->FifoTransportFailed=0;
     return STATUS_SUCCESS;
 }
 
@@ -105,7 +105,7 @@ static NTSTATUS SdioFifoBlocksRaw(PRPI5CYW_ADAPTER A,PUCHAR Buffer,ULONG Blocks,
     A->FifoBlockCommands++;A->FifoBlockBytes+=length;
     return STATUS_SUCCESS;
 Failed:
-    A->FifoBlockFailures++;A->FifoBlockReady=0;
+    A->FifoBlockFailures++;A->FifoBlockReady=0;A->FifoTransportFailed=1;
     A->Cmd53ResetStatus=SdioResetHost(A,SDHCI_RESET_CMD|SDHCI_RESET_DATA);
     SdioWrite32(A,SDHCI_INT_STATUS,SDHCI_INT_ALL_MASK);
     if(!Write)RtlZeroMemory(Buffer,length);

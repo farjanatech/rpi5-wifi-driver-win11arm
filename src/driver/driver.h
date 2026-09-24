@@ -91,6 +91,7 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG FifoBlockReady, FifoBlockCommands, FifoBlockBytes, FifoBlockFailures;
     ULONG RxReadAhead, RxReadAheadRejected, RxGlomGroups, RxGlomFrames, RxGlomErrors;
     ULONG RxGlomEnabled;
+    ULONG FifoTransportFailed;
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */

@@ -198,6 +198,7 @@ static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A)
     KeReleaseSpinLock(&N->Sends.Lock,irql);
 }
 #include "control.h"
+#include "rx_config.h"
 static NTSTATUS CywInt(PRPI5CYW_ADAPTER A,const char *Name,ULONG Value)
 {UCHAR b[4];CywPut32(b,Value);return CywIovar(A,Name,TRUE,b,4);}
 static NTSTATUS CywCmdInt(PRPI5CYW_ADAPTER A,ULONG Command,ULONG Value)
@@ -215,22 +216,7 @@ static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
         TRY(CywIovar(A,"clmload",TRUE,chunk,n+12));
     }
     TRY(CywCmdInt(A,3,0)); /* radio DOWN until user supplies a country */
-    TRY(CywInt(A,"bus:txglom",0));TRY(CywInt(A,"bus:rxglom",0));
-    A->RxGlomEnabled=0;
-    if(A->FifoBlockReady) {
-        Status=CywInt(A,"bus:txglomalign",4);
-        if(NT_SUCCESS(Status)) {
-            /* Device TX = host RX. Keep device RX/host TX aggregation off.
-             * The parser must be ready before firmware accepts the SET. */
-            A->RxGlomEnabled=1;
-            Status=CywInt(A,"bus:txglom",1);
-        }
-        if(!NT_SUCCESS(Status)) {
-            A->RxGlomEnabled=0;
-            if(Status!=STATUS_UNSUCCESSFUL || A->FirmwareError!=0xffffffe9UL)goto Exit;
-            TRY(CywInt(A,"bus:txglom",0)); /* explicit unsupported fallback */
-        }
-    }
+    TRY(CywConfigureRxAggregation(A));
     TRY(CywInt(A,"mpc",0));TRY(CywCmdInt(A,86,0));
     TRY(CywInt(A,"allmulti",1)); /* software applies NDIS multicast filters */
     TRY(CywIovar(A,"cur_etheraddr",TRUE,A->CurrentMacAddress,6));

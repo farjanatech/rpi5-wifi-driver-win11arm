@@ -15,7 +15,7 @@ function Assert-PerformanceEqual([string]$Actual,[string]$Expected,[string]$Labe
 }
 $allowed=@('src/driver/driver.c','src/driver/driver.h','src/sdio/sdio.c','src/sdio/sdio.h',
     'src/cyw43455/network.c','src/cyw43455/transport_poll.h','src/cyw43455/transport_send.h')
-$new=@('src/sdio/fifo_blocks.h','src/cyw43455/rx_performance.h')
+$new=@('src/sdio/fifo_blocks.h','src/cyw43455/rx_performance.h','src/cyw43455/rx_config.h')
 $paths=@(& git -C $root ls-tree -r --name-only $baseline -- src utility connector installer diagnostics scripts/fetch-firmware.ps1 rpi5-cyw43455.vcxproj)
 if($LASTEXITCODE -ne 0 -or !$paths.Count){throw 'Cannot enumerate protected files.'}
 foreach($path in $paths) {

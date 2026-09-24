@@ -44,6 +44,7 @@ static void TestFifoBlocks(void)
         CHECK(Command53Count==1 && ResetCount==1 && !a.FifoBlockReady && a.FifoBlockFailures==1);
         CHECK(BlockTotalWords==i*128);
         if(!write)for(n=0;n<1536;++n)CHECK(!buffer[n]);
+        CHECK(SdioFifoTransfer(&a,buffer,64,(BOOLEAN)write)==STATUS_INVALID_DEVICE_STATE && Command53Count==1);
     }
     for(i=1;i<=2;++i) {
         InitFifoBlock(&a);BlockShortAt=i;

@@ -7,6 +7,7 @@
 #include "../src/cyw43455/network_protocol.h"
 #include "../src/cyw43455/rx_performance.h"
 #define STATUS_CANCELLED ((NTSTATUS)0xc0000120L)
+#define STATUS_UNSUCCESSFUL ((NTSTATUS)0xc0000001L)
 #define STATUS_DEVICE_NOT_READY ((NTSTATUS)0xc00000a3L)
 #define STATUS_NO_MORE_ENTRIES ((NTSTATUS)0x8000001aL)
 #define STATUS_NOT_SUPPORTED ((NTSTATUS)0xc00000bbL)
@@ -111,6 +112,7 @@ static void Frame(unsigned Index,unsigned Sequence,unsigned Channel,unsigned Flo
     Frames[Index][8]=(UCHAR)Flow;Frames[Index][9]=32;
 }
 static NTSTATUS Poll(void){ULONG channel,off,len;return CywPoll(&TestAdapter,&channel,&off,&len);}
+#include "rx_config_tests.h"
 #include "rx_transport_tests.h"
 int main(void)
 {
@@ -310,6 +312,7 @@ int main(void)
     Clock+=CYW_TRANSPORT_TRACE_INTERVAL;TestAdapter.Transport.Frames=0;CywTransportSample(&TestAdapter);
     CHECK(TestAdapter.Transport.Trace.Entry[3].RxFrames==0 && !IoCalls && !FifoCalls);
     TestPerformanceRx();
+    TestRxConfig();
     printf("%s: production SDPCM service, FIFO poll, and TX gate tests\n",Failures?"FAIL":"PASS");
     return Failures?1:0;
 }

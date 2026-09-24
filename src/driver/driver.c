@@ -233,6 +233,7 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"FifoBlockCommands", Adapter->FifoBlockCommands);
     SET_DWORD(L"FifoBlockBytes", Adapter->FifoBlockBytes);
     SET_DWORD(L"FifoBlockFailures", Adapter->FifoBlockFailures);
+    SET_DWORD(L"FifoTransportFailed", Adapter->FifoTransportFailed);
     SET_DWORD(L"RxReadAhead", Adapter->RxReadAhead);
     SET_DWORD(L"RxReadAheadRejected", Adapter->RxReadAheadRejected);
     SET_DWORD(L"RxGlomEnabled", Adapter->RxGlomEnabled);

@@ -55,7 +55,7 @@ static void TestPerformanceRx(void)
         if(i==3)RxScript[204+5]=0x82; /* nested descriptor */
         if(i==4)RxScript[64+5]=0x83; /* outer descriptor flag */
         if(i==5)RxScript[64+7]=70; /* first slot cannot contain child header */
-        if(i==6) {CywPut16(RxScript+64,513);CywPut16(RxScript+66,(uint16_t)~513u);}
+        if(i==6) {CywPut16(RxScript+64,513);CywPut16(RxScript+66,(uint16_t)(~513u&0xffffu));}
         if(i==7)FailFifo=2;
         CHECK(Poll()==0);
         CHECK(!NT_SUCCESS(Poll()) && !Delivered && !Events && !TestNetwork.RxGlom.Count);
