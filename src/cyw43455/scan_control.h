@@ -2,6 +2,7 @@
  * Memory-only control dispatch. Caller holds ControlLock to pin the adapter.
  * No SDIO, firmware command, pending IRP, user pointer or packet-path change.
  */
+#include "us_region.h"
 static NTSTATUS CywScanControl(PRPI5CYW_ADAPTER A,ULONG Code,PUCHAR Buffer,
     ULONG InputLength,ULONG OutputLength,PULONG Bytes)
 {
@@ -28,7 +29,7 @@ static NTSTATUS CywScanControl(PRPI5CYW_ADAPTER A,ULONG Code,PUCHAR Buffer,
         }
     } else if(Code==CYW_IOCTL_SCAN_START && InputLength==8 && Buffer &&
         CywLe32(Buffer)==1 && Buffer[4]>='A' && Buffer[4]<='Z' &&
-        Buffer[5]>='A' && Buffer[5]<='Z' && !Buffer[6] && !Buffer[7]) {
+        Buffer[5]>='A' && Buffer[5]<='Z' && !Buffer[6] && !Buffer[7] && CywUsCountryAllowed(Buffer+4)) {
         /* Check both queued AND executing control work. An SSID join may not
          * yet have published Associated/Authorized, so link state alone is
          * not a sufficient protection against a disruptive scan. */

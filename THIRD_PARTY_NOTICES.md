@@ -1,5 +1,27 @@
 # Third-party notices
 
+## US firmware comparison alpha.3 (0.7.0.2)
+
+This candidate replaces only the packaged firmware/CLM from the historical
+exp0.6.7 section below with unmodified files from RPi-Distro/firmware-nonfree,
+revision `3bab0f823f5b53150b76aab77093adef6655b920`:
+
+- `debian/added-firmware/cypress/cyfmac43455-sdio-standard.bin` (7.45.265),
+  renamed to `cyfmac43455-sdio.bin` without changing its bytes;
+- `debian/added-firmware/cypress/cyfmac43455-sdio.clm_blob`;
+- `debian/added-firmware/brcm/brcmfmac43455-sdio.txt` (unchanged Pi calibration).
+
+The entire upstream `debian/copyright`, including its complete
+`binary-redist-Cypress` agreement and file attribution, is redistributed
+byte-for-byte as `FIRMWARE-COPYRIGHT.txt`. These files retain their separate
+upstream terms and are not relicensed under this project's GPL. Firmware is
+intended only for the specified Cypress CYW43455 device. All hashes and paths
+are pinned in `scripts/fetch-firmware.ps1` and independently checked in CI.
+The US-only host admission helper is local GPL-3.0-or-later work; it does not
+edit firmware, CLM, board power tables or firmware country verification.
+
+https://github.com/RPi-Distro/firmware-nonfree/tree/3bab0f823f5b53150b76aab77093adef6655b920
+
 ## Isolated performance branch 0.7.0
 
 `src/sdio/fifo_blocks.h`, `rx_performance.h` and the poll/send integration

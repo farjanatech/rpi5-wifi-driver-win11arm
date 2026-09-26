@@ -7,6 +7,7 @@
  * queue until completion. No user-mode pointers are retained.
  */
 #include "network.h"
+#include "us_region.h"
 #include "../sdio/sdio.h"
 #include "tx_types.h"
 #include "scan_protocol.h"
@@ -615,7 +616,7 @@ static NTSTATUS CywDispatch(PDEVICE_OBJECT Device,PIRP Irp)
             else {N->RadioBusy=TRUE;N->Request=3;KeSetEvent(&N->Wake,0,FALSE);Status=STATUS_SUCCESS;}
             KeReleaseSpinLockFromDpcLevel(&N->Lock);
         } else if((code==CYW_IOCTL_CONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==sizeof(CYW_CONNECT_REQUEST) &&
-                    CywValidConnect(Irp->AssociatedIrp.SystemBuffer)) ||
+                    CywUsValidConnect(Irp->AssociatedIrp.SystemBuffer)) ||
                   (code==CYW_IOCTL_DISCONNECT && Stack->Parameters.DeviceIoControl.InputBufferLength==0)) {
             KeAcquireSpinLockAtDpcLevel(&N->Lock);
             if(!N->Ready)Status=STATUS_DEVICE_NOT_READY;

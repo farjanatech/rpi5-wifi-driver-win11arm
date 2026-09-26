@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.7.0'
+$script:InstallerVersion = '0.7.0.2'
 # Reviewed direct-SDIO ACPI/platform builds only. Do not admit arbitrary firmware.
 $script:SupportedUefiRevisions = @(
     'bda4c47626ad922229dbefd7175b650562a0a64f', # UEFI exp.0.3

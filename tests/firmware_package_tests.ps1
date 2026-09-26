@@ -4,11 +4,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 # Inspect staged artifacts only; never execute firmware or install a driver.
 $expected = @(
-    @{ Name='cyfmac43455-sdio.bin'; Length=631467; Hash='CF79E8E8727D103A94CD243F1D98770FA29F5DA25DF251D0D31B3696F3B4AC6A' },
-    @{ Name='cyfmac43455-sdio.clm_blob'; Length=7163; Hash='2DBD7D22FC9AF0EB560CEAB45B19646D211BC7B34A1DD00C6BFAC5DD6BA25E8A' },
+    @{ Name='cyfmac43455-sdio.bin'; Length=609309; Hash='D608F866582519C0A28D86DB43040F4F1B98DD1D153E72E9752586546B4A36C3' },
+    @{ Name='cyfmac43455-sdio.clm_blob'; Length=2676; Hash='9823842CAE9FB9A5DD1E5FB31F595516EC7DEEE341354BEF30BB3026EEE29CC1' },
     @{ Name='brcmfmac43455-sdio.txt'; Length=2074; Hash='CA709BE81A78BDB6932936374F39943ACBD7AF07FAE6151011127599A3CE9E3D' },
-    @{ Name='FIRMWARE-BROADCOM-LICENCE.txt'; Length=4178; Hash='B16056FC91B82A0E3E8DE8F86C2DAC98201AA9DC3CBD33E8D38F1B087FCEC30D' },
-    @{ Name='FIRMWARE-WHENCE.txt'; Length=1225; Hash='CAFC36756B8E5BD7446438EB6D02DC9455F0A7C73578F01F7B88AB3BA0D92E03' }
+    @{ Name='FIRMWARE-COPYRIGHT.txt'; Length=430523; Hash='07082FD0BB65E32C73AF39A2292DD6C83F169BE7427D338BA1FE34F9B86C0E30' }
 )
 foreach ($entry in $expected) {
     $path = Join-Path $Directory $entry.Name
@@ -18,8 +17,14 @@ foreach ($entry in $expected) {
     }
 }
 $firmware = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $Directory 'cyfmac43455-sdio.bin')))
-if ($firmware -notmatch 'Version: 7\.45\.229 ') { throw 'Unexpected firmware version.' }
+if ($firmware -notmatch 'Version: 7\.45\.265 \(28bca26 CY\)' -or
+    $firmware -notmatch 'FWID 01-b677b91b') { throw 'Unexpected firmware version/variant.' }
 $source = Get-Content -LiteralPath (Join-Path $Directory 'FIRMWARE-SOURCE.txt') -Raw
-if ($source -notmatch '929bdd689d1e18d0ef71214741d4e16eec74409c') { throw 'Firmware source pin missing.' }
+if ($source -notmatch '3bab0f823f5b53150b76aab77093adef6655b920' -or
+    $source -notmatch 'US-only' -or $source -notmatch 'previously rejected BD') { throw 'Firmware source/scope notice missing.' }
+$copyright = Get-Content -LiteralPath (Join-Path $Directory 'FIRMWARE-COPYRIGHT.txt') -Raw
+if ($copyright -notmatch 'License: binary-redist-Cypress' -or
+    $copyright -notmatch 'DRIVER END USER LICENSE AGREEMENT') { throw 'Complete upstream firmware licence missing.' }
 if (Get-ChildItem -LiteralPath $Directory -Filter '*43430*') { throw 'Wrong-chip firmware included.' }
-Write-Output 'PASS: ReactOS firmware/CLM, unchanged Pi calibration, version, licence and source-pin checks.'
+if (Get-ChildItem -LiteralPath $Directory -Filter '*minimal.bin') { throw 'Wrong firmware variant included.' }
+Write-Output 'PASS: official RPi standard firmware/CLM, unchanged Pi calibration, version, complete licence and source pin. Hardware compatibility untested.'

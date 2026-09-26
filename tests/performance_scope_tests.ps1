@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
-$baseline='4f8f456b1b72d7f6b534531b02d83863ae9ed60c'
+$baseline='6e652fb86aef595cf6f6fbf6f05c1769d5673055'
 function Get-PerformanceSource([string]$Path,[switch]$Original) {
     if($Original) {
         $lines=@(& git -C $root show ($baseline+':'+$Path))
@@ -10,41 +10,47 @@ function Get-PerformanceSource([string]$Path,[switch]$Original) {
     }
     return (Get-Content -LiteralPath (Join-Path $root $Path) -Raw).Replace("`r`n","`n").TrimEnd()
 }
-function Assert-PerformanceEqual([string]$Actual,[string]$Expected,[string]$Label) {
+function Compare-PerformanceSource([string]$Actual,[string]$Expected,[string]$Label) {
     if($Actual -cne $Expected){throw "Protected baseline changed: $Label"}
 }
-$allowed=@('src/driver/driver.c','src/driver/driver.h','src/sdio/sdio.c','src/sdio/sdio.h',
-    'src/cyw43455/network.c','src/cyw43455/transport_poll.h','src/cyw43455/transport_send.h')
-$new=@('src/sdio/fifo_blocks.h','src/cyw43455/rx_performance.h','src/cyw43455/rx_config.h')
-$paths=@(& git -C $root ls-tree -r --name-only $baseline -- src utility connector installer diagnostics scripts/fetch-firmware.ps1 rpi5-cyw43455.vcxproj)
+$allowed=@('.github/workflows/build-arm64-driver.yml','README.md','THIRD_PARTY_NOTICES.md',
+    'docs/PERFORMANCE-0.7.0-alpha.3-us.md','scripts/fetch-firmware.ps1','scripts/package-ci.ps1',
+    'tests/performance_scope_tests.ps1','tests/firmware_package_tests.ps1','tests/scan_control_tests.c',
+    'tests/us_region_tests.c','src/cyw43455/us_region.h','src/cyw43455/network.c',
+    'src/cyw43455/scan_control.h','installer/Install-RPi5-WiFi-Driver.ps1','package/rpi5cyw.inf')
+$changed=@(& git -C $root diff --name-only $baseline)
+if($LASTEXITCODE -ne 0){throw 'Cannot compare alpha.1 scope.'}
+foreach($path in $changed){if($path -notin $allowed){throw "Unexpected change outside firmware/US scope: $path"}}
+$paths=@(& git -C $root ls-tree -r --name-only $baseline -- src utility connector installer diagnostics rpi5-cyw43455.vcxproj)
 if($LASTEXITCODE -ne 0 -or !$paths.Count){throw 'Cannot enumerate protected files.'}
 foreach($path in $paths) {
-    if($path -in $allowed){continue}
-    if($path -eq 'installer/Install-RPi5-WiFi-Driver.ps1') {
-        $actual=(Get-PerformanceSource $path).Replace("'0.7.0'","'0.6.29.1'")
-        Assert-PerformanceEqual $actual (Get-PerformanceSource $path -Original) $path
-    } else {
+    if($path -notin @('installer/Install-RPi5-WiFi-Driver.ps1','src/cyw43455/network.c','src/cyw43455/scan_control.h')) {
+        # Compare Git blobs without decoding binary assets (for example the icon).
         & git -C $root diff --quiet $baseline -- $path
-        if($LASTEXITCODE -ne 0){throw "Protected baseline changed: $path"}
+        if($LASTEXITCODE -ne 0){throw "Protected baseline changed or comparison failed: $path"}
+        continue
     }
+    $actual=Get-PerformanceSource $path
+    switch($path) {
+        'installer/Install-RPi5-WiFi-Driver.ps1' { $actual=$actual.Replace("'0.7.0.2'","'0.7.0'") }
+        'src/cyw43455/network.c' {
+            $actual=$actual.Replace("#include `"us_region.h`"`n",'').Replace('CywUsValidConnect(','CywValidConnect(')
+        }
+        'src/cyw43455/scan_control.h' {
+            $actual=$actual.Replace("#include `"us_region.h`"`n",'').Replace(' && CywUsCountryAllowed(Buffer+4)','')
+        }
+    }
+    Compare-PerformanceSource $actual (Get-PerformanceSource $path -Original) $path
 }
 foreach($file in Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File) {
     $relative=$file.FullName.Substring($root.Length+1).Replace('\','/')
-    if($relative -notin $paths -and $relative -notin $new){throw "Unexpected driver source: $relative"}
+    if($relative -notin $paths -and $relative -ne 'src/cyw43455/us_region.h'){throw "Unexpected driver source: $relative"}
 }
-# The worker itself is byte-identical outside the two explicit startup lines.
-# No larger queues, altered TX/RX budgets, retry policy or authentication.
-$network=Get-PerformanceSource 'src/cyw43455/network.c'
-$original=Get-PerformanceSource 'src/cyw43455/network.c' -Original
-$network=$network.Replace("    N->RxNextLength=0;RtlZeroMemory(&N->RxGlom,sizeof(N->RxGlom));`n",'')
-$network=$network.Replace("    if(NT_SUCCESS(Status) && !N->Stop)Status=SdioPrepareRuntimeFifo(A);`n",'')
-$start=$network.IndexOf('static VOID CywWorker(')
-$end=$network.IndexOf('NTSTATUS CywNetworkInitialize(')
-$oldStart=$original.IndexOf('static VOID CywWorker(')
-$oldEnd=$original.IndexOf('NTSTATUS CywNetworkInitialize(')
-if($start -lt 0 -or $end -le $start -or $oldStart -lt 0 -or $oldEnd -le $oldStart){throw 'Worker scope markers missing.'}
-Assert-PerformanceEqual $network.Substring($start,$end-$start) $original.Substring($oldStart,$oldEnd-$oldStart) 'worker scheduling/ownership'
 $inf=Get-PerformanceSource 'package/rpi5cyw.inf'
-if($inf -notmatch '09/24/2026,0\.7\.0\.0'){throw 'Performance version missing.'}
-Assert-PerformanceEqual ($inf.Replace('09/24/2026,0.7.0.0','09/23/2026,0.6.29.0')) (Get-PerformanceSource 'package/rpi5cyw.inf' -Original) 'INF except version'
-Write-Output 'PASS: isolated transport changes; firmware, authentication, country, band policy, queues, scheduling, connector, utilities and installer safeguards preserved.'
+if($inf -notmatch '09/26/2026,0\.7\.0\.2'){throw 'US candidate version missing.'}
+Compare-PerformanceSource ($inf.Replace('09/26/2026,0.7.0.2','09/24/2026,0.7.0.0')) (Get-PerformanceSource 'package/rpi5cyw.inf' -Original) 'INF except version'
+if((Get-PerformanceSource 'src/cyw43455/network.c') -notmatch 'CywUsValidConnect\(Irp->AssociatedIrp.SystemBuffer\)' -or
+   (Get-PerformanceSource 'src/cyw43455/scan_control.h') -notmatch 'CywUsCountryAllowed\(Buffer\+4\)') {
+    throw 'US request admission gates not wired into production.'
+}
+Write-Output 'PASS: alpha.1 packet path, scheduling, queue, bus, authentication, firmware country readback, utilities and connector unchanged; only firmware package and US admission differ.'

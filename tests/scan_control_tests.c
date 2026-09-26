@@ -34,7 +34,7 @@ static LONG InterlockedExchange(volatile LONG *Value,LONG New)
 static VOID KeSetEvent(KEVENT *Event,int Increment,BOOLEAN Wait)
 {CHECK(Event==&Network.Wake && !Increment && !Wait && Locks==1);Signals++;}
 #include "../src/cyw43455/scan_control.h"
-static UCHAR Input[8]={1,0,0,0,'B','D',0,0};
+static UCHAR Input[8]={1,0,0,0,'U','S',0,0};
 static ULONG Bytes;
 static VOID Init(void)
 {
@@ -51,8 +51,8 @@ int main(void)
     CHECK(!Bytes && Signals==1 && Network.Request==4 && Network.ScanBusy);
     CHECK(Network.ScanReport.Version==1 && Network.ScanReport.Generation==1 &&
         Network.ScanReport.State==1 && Network.ScanReport.Status==(unsigned)STATUS_PENDING && !Network.ScanReport.Count);
-    CHECK(Network.ScanCountry[0]=='B' && Network.ScanCountry[1]=='D');
-    CHECK(Network.ScanReport.Country==0x4442 && Start()==STATUS_DEVICE_BUSY && Signals==1);
+    CHECK(Network.ScanCountry[0]=='U' && Network.ScanCountry[1]=='S');
+    CHECK(Network.ScanReport.Country==0x5355 && Start()==STATUS_DEVICE_BUSY && Signals==1);
     CHECK(CywScanControl(&Adapter,CYW_IOCTL_SCAN_STATUS,(PUCHAR)&report,0,sizeof(report),&Bytes)==0);
     CHECK(Bytes==sizeof(report) && report.Generation==1 && Signals==1);
     CywPut32((PUCHAR)&before,2);
@@ -89,11 +89,20 @@ int main(void)
     /* Buffer/ABI/country validation cannot queue any work. */
     for(i=0;i<8;i++) {Init();CHECK(CywScanControl(&Adapter,CYW_IOCTL_SCAN_START,Input,i,0,&Bytes)==STATUS_INVALID_PARAMETER);CHECK(!Signals);}
     Init();Input[0]=2;CHECK(Start()==STATUS_INVALID_PARAMETER);Input[0]=1;
-    Input[4]='b';CHECK(Start()==STATUS_INVALID_PARAMETER);Input[4]='B';
+    Input[4]='u';CHECK(Start()==STATUS_INVALID_PARAMETER);Input[4]='U';
     Input[6]=1;CHECK(Start()==STATUS_INVALID_PARAMETER);Input[6]=0;
     CHECK(CywScanControl(&Adapter,CYW_IOCTL_SCAN_START,NULL,8,0,&Bytes)==STATUS_INVALID_PARAMETER);
     CHECK(CywScanControl(&Adapter,CYW_IOCTL_SCAN_STATUS,(PUCHAR)&report,0,sizeof(report)-1,&Bytes)==STATUS_INVALID_PARAMETER);
     CHECK(!Signals && !Bytes);
+    /* Reject other countries without scheduling work or changing the region. */
+    for(i=0;i<65536;++i) {
+        Input[4]=(UCHAR)(i>>8);Input[5]=(UCHAR)i;Init();
+        if(Input[4]=='U' && Input[5]=='S')continue;
+        CHECK(Start()==STATUS_INVALID_PARAMETER);
+        CHECK(!Signals && !Network.Request && !Network.ScanReport.Generation &&
+            !Network.ScanCountry[0] && !Network.ScanCountry[1] && !Network.ScanBusy);
+    }
+    Input[4]='U';Input[5]='S';
     /* Power reset wipes cached results; generation survives to reject an old
      * cancel on the next operation. Reading status never schedules bus work. */
     Init();Network.ScanReport.Generation=9;Network.ScanReport.Count=1;Network.ScanReport.Entries[0].Ssid[0]='X';

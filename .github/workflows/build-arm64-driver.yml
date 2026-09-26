@@ -5,6 +5,7 @@ on:
     branches:
       - bringup/cyw43455-sdio-arm64
       - feature/rpi-os-wifi-performance
+      - feature/perf-alpha3-rpi-firmware
   workflow_dispatch:
     inputs:
       release_id:
@@ -64,6 +65,17 @@ jobs:
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
           $command = 'call "{0}" && cl /nologo /W4 /WX /TC tests\sdio_protocol_tests.c /Fe:ci-logs\sdio_protocol_tests.exe && ci-logs\sdio_protocol_tests.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\sdio-protocol-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test and address-sanitize US-only request admission
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $install) { throw 'Visual C++ build tools were not found.' }
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $command = 'call "{0}" && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\us_region_tests.c /Fe:ci-logs\us_region_tests.exe && ci-logs\us_region_tests.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\us_region_tests.c /Fe:ci-logs\us_region_asan.exe && ci-logs\us_region_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\scan_control_tests.c /Fe:ci-logs\scan_control_asan.exe && ci-logs\scan_control_asan.exe' -f $vcvars
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\us-region-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Simulate actual SDIO and chip startup code
@@ -221,6 +233,7 @@ jobs:
             '.\utility\Get-RPi5-WiFi-Transport.ps1',
             '.\tests\transport_utility_tests.ps1',
             '.\tests\firmware_package_tests.ps1',
+            '.\tests\performance_scope_tests.ps1',
             '.\scripts\fetch-firmware.ps1'
           )
           $analysis = @($analysisPaths | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning })
@@ -405,7 +418,7 @@ jobs:
           Write-Host 'ARM64 direct-SDIO NDIS driver package built successfully.'
 
   stage-performance-draft:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_id != '' && github.ref == 'refs/heads/feature/rpi-os-wifi-performance'
+    if: github.event_name == 'workflow_dispatch' && inputs.release_id != '' && github.ref == 'refs/heads/feature/perf-alpha3-rpi-firmware'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -417,14 +430,15 @@ jobs:
       BUILD_RUN: ${{ inputs.build_run }}
       EXPECTED_COMMIT: ${{ inputs.source_sha }}
       RELEASE_ID: ${{ inputs.release_id }}
-      RELEASE_TAG: driver-perf0.7.0-alpha.1
+      RELEASE_TAG: driver-perf0.7.0-alpha.3-us
     steps:
       - name: Require tested performance source and empty unpublished draft
         shell: bash
         run: |
           set -euo pipefail
           [[ "$BUILD_RUN" =~ ^[0-9]+$ && "$RELEASE_ID" =~ ^[0-9]+$ && "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" | jq -e --arg commit "$EXPECTED_COMMIT" --arg repo "$GH_REPO" '.conclusion == "success" and .head_sha == $commit and .head_repository.full_name == $repo and .head_branch == "feature/rpi-os-wifi-performance" and .path == ".github/workflows/build-arm64-driver.yml"' >/dev/null
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" | jq -e --arg commit "$EXPECTED_COMMIT" --arg repo "$GH_REPO" '.conclusion == "success" and .head_sha == $commit and .head_repository.full_name == $repo and .head_branch == "feature/perf-alpha3-rpi-firmware" and .path == ".github/workflows/build-arm64-driver.yml"' >/dev/null
           gh api "repos/$GH_REPO/releases/$RELEASE_ID" | jq -e --arg commit "$EXPECTED_COMMIT" --arg tag "$RELEASE_TAG" '.draft == true and .prerelease == true and .target_commitish == $commit and .tag_name == $tag and (.assets | length) == 0' >/dev/null
       - name: Fetch and verify complete signed package on GitHub
         shell: bash
@@ -432,16 +446,21 @@ jobs:
           set -euo pipefail
           gh run download "$BUILD_RUN" --name rpi5-cyw43455-direct-sdio-ndis-arm64-release --dir package
           grep -Fx "driver_commit=$EXPECTED_COMMIT" <(tr -d '\r' < package/SOURCE_REVISION.txt)
-          grep -Fx 'driver_version=0.7.0' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'driver_version=0.7.0.2' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx "release_variant=$RELEASE_TAG" <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'region_policy=US-only; no automatic substitution; firmware country SET/readback required' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'firmware_version=7.45.265' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'firmware_source=RPi-Distro/firmware-nonfree@3bab0f823f5b53150b76aab77093adef6655b920' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'performance_baseline=6e652fb86aef595cf6f6fbf6f05c1769d5673055' <(tr -d '\r' < package/SOURCE_REVISION.txt)
           (cd package && tr -d '\r' < SHA256SUMS.txt | sha256sum --check)
           test -s package/rpi5cyw.sys && test -s package/rpi5cyw.cat && test -s package/rpi5cyw-test.cer
-          test -s package/PERFORMANCE-0.7.0.md && test -s package/Install-RPi5-WiFi-Driver.cmd
+          test -s package/PERFORMANCE-0.7.0-alpha.3-us.md && test -s package/Install-RPi5-WiFi-Driver.cmd
       - name: ZIP and stage without publishing or replacing working releases
         shell: bash
         run: |
           set -euo pipefail
           mkdir release-output
-          (cd package && zip -q -r ../release-output/RPi5-WiFi-Windows11-ARM64-perf0.7.0-alpha.1.zip .)
-          (cd release-output && sha256sum RPi5-WiFi-Windows11-ARM64-perf0.7.0-alpha.1.zip > SHA256SUMS.txt)
-          gh release upload "$RELEASE_TAG" release-output/RPi5-WiFi-Windows11-ARM64-perf0.7.0-alpha.1.zip release-output/SHA256SUMS.txt
+          (cd package && zip -q -r ../release-output/RPi5-WiFi-Windows11-ARM64-perf0.7.0-alpha.3-us.zip .)
+          (cd release-output && sha256sum RPi5-WiFi-Windows11-ARM64-perf0.7.0-alpha.3-us.zip > SHA256SUMS.txt)
+          gh release upload "$RELEASE_TAG" release-output/RPi5-WiFi-Windows11-ARM64-perf0.7.0-alpha.3-us.zip release-output/SHA256SUMS.txt
           gh api "repos/$GH_REPO/releases/$RELEASE_ID" --jq '{id,draft,tag_name,target_commitish,assets:[.assets[]|{name,size,digest}]}'

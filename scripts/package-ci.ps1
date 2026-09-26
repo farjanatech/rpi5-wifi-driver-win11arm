@@ -73,6 +73,7 @@ Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0-alpha.3-us.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -106,23 +107,33 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance candidate 0.7.0
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - US firmware comparison alpha.3 (0.7.0.2)
 
 Configuration: $Configuration
 Platform:      $Platform
 Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-Isolated branch: feature/rpi-os-wifi-performance
-Baseline: driver exp0.6.29.1 / connector exp0.6.29.2 (unchanged releases)
+Isolated branch: feature/perf-alpha3-rpi-firmware
+Baseline: performance alpha.1 (6e652fb); alpha.1 and alpha.2 releases unchanged.
 Architecture: ACPI\\RPI0011 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
 
-New: negotiated F2 multi-block PIO, validated RX read-ahead, complete-before-
-delivery RX aggregate parsing. No hardware speed or reliability guarantee.
-See PERFORMANCE-0.7.0.md for implementation, limitations, tests and rollback.
+US USE ONLY. In the existing connector enter US and confirm physical location.
+Non-US scan/connect requests are rejected, NOT rewritten. Existing non-US
+profiles will not work; edit/resave in the app only for a Pi physically in the US.
+No existing private profile is overwritten by this package.
+
+New: official Raspberry Pi OS standard 7.45.265 firmware and its matching CLM.
+The Pi board file is byte-identical. The only host runtime change from alpha.1
+is US-only scan/connect admission; radio-up still requires verified US readback.
+SDIO multi-block PIO, read-ahead, RX aggregation, scheduling, queues, bus speed,
+authentication, connector ABI and UEFI remain at alpha.1. No alpha.2 pressure pump.
+No measured speed or hardware compatibility claim. WPA2 firmware offload,
+scanning, US acceptance, reboot and throughput require physical validation.
+See PERFORMANCE-0.7.0-alpha.3-us.md for scope, limitations and rollback.
 Interrupt/DMA/DDR50 support is NOT implemented in this candidate.
-Firmware 7.45.229, matching CLM/calibration, country/band policy, queue limits,
-authentication, connector ABI and the working UEFI are unchanged.
+Firmware/CLM bytes and RF tables are unmodified; this is not RF certification.
+This same 7.45.265/CLM pair previously rejected BD. Do NOT use it in Bangladesh.
 
 Install only on the Pi: extract the whole ZIP, run Install-RPi5-WiFi-Driver.cmd
 and approve elevation. Save work and restart if requested. Continue using the
@@ -133,7 +144,7 @@ Secure Boot/BCD/UEFI, delete old drivers, or replace private credentials.
 This test-signed driver requires the already configured test environment.
 Its verified test certificate is added to Root/TrustedPublisher on installation.
 
-Keep working exp0.6.29.1 for rollback. A lower-version installer alone may not
+Keep complete working alpha.1 and alpha.2 packages for rollback. An older installer may not
 select an older driver: use the exact adapter's Roll Back Driver, or Have Disk
 with the previous INF if necessary. Never remove unrelated network/storage
 drivers. No Windows reinstall, router rename or UEFI change is needed.
@@ -141,19 +152,24 @@ drivers. No Windows reinstall, router rename or UEFI change is needed.
 After connecting with the existing app, Check-RPi5-WiFi-Readiness.cmd collects
 the existing bounded workload and diagnostics once. Logs stay local. Keep wired
 Ethernet available for recovery, but unplug it during throughput measurement.
-New counters in driver-before/after.txt distinguish fast-path use from mere
-enablement. Passing CI is not hardware certification; compare on the same Pi,
-router, band/channel and workload before choosing this over the stable branch.
+Use installed-driver version 0.7.0.2 and package hashes to identify this build.
+Diagnostic ABI remains alpha.1 version 30, not alpha.2 version 31.
+Passing CI is not hardware certification. Compare on the SAME US-located Pi,
+router, band/channel and workload; cross-country runs are not controlled A/B.
 
 Historical EXP/PERFORMANCE documents in the ZIP describe earlier versions;
-PERFORMANCE-0.7.0.md is authoritative for this candidate.
+PERFORMANCE-0.7.0-alpha.3-us.md is authoritative for this candidate.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.7.0
-performance_branch=feature/rpi-os-wifi-performance
-performance_baseline=4f8f456b1b72d7f6b534531b02d83863ae9ed60c
+driver_version=0.7.0.2
+release_variant=driver-perf0.7.0-alpha.3-us
+region_policy=US-only; no automatic substitution; firmware country SET/readback required
+firmware_version=7.45.265
+firmware_source=RPi-Distro/firmware-nonfree@3bab0f823f5b53150b76aab77093adef6655b920
+performance_branch=feature/perf-alpha3-rpi-firmware
+performance_baseline=6e652fb86aef595cf6f6fbf6f05c1769d5673055
 measurement_utility_version=0.6.27.1
 startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration

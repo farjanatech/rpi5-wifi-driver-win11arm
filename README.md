@@ -1,7 +1,11 @@
-> **This branch: performance candidate 0.7.0.** Multi-block SDIO PIO, validated
-> receive read-ahead and receive aggregation. Read [the candidate guide](./docs/PERFORMANCE-0.7.0.md)
-> first. Driver exp0.6.29.1, connector exp0.6.29.2 and UEFI are not replaced.
-> No measured speed claim; interrupt/DMA/DDR50 remain follow-up platform work.
+> **This branch: US-only firmware comparison alpha.3 (driver 0.7.0.2).**
+> Official Raspberry Pi OS standard firmware **7.45.265**, matching regulatory
+> data, unchanged Pi calibration, and alpha.1's exact packet path/scheduling.
+> Only host runtime difference: US-only scan/connect admission, not country substitution.
+> Read [the US candidate guide](./docs/PERFORMANCE-0.7.0-alpha.3-us.md) first.
+> For a Pi physically in the United States only; enter **US** in the connector.
+> This pair previously rejected BD. No physical US compatibility or speed claim.
+> Alpha.1, alpha.2, driver exp0.6.29.1, connector exp0.6.29.2 and UEFI remain unchanged.
 > The notes below describe the preserved baseline and earlier releases.
 
 > Baseline maintenance package: **exp0.6.29.1** — installer support for working
