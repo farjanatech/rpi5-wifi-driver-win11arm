@@ -1,37 +1,61 @@
-name: Package 0.6.29.1 installer compatibility update
+name: Package alpha.3-US.1 installer-only UEFI revision update
 on:
   push:
-    branches: [bringup/cyw43455-sdio-arm64]
-    paths: ['installer/**', 'tests/installer_utility_tests.ps1', 'scripts/package-compatibility.ps1', 'docs/EXP0.6.29.1.md', '.github/workflows/compatibility-package.yml']
+    branches: [fix/installer-uefi-revision-policy]
   workflow_dispatch:
+    inputs:
+      release_id:
+        description: Optional empty draft ID; stage a tested package without rebuilding
+        required: false
+      build_run:
+        description: Successful matching package run ID
+        required: false
+      source_sha:
+        description: Exact tested 40-character source commit
+        required: false
 permissions:
   contents: read
+concurrency:
+  group: installer-uefi-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   package:
+    if: inputs.release_id == ''
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Prove kernel and connection behaviour unchanged
-        shell: pwsh
-        run: |
-          git diff --exit-code d184bc6c52ecca0c2bdc924c77a93b31f37b0304 HEAD -- src package rpi5-cyw43455.vcxproj connector/Protocol.cs connector/Operations.cs connector/SavedNetwork.cs connector/Program.cs utility
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Test installer allowlist and existing safety checks
+      - name: Test BIOS-independent admission and protect existing install/security flow
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/installer_revision_policy_tests.ps1 2>&1 | Tee-Object ci-logs/compatibility-policy-ps51.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File tests/installer_revision_policy_tests.ps1 2>&1 | Tee-Object ci-logs/compatibility-policy-ps7.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test installer syntax, manifest and retained safeguards
+        shell: pwsh
+        run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/installer_utility_tests.ps1 2>&1 | Tee-Object ci-logs/compatibility-tests.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pwsh -NoProfile -File tests/installer_utility_tests.ps1 2>&1 | Tee-Object ci-logs/compatibility-tests-ps7.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Analyze installer and policy tests
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
+          $analysis = @('installer/Install-RPi5-WiFi-Driver.ps1','tests/installer_utility_tests.ps1','tests/installer_revision_policy_tests.ps1','scripts/package-compatibility.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Error,Warning })
+          $analysis | Format-List | Out-String -Width 300 | Tee-Object ci-logs/compatibility-scriptanalyzer.txt
+          if ($analysis.Count) { throw 'Installer/script analysis failed.' }
       - name: Repackage hash-pinned existing signed driver without rebuilding it
         shell: pwsh
         run: |
           ./scripts/package-compatibility.ps1 2>&1 | Tee-Object ci-logs/compatibility-package.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-compatibility-0.6.29.1
+          name: rpi5-wifi-compatibility-alpha3-us1
           path: artifacts/compatibility/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
@@ -40,3 +64,39 @@ jobs:
           name: rpi5-wifi-compatibility-logs
           path: ci-logs/compatibility-*.txt
           if-no-files-found: warn
+
+  stage-draft:
+    if: github.event_name == 'workflow_dispatch' && inputs.release_id != '' && github.ref == 'refs/heads/fix/installer-uefi-revision-policy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: farjanatech/rpi5-wifi-driver-win11arm
+      RELEASE_ID: ${{ inputs.release_id }}
+      BUILD_RUN: ${{ inputs.build_run }}
+      EXPECTED_COMMIT: ${{ inputs.source_sha }}
+      RELEASE_TAG: driver-perf0.7.0-alpha.3-us.1
+    steps:
+      - name: Require tested source and empty unpublished draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN" =~ ^[0-9]+$ && "$RELEASE_ID" =~ ^[0-9]+$ && "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_COMMIT" ]]
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" | jq -e --arg commit "$EXPECTED_COMMIT" --arg repo "$GH_REPO" '.conclusion == "success" and .head_sha == $commit and .head_repository.full_name == $repo and .head_branch == "fix/installer-uefi-revision-policy" and .path == ".github/workflows/compatibility-package.yml"' >/dev/null
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" | jq -e --arg commit "$EXPECTED_COMMIT" --arg tag "$RELEASE_TAG" '.draft == true and .prerelease == true and .target_commitish == $commit and .tag_name == $tag and (.assets | length) == 0' >/dev/null
+      - name: Verify artifact and stage without replacing any working release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$BUILD_RUN" --name rpi5-wifi-compatibility-alpha3-us1 --dir release
+          grep -Fx "commit=$EXPECTED_COMMIT" <(tr -d '\r' < release/BUILD.txt)
+          grep -Fx 'package=perf0.7.0-alpha.3-us.1' <(tr -d '\r' < release/BUILD.txt)
+          grep -Fx 'driver=0.7.0.2' <(tr -d '\r' < release/BUILD.txt)
+          grep -Fx 'original_zip_sha256=50659B0F0708F18960768E521A1DAF56274271D14E21584360E9933B379D5498' <(tr -d '\r' < release/BUILD.txt)
+          (cd release && tr -d '\r' < SHA256SUMS.txt | sha256sum --check)
+          gh release upload "$RELEASE_TAG" release/RPi5-WiFi-Windows11-ARM64-perf0.7.0-alpha.3-us.1.zip release/SHA256SUMS.txt release/BUILD.txt
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" --jq '{id,draft,tag_name,target_commitish,assets:[.assets[]|{name,size,digest}]}'

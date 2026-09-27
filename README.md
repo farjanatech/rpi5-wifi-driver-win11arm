@@ -1,4 +1,9 @@
-> **This branch: US-only firmware comparison alpha.3 (driver 0.7.0.2).**
+> **This branch: installer-only alpha.3-US.1 update (driver still 0.7.0.2).**
+> Exact UEFI revision restrictions are removed; hardware and security checks
+> remain. Signed driver/firmware and the existing GUI are unchanged. Read
+> [the installer update guide](./docs/INSTALLER-UEFI-REVISION.md).
+>
+> Base package: US-only firmware comparison alpha.3 (driver 0.7.0.2).
 > Official Raspberry Pi OS standard firmware **7.45.265**, matching regulatory
 > data, unchanged Pi calibration, and alpha.1's exact packet path/scheduling.
 > Only host runtime difference: US-only scan/connect admission, not country substitution.
