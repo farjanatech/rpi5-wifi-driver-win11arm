@@ -48,12 +48,14 @@ foreach($function in $oldAst.FindAll({param($node) $node -is [Management.Automat
 $script:FakeBios=$null;$script:FailBios=$false;$script:BiosCalls=0
 $script:FakePnp=@();$script:FakeEntity=@();$script:FakeSigned=@()
 function Get-PnpDevice {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets','',Justification='Test-only inventory mock prevents runner hardware access and is removed in finally.')]
     [CmdletBinding()]
     param([switch]$PresentOnly)
     if($PresentOnly){throw 'Unexpected change to enumeration policy.'}
     return $script:FakePnp
 }
 function Get-CimInstance {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets','',Justification='Test-only inventory mock prevents runner hardware access and is removed in finally.')]
     [CmdletBinding()]
     param([string]$ClassName)
     switch($ClassName) {
