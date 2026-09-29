@@ -54,7 +54,7 @@ internal static class SelfTests
             Check(Protocol.ValidSsid("a") && !Protocol.ValidSsid("a\nb") && !Protocol.ValidSsid(new string('a', 33)), "SSID validation");
             byte[] pmk = Protocol.Derive("IEEE", "password");
             Check(Convert.ToHexString(pmk).Equals("F42C6FC52DF0EBEF9EBB4B90B38A5F902E83FE1B135A70E23AED762E9710A12E", StringComparison.Ordinal), "WPA2 PBKDF2 vector");
-            var request = Protocol.Connect("BD", "IEEE", pmk);
+            var request = Protocol.Connect(Protocol.AutoCountry, "IEEE", pmk, BandPreference.GHz5);
             Check(request.Length == 76 && Protocol.U32(request, 0) == 1 && Protocol.U32(request, 4) == 4 && request[8] == 'B' && request[9] == 'D' && request.AsSpan(44).SequenceEqual(pmk), "connect ABI");
             CryptographicOperations.ZeroMemory(request);
             var scan = Protocol.Scan("BD"); Check(scan.Length == 8 && scan[6] == 0 && scan[7] == 0, "scan ABI");
@@ -68,9 +68,9 @@ internal static class SelfTests
             Check(ScanReport.Parse(report).Networks[0].Supported, "supported WPA2 network rejected");
             Protocol.Put(report, 80, 34); Check(!ScanReport.Parse(report).Networks[0].Supported, "required PMF admitted");
             Protocol.Put(report, 32, 33); Throws(() => ScanReport.Parse(report), "oversized SSID admitted");
-            var fake = new FakeDriver(); Check(Operations.Connect(fake, "BD", "IEEE", pmk, CancellationToken.None, _ => { }), "new join result");
+            var fake = new FakeDriver(); Check(Operations.Connect(fake, Protocol.AutoCountry, "IEEE", pmk, BandPreference.Auto, CancellationToken.None, _ => { }), "new join result");
             Check(fake.Connects == 1 && fake.Request != null && fake.Request.All(b => b == 0), "credential request cleanup");
-            Check(!Operations.Connect(fake, "BD", "IEEE", pmk, CancellationToken.None, _ => { }), "existing link claimed as new join"); Check(fake.Connects == 1, "existing link was reset");
+            Check(!Operations.Connect(fake, Protocol.AutoCountry, "IEEE", pmk, BandPreference.Auto, CancellationToken.None, _ => { }), "existing link claimed as new join"); Check(fake.Connects == 1, "existing link was reset");
             using (var held = new ManualResetEventSlim())
             using (var release = new ManualResetEventSlim())
             {
@@ -97,7 +97,7 @@ internal static class SelfTests
             Check(Startup.TryJoin(fake, () => true, SyntheticProfile, SyntheticKey) == "AlreadyAuthenticated" && loads == 0 && fake.Connects == 0, "boot replaced existing link");
             fake.Auth = false;
             Check(Startup.TryJoin(fake, () => true, SyntheticProfile, SyntheticKey) == "Authenticated" && loads == 1 && decrypts == 1 && fake.Connects == 1 && bootKey.All(b => b == 0), "boot join/key cleanup");
-            fake = new() { Busy = true }; Throws(() => Operations.Connect(fake, "BD", "IEEE", pmk, CancellationToken.None, _ => { }), "startup join admitted");
+            fake = new() { Busy = true }; Throws(() => Operations.Connect(fake, Protocol.AutoCountry, "IEEE", pmk, BandPreference.Auto, CancellationToken.None, _ => { }), "startup join admitted");
             Check(fake.Connects == 0, "startup caused connect IOCTL");
             fake = new(); Check(Operations.Scan(fake, "BD", CancellationToken.None, _ => { }).Generation == 11 && fake.Starts == 1, "one explicit scan");
             fake = new() { Auth = true }; Throws(() => Operations.Scan(fake, "BD", CancellationToken.None, _ => { }), "connected scan admitted"); Check(fake.Starts == 0, "connected scan sent");
