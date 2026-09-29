@@ -10,10 +10,15 @@ internal sealed class MainForm : Form
     private readonly IStartupSettings startup;
     private readonly Func<string, string, bool> ask;
     private readonly Icon appIcon = Branding.LoadIcon();
-    private readonly TextBox country = new() { MaxLength = 2, CharacterCasing = CharacterCasing.Upper, Width = 56 };
-    private readonly CheckBox confirm = new() { Text = "I confirm the Pi is physically in this country", AutoSize = true };
+    private readonly TextBox country = new() { MaxLength = 2, CharacterCasing = CharacterCasing.Upper, Width = 56, Visible = false };
+    private readonly CheckBox confirm = new() { Checked = true, Visible = false };
     private readonly TextBox ssid = new() { MaxLength = 32, Dock = DockStyle.Fill };
+    private readonly TextBox username = new() { Dock = DockStyle.Fill, Enabled = false, PlaceholderText = "Enterprise authentication is not supported by this driver yet" };
     private readonly TextBox password = new() { MaxLength = 63, UseSystemPasswordChar = true, Dock = DockStyle.Fill };
+    private readonly Button bandAuto = new() { Text = "Auto", AutoSize = true };
+    private readonly Button band24 = new() { Text = "2.4 GHz", AutoSize = true };
+    private readonly Button band5 = new() { Text = "5 GHz", AutoSize = true };
+    private BandPreference selectedBand = BandPreference.Auto;
     private readonly Button scan = new() { Text = "Scan networks", AutoSize = true };
     private readonly Button connect = new() { Text = "Connect", AutoSize = true };
     private readonly Button disconnect = new() { Text = "Disconnect", AutoSize = true };
@@ -34,6 +39,7 @@ internal sealed class MainForm : Form
     private string message = "", startupText = "Startup connection is not enabled.";
     private byte[]? sessionKey;
     private string keySsid = "", keyCountry = "", lastProgressKey = "";
+    private BandPreference keyBand = BandPreference.Auto;
     private readonly Stopwatch observation = Stopwatch.StartNew();
     private long lastProgressMs;
     public MainForm(IDriver device, bool offline = false, IStartupSettings? settings = null, Func<string, string, bool>? confirmation = null)
@@ -41,50 +47,57 @@ internal sealed class MainForm : Form
         driver = device; preview = offline;
         startup = settings ?? new StartupSettings();
         ask = confirmation ?? ((text, title) => MessageBox.Show(this, text, title, MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes);
-        Text = $"RPi5 Wi-Fi Connector • {Branding.Version}"; Font = new("Segoe UI", 10);
-        Icon = appIcon;
-        AutoScaleMode = AutoScaleMode.Dpi; ClientSize = new(920, 650); MinimumSize = new(900, 670); StartPosition = FormStartPosition.CenterScreen;
+        Text = $"WiFi Manager • {Branding.Version}"; Font = new("Segoe UI", 10);
+        Icon = appIcon; BackColor = Color.FromArgb(13, 22, 39); ForeColor = Color.FromArgb(226, 232, 240);
+        country.Text = Protocol.AutoCountry; confirm.Checked = true;
+        AutoScaleMode = AutoScaleMode.Dpi; ClientSize = new(940, 650); MinimumSize = new(900, 670); StartPosition = FormStartPosition.CenterScreen;
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new(16), ColumnCount = 1, RowCount = 9 };
         foreach (var style in new[] { new RowStyle(SizeType.Absolute, 38), new RowStyle(SizeType.Absolute, 42), new RowStyle(SizeType.Percent, 100),
             new RowStyle(SizeType.Absolute, 38), new RowStyle(SizeType.Absolute, 82), new RowStyle(SizeType.Absolute, 42),
             new RowStyle(SizeType.Absolute, 24), new RowStyle(SizeType.Absolute, 100), new RowStyle(SizeType.Absolute, 42) }) layout.RowStyles.Add(style);
-        layout.Controls.Add(new Label { Text = "Connect to nearby Wi-Fi • WPA2-Personal / AES • Ethernet-style driver", Dock = DockStyle.Fill, AutoSize = false }, 0, 0);
-        var location = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
-        location.Controls.Add(new Label { Text = "Country:", AutoSize = true, Padding = new(0, 5, 0, 0) });
-        location.Controls.Add(country); location.Controls.Add(confirm); location.Controls.Add(scan); layout.Controls.Add(location, 0, 1);
+        layout.Controls.Add(new Label { Text = "Connect", Font = new("Segoe UI Semibold", 16), Dock = DockStyle.Fill, AutoSize = false, ForeColor = Color.White }, 0, 0);
+        var location = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, BackColor = BackColor };
+        location.Controls.Add(new Label { Text = "Band (Hz)", AutoSize = true, Padding = new(0, 7, 10, 0), ForeColor = ForeColor });
+        location.Controls.Add(bandAuto); location.Controls.Add(band24); location.Controls.Add(band5); location.Controls.Add(scan);
+        layout.Controls.Add(location, 0, 1);
         foreach (var col in new[] { ("Use", 65), ("Network (SSID)", 205), ("Signal", 65), ("Band", 75), ("Channel", 65), ("Security", 165), ("BSSID", 165) }) networks.Columns.Add(col.Item1, col.Item2);
         layout.Controls.Add(networks, 0, 2);
         layout.Controls.Add(selection, 0, 3);
-        var credentials = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+        var credentials = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, BackColor = BackColor };
         credentials.ColumnStyles.Add(new(SizeType.Absolute, 145)); credentials.ColumnStyles.Add(new(SizeType.Percent, 100));
-        credentials.RowStyles.Add(new(SizeType.Percent, 50)); credentials.RowStyles.Add(new(SizeType.Percent, 50));
-        credentials.Controls.Add(new Label { Text = "Network name:", AutoSize = true }, 0, 0); credentials.Controls.Add(ssid, 1, 0);
-        credentials.Controls.Add(new Label { Text = "WPA2 password:", AutoSize = true }, 0, 1); credentials.Controls.Add(password, 1, 1); layout.Controls.Add(credentials, 0, 4);
+        credentials.RowStyles.Add(new(SizeType.Percent, 33)); credentials.RowStyles.Add(new(SizeType.Percent, 33)); credentials.RowStyles.Add(new(SizeType.Percent, 34));
+        credentials.Controls.Add(new Label { Text = "Network name (SSID):", AutoSize = true, ForeColor = ForeColor }, 0, 0); credentials.Controls.Add(ssid, 1, 0);
+        credentials.Controls.Add(new Label { Text = "Username:", AutoSize = true, ForeColor = Color.Gray }, 0, 1); credentials.Controls.Add(username, 1, 1);
+        credentials.Controls.Add(new Label { Text = "Password:", AutoSize = true, ForeColor = ForeColor }, 0, 2); credentials.Controls.Add(password, 1, 2); layout.Controls.Add(credentials, 0, 4);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false };
         actions.Controls.AddRange([connect, disconnect, save, disable, forget]); layout.Controls.Add(actions, 0, 5);
         layout.Controls.Add(progress, 0, 6); layout.Controls.Add(status, 0, 7);
         layout.Controls.Add(new Label { Text = "Saved keys are encrypted on this PC and restricted to Administrators/SYSTEM. Closing the app does not disconnect Wi-Fi.", Dock = DockStyle.Fill }, 0, 8);
         Controls.Add(layout);
         // Stable names support tests of the actual UI handlers, not a parallel UI model.
-        foreach (var pair in new (Control Control, string Name)[] { (country, "country"), (confirm, "confirm"), (ssid, "ssid"), (password, "password"), (networks, "networks"),
-            (scan, "scan"), (connect, "connect"), (disconnect, "disconnect"), (save, "save"), (disable, "disable"), (forget, "forget"), (status, "status") }) pair.Control.Name = pair.Name;
+        foreach (var pair in new (Control Control, string Name)[] { (country, "country"), (confirm, "confirm"), (ssid, "ssid"), (username, "username"), (password, "password"), (networks, "networks"),
+            (bandAuto, "band-auto"), (band24, "band-24"), (band5, "band-5"), (scan, "scan"), (connect, "connect"), (disconnect, "disconnect"), (save, "save"), (disable, "disable"), (forget, "forget"), (status, "status") }) pair.Control.Name = pair.Name;
         hints.SetToolTip(scan, "Scanning requires a disconnected, ready adapter. Disconnect first; connected scanning is deliberately disabled.");
         hints.SetToolTip(networks, "Rows marked Selected have the chosen SSID. Both bands may be marked; the driver selects the band when connecting.");
         if (preview)
         {
-            country.Text = "BD"; confirm.Checked = true; ssid.Text = "Example network";
+            country.Text = Protocol.AutoCountry; confirm.Checked = true; ssid.Text = "HomeWiFi_5G"; selectedBand = BandPreference.GHz5;
             RenderNetworks(new(1, 3, 0, 0, false, [new("Example network", "Example network", -48, 36, "5 GHz", "WPA2-Personal / AES", "02:00:00:00:00:01", true)]));
             progress.Value = 68; status.Text = "Offline preview — synthetic data, no hardware access.\nVerifying firmware: 68%. Startup connection waits for readiness, not an arbitrary delay.";
             foreach (Control control in actions.Controls) control.Enabled = false; scan.Enabled = false; return;
         }
         try
         {
-            var saved = startup.Load(); if (saved != null) { country.Text = saved.Country; ssid.Text = saved.Ssid; }
+            var saved = startup.Load(); if (saved != null) { country.Text = saved.Country; ssid.Text = saved.Ssid; selectedBand = (BandPreference)saved.Band; }
             RefreshStartupText();
         }
         catch (Exception ex) { startupText = "Saved profile/startup status unavailable: " + ex.Message; }
-        country.TextChanged += (_, _) => { confirm.Checked = false; Buttons(); };
+        country.TextChanged += (_, _) => Buttons();
         confirm.CheckedChanged += (_, _) => Buttons(); ssid.TextChanged += (_, _) => { MarkSelection(); Buttons(); }; password.TextChanged += (_, _) => Buttons();
+        void SelectBand(BandPreference value) { selectedBand = value; UpdateBandButtons(); MarkSelection(); Buttons(); }
+        bandAuto.Click += (_, _) => SelectBand(BandPreference.Auto);
+        band24.Click += (_, _) => SelectBand(BandPreference.GHz24);
+        band5.Click += (_, _) => SelectBand(BandPreference.GHz5);
         networks.SelectedIndexChanged += (_, _) =>
         {
             if (synchronizingSelection || networks.SelectedItems.Count != 1) return;
@@ -92,7 +105,9 @@ internal sealed class MainForm : Form
             if (entry.Supported)
             {
                 if (!string.Equals(ssid.Text, entry.Ssid, StringComparison.Ordinal)) { password.Clear(); ssid.Text = entry.Ssid; }
-                message = "Selected SSID: " + entry.Ssid + ". Band selection remains automatic; this does not force a listed access point.";
+                if (entry.Band == "2.4 GHz") selectedBand = BandPreference.GHz24; else if (entry.Band == "5 GHz") selectedBand = BandPreference.GHz5;
+                UpdateBandButtons();
+                message = "Selected SSID: " + entry.Ssid + ". The selected band will be verified after association.";
             }
             else message = "Unsupported/hidden row was not selected for connection. Type an exact known WPA2/AES SSID below if needed.";
             MarkSelection();
@@ -119,7 +134,7 @@ internal sealed class MainForm : Form
                         closing.Token.ThrowIfCancellationRequested(); var current = LiveState.Parse(driver.Call(0x126004)); Tell(current.Progress);
                         if (current.Status != 0) throw new InvalidOperationException(current.Progress);
                         if (current.Authenticated) { Tell("Already connected. Disconnect explicitly before selecting another network."); return; }
-                        if (current.Idle) { joined = Operations.Connect(driver, chosenCountry, chosenSsid, pendingKey, closing.Token, Tell); return; }
+                        if (current.Idle) { joined = Operations.Connect(driver, chosenCountry, chosenSsid, pendingKey, selectedBand, closing.Token, Tell); return; }
                         if (closing.Token.WaitHandle.WaitOne(250)) closing.Token.ThrowIfCancellationRequested();
                     }
                     throw new TimeoutException("Driver startup observation timed out. Run diagnostics before rebooting.");
@@ -127,7 +142,7 @@ internal sealed class MainForm : Form
                 {
                     // Retain the key before Work releases the buttons. A fast
                     // Save click must not race the async connect continuation.
-                    if (joined && !IsDisposed && !closePending) { ClearKey(); sessionKey = pendingKey.ToArray(); keySsid = chosenSsid; keyCountry = chosenCountry; }
+                    if (joined && !IsDisposed && !closePending) { ClearKey(); sessionKey = pendingKey.ToArray(); keySsid = chosenSsid; keyCountry = chosenCountry; keyBand = selectedBand; }
                 });
             }
             finally { CryptographicOperations.ZeroMemory(pendingKey); if (!IsDisposed) Buttons(); }
@@ -138,7 +153,7 @@ internal sealed class MainForm : Form
             if (!Confirmed()) return;
             if (!ask("Save this network and enable connection before sign-in? A protected copy of this EXE and an encrypted Wi-Fi key will be stored on this Pi. The startup task uses SYSTEM. You can disable or forget it here.", "Enable startup connection")) return;
             byte[]? key = null;
-            try { key = GetKey(); startup.Enable(country.Text, ssid.Text, key); RefreshStartupText(); message = "Saved. Connection will start automatically when the driver is ready after reboot."; }
+            try { key = GetKey(); startup.Enable(country.Text, ssid.Text, key, selectedBand); RefreshStartupText(); message = "Saved. Connection will start automatically with the selected band when the driver is ready after reboot."; }
             catch (Exception ex) { message = "Could not enable startup: " + ex.Message; }
             finally { if (key != null) CryptographicOperations.ZeroMemory(key); password.Clear(); Poll(); }
         };
@@ -153,9 +168,15 @@ internal sealed class MainForm : Form
             timer.Stop(); closing.Cancel(); password.Clear(); ClearKey();
             if (busy) { e.Cancel = true; closePending = true; message = "Cancelling the app's pending operation..."; }
         };
+        UpdateBandButtons();
+        networks.BackColor = Color.FromArgb(15, 23, 42); networks.ForeColor = ForeColor;
+        status.BackColor = Color.FromArgb(15, 23, 42); status.ForeColor = ForeColor;
+        ssid.BackColor = password.BackColor = username.BackColor = Color.FromArgb(15, 23, 42);
+        ssid.ForeColor = password.ForeColor = username.ForeColor = ForeColor;
+        connect.Text = "Connect"; save.Text = "Save for reboot";
         MarkSelection();
     }
-    private bool Confirmed() => confirm.Checked && Protocol.ValidCountry(country.Text);
+    private bool Confirmed() => Protocol.ValidCountry(country.Text);
     private void RefreshStartupText()
     {
         startupEnabled = startup.Enabled(); hasSavedProfile = startup.Load() != null;
@@ -172,12 +193,20 @@ internal sealed class MainForm : Form
     {
         if (!Protocol.ValidSsid(ssid.Text)) throw new ArgumentException("Enter the exact Wi-Fi network name.");
         if (password.Text.Length != 0) return Protocol.Derive(ssid.Text, password.Text);
-        if (sessionKey != null && keySsid == ssid.Text && keyCountry == country.Text) return sessionKey.ToArray();
+        if (sessionKey != null && keySsid == ssid.Text && keyCountry == country.Text && keyBand == selectedBand) return sessionKey.ToArray();
         var saved = startup.Load();
-        if (saved != null && saved.Ssid == ssid.Text && saved.Country == country.Text) return startup.Unprotect(saved);
+        if (saved != null && saved.Ssid == ssid.Text && saved.Country == country.Text && saved.Band == (int)selectedBand) return startup.Unprotect(saved);
         throw new ArgumentException("Enter the WPA2 password. There is no matching saved network.");
     }
-    private void ClearKey() { if (sessionKey != null) CryptographicOperations.ZeroMemory(sessionKey); sessionKey = null; keySsid = keyCountry = ""; }
+    private void ClearKey() { if (sessionKey != null) CryptographicOperations.ZeroMemory(sessionKey); sessionKey = null; keySsid = keyCountry = ""; keyBand = BandPreference.Auto; }
+    private void UpdateBandButtons()
+    {
+        foreach (var pair in new[] { (bandAuto, BandPreference.Auto), (band24, BandPreference.GHz24), (band5, BandPreference.GHz5) })
+        {
+            pair.Item1.BackColor = pair.Item2 == selectedBand ? Color.FromArgb(59, 130, 246) : Color.FromArgb(30, 41, 59);
+            pair.Item1.ForeColor = Color.White; pair.Item1.FlatStyle = FlatStyle.Flat;
+        }
+    }
     private void Buttons()
     {
         bool free = !busy, valid = Confirmed() && Protocol.ValidSsid(ssid.Text);
@@ -186,6 +215,7 @@ internal sealed class MainForm : Form
         disconnect.Enabled = free && state != null && state.Phase >= 500 && !state.Idle;
         save.Enabled = free && valid && state != null; disable.Enabled = free && startupEnabled == true; forget.Enabled = free && hasSavedProfile;
         country.Enabled = confirm.Enabled = ssid.Enabled = password.Enabled = networks.Enabled = free;
+        bandAuto.Enabled = band24.Enabled = band5.Enabled = free;
     }
     private void Poll()
     {
@@ -239,7 +269,7 @@ internal sealed class MainForm : Form
             var chosen = retained ?? first;
             if (chosen != null) chosen.Selected = true;
             selection.Text = !Protocol.ValidSsid(ssid.Text) ? "Choose a WPA2/AES network, or type an exact hidden SSID below." :
-                "Selected SSID: " + ssid.Text + ". " + (first == null ? "Not in the current scan; manual/hidden network." : "Marked rows share this name. Band selection is automatic.");
+                "Selected SSID: " + ssid.Text + ". " + (first == null ? "Not in the current scan; manual/hidden network." : $"Band preference: {(selectedBand == BandPreference.Auto ? "Auto" : selectedBand == BandPreference.GHz24 ? "2.4 GHz" : "5 GHz")}.");
         }
         finally { synchronizingSelection = false; }
     }
