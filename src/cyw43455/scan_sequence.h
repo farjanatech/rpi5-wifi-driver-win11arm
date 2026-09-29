@@ -96,7 +96,11 @@ static VOID CywScanRequest(PRPI5CYW_ADAPTER A)
     }
     SCAN_CALL(CywIovar(A,"country",FALSE,originalCountry,sizeof(originalCountry)));
     if(A->FirmwareReplyLength!=12) {status=STATUS_DEVICE_DATA_ERROR;goto Cleanup;}
-    if(!CywCountryMatches(N->ScanCountry,originalCountry,12)) {
+    if(CywCountryAuto(N->ScanCountry)) {
+        /* Portable mode never invents a regulatory domain. Use the current
+         * firmware/CLM domain and only scan channels that firmware permits. */
+        if(!CywCountryValueUsable(originalCountry,12)) {status=STATUS_DEVICE_DATA_ERROR;goto Cleanup;}
+    } else if(!CywCountryMatches(N->ScanCountry,originalCountry,12)) {
         if(!CywCountryRequest(N->ScanCountry,country)) {status=STATUS_INVALID_PARAMETER;goto Cleanup;}
         SCAN_CHECK();countryTouched=TRUE;A->FirmwareError=0;
         status=CywIovar(A,"country",TRUE,country,sizeof(country));
@@ -109,7 +113,9 @@ static VOID CywScanRequest(PRPI5CYW_ADAPTER A)
         }
     }
     SCAN_CALL(CywIovar(A,"country",FALSE,country,sizeof(country)));
-    if(!CywCountryMatches(N->ScanCountry,country,A->FirmwareReplyLength)) {
+    if(CywCountryAuto(N->ScanCountry) ?
+        !CywCountryValueUsable(country,A->FirmwareReplyLength) :
+        !CywCountryMatches(N->ScanCountry,country,A->FirmwareReplyLength)) {
         status=STATUS_DEVICE_DATA_ERROR;goto Cleanup;
     }
     SCAN_CALL(CywIovar(A,"event_msgs",FALSE,originalMask,sizeof(originalMask)));
