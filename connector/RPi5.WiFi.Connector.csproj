@@ -8,7 +8,7 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>RPi5-WiFi-Connector</AssemblyName>
-    <Version>0.6.29.2</Version>
+    <Version>0.7.0.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/RPi5-WiFi-Connector.ico</ApplicationIcon>
     <PublishSingleFile>true</PublishSingleFile>
@@ -17,7 +17,8 @@
     <EnableCompressionInSingleFile Condition="'$(PublishSingleFile)' == 'true'">true</EnableCompressionInSingleFile>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <PublishTrimmed>false</PublishTrimmed>
-    <DebugType>embedded</DebugType>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="Assets/RPi5-WiFi-Connector.ico" LogicalName="Rpi5Wifi.ConnectorIcon" />
