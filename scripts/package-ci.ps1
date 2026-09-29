@@ -107,58 +107,58 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - US firmware comparison alpha.3 (0.7.0.2)
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - Portable 0.7.0 candidate
 
 Configuration: $Configuration
 Platform:      $Platform
 Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-Isolated branch: feature/perf-alpha3-rpi-firmware
-Baseline: performance alpha.1 (6e652fb); alpha.1 and alpha.2 releases unchanged.
 Architecture: ACPI\\RPI0011 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
+UEFI policy: capability-based. BIOS/UEFI revision text is informational; the exact
+ACPI\\RPI0011 direct-SDIO interface and normal driver hardware/security checks are required.
 
-US USE ONLY. In the existing connector enter US and confirm physical location.
-Non-US scan/connect requests are rejected, NOT rewritten. Existing non-US
-profiles will not work; edit/resave in the app only for a Pi physically in the US.
-No existing private profile is overwritten by this package.
+Regulatory policy: portable firmware-owned domain by default. The WiFi Manager
+uses automatic mode without forcing US, BD, or another unsupported country.
+Explicit two-letter ISO requests remain available to the protocol but require
+firmware SET/readback. Firmware/CLM/RF tables are unmodified; no regulatory
+restriction, DFS rule, channel limit, or transmit-power rule is bypassed.
 
-New: official Raspberry Pi OS standard 7.45.265 firmware and its matching CLM.
-The Pi board file is byte-identical. The only host runtime change from alpha.1
-uses firmware-owned regulatory mode by default; explicit country requests still require matching firmware readback.
-SDIO multi-block PIO, read-ahead, RX aggregation, scheduling, queues, bus speed,
-authentication, connector ABI and UEFI remain at alpha.1. No alpha.2 pressure pump.
-No measured speed or hardware compatibility claim. WPA2 firmware offload,
-scanning, US acceptance, reboot and throughput require physical validation.
-See PORTABLE-0.7.0.md for scope, limitations and rollback.
-Interrupt/DMA/DDR50 support is NOT implemented in this candidate.
-Firmware/CLM bytes and RF tables are unmodified; this is not RF certification.
-This same 7.45.265/CLM pair previously rejected BD. Do NOT use it in Bangladesh.
+The package includes the performance measurement utilities:
+  Test-RPi5-WiFi-Performance.cmd / .ps1
+  Measure-RPi5-WiFi-Load.ps1
+  RPi5-WiFi-DownloadTiming.ps1
+  RPi5-WiFi-MeasurementClock.ps1
+  Get-RPi5-WiFi-Radio.ps1
+  Get-RPi5-WiFi-Timing.ps1
+  Get-RPi5-WiFi-Transport.ps1
+These utilities are CI-tested with this source revision. Performance results are
+measurements, not guaranteed throughput. For meaningful comparison use the same
+Pi, router, channel/band, distance and workload, and disconnect wired Ethernet
+during Wi-Fi throughput measurement.
 
-Install only on the Pi: extract the whole ZIP, run Install-RPi5-WiFi-Driver.cmd
-and approve elevation. Save work and restart if requested. Continue using the
-existing connector exp0.6.29.2 EXE/profile; it is not bundled/rebuilt here.
-The installer checks package hashes, signer, ARM64, ACPI device, matching UEFI
-and existing security prerequisites. It does not enable Test Signing, change
-Secure Boot/BCD/UEFI, delete old drivers, or replace private credentials.
-This test-signed driver requires the already configured test environment.
-Its verified test certificate is added to Root/TrustedPublisher on installation.
+The driver supports Auto / 2.4 GHz / 5 GHz connection preference through the
+portable connector protocol. Explicit band choices are verified after association
+and are not silently reported as successful on the opposite band.
 
-Keep complete working alpha.1 and alpha.2 packages for rollback. An older installer may not
-select an older driver: use the exact adapter's Roll Back Driver, or Have Disk
-with the previous INF if necessary. Never remove unrelated network/storage
-drivers. No Windows reinstall, router rename or UEFI change is needed.
+Install only on Windows 11 ARM64 Raspberry Pi 5 hardware exposing ACPI\\RPI0011.
+Extract the whole release ZIP and run Install-RPi5-WiFi-Driver.cmd as Administrator.
+The installer does not modify UEFI, Secure Boot, BCD or Test Signing settings.
+This remains a test-signed experimental driver; keep a known-working package and
+wired recovery path available.
 
-After connecting with the existing app, Check-RPi5-WiFi-Readiness.cmd collects
-the existing bounded workload and diagnostics once. Logs stay local. Keep wired
-Ethernet available for recovery, but unplug it during throughput measurement.
-Use installed-driver version 0.7.0.2 and package hashes to identify this build.
-Diagnostic ABI remains alpha.1 version 30, not alpha.2 version 31.
-Passing CI is not hardware certification. Compare on the SAME US-located Pi,
-router, band/channel and workload; cross-country runs are not controlled A/B.
+After installation/restart, use the bundled WiFi Manager EXE from the GitHub
+release package to scan and connect. The driver currently supports WPA2-Personal/AES.
+The GUI's Username/Enterprise field is intentionally disabled because 802.1X/EAP,
+WPA3 and Open authentication are not implemented by this driver revision.
 
-Historical EXP/PERFORMANCE documents in the ZIP describe earlier versions;
-PORTABLE-0.7.0.md is authoritative for this candidate.
+For performance checking after a successful Wi-Fi connection, run:
+  Test-RPi5-WiFi-Performance.cmd
+For readiness/diagnostics, run:
+  Check-RPi5-WiFi-Readiness.cmd
+  Run-RPi5-WiFi-Diagnostics.cmd
+
+See PORTABLE-0.7.0.md for authoritative scope and limitations.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
