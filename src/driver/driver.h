@@ -131,7 +131,7 @@ typedef struct _RPI5CYW_ADAPTER
     NDIS_HANDLE InterruptHandle;
     NTSTATUS InterruptRegisterStatus;
     ULONG InterruptRegistered, InterruptType;
-    volatile LONG InterruptNeedsRearm;
+    volatile long InterruptNeedsRearm;
     ULONG InterruptIsrCount, InterruptDpcCount, InterruptRearmCount, InterruptSpuriousCount;
 
     ULONG HostVersion;
