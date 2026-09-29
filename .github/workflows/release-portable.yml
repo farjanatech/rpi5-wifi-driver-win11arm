@@ -128,10 +128,13 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists; refusing to overwrite it." >&2
-            exit 1
+            gh release edit "$RELEASE_TAG" \
+              --title 'Portable 0.7.0 — global-capability WiFi Manager' \
+              --notes-file release-notes.md \
+              --prerelease
+            exit 0
           fi
-          cat > release-notes.md <<EOF
+          cat > release-notes.md <<'EOF'
           # Portable 0.7.0 — global-capability WiFi Manager
           
           Complete Raspberry Pi 5 Windows 11 ARM64 Wi-Fi package with the latest portable driver and standalone WiFi Manager.
@@ -153,12 +156,12 @@ jobs:
           The old US-only host admission is removed. Automatic mode uses the regulatory domain already active in firmware/CLM and does not force another country. Explicit ISO-country requests still require firmware acceptance/readback. No CLM, RF power, DFS or firmware regulatory restriction is bypassed.
           
           ## Performance checking
-          The performance utility and its dependencies are bundled in the ZIP and were exercised by driver CI run **$DRIVER_RUN**. After connecting over Wi-Fi, run `Test-RPi5-WiFi-Performance.cmd`. For comparable results use the same Pi/router/band/channel/distance and disconnect wired Ethernet during throughput measurement.
+          The performance utility and its dependencies are bundled in the ZIP and were exercised by driver CI run **36537523516**. After connecting over Wi-Fi, run `Test-RPi5-WiFi-Performance.cmd`. For comparable results use the same Pi/router/band/channel/distance and disconnect wired Ethernet during throughput measurement.
           
           ## Validation
-          Driver CI: https://github.com/$GH_REPO/actions/runs/$DRIVER_RUN
+          Driver CI: https://github.com/farjanatech/rpi5-wifi-driver-win11arm/actions/runs/36537523516
           
-          WiFi Manager CI: https://github.com/$GH_REPO/actions/runs/$CONNECTOR_RUN
+          WiFi Manager CI: https://github.com/farjanatech/rpi5-wifi-driver-win11arm/actions/runs/36535171036
           
           This remains a **prerelease** because physical Raspberry Pi 5 validation is still required.
           EOF
