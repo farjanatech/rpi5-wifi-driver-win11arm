@@ -284,6 +284,8 @@ static VOID CywWorker(PVOID Context)
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
     CYW_CONNECT_REQUEST request;
     KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0,sentBefore,sentAfter;
+    ULONG irqStatusAcksBefore,irqMailReadsBefore,irqFrameNotificationsBefore;
+    BOOLEAN interruptWake,interruptUseful;
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
 /* TX-RETRY-BEGIN */
@@ -309,7 +311,7 @@ static VOID CywWorker(PVOID Context)
     if(!NT_SUCCESS(Status))goto Failed;
     if(N->Stop)goto Exit;
     N->Ready=TRUE;A->NetworkStatus=STATUS_SUCCESS;
-    Rpi5CywInterruptRearm(A);
+    Rpi5CywInterruptRearm(A,FALSE,FALSE);
 /* TIMING-BEGIN */
     CywTimingStart(&A->Timing);
 /* TIMING-END */
@@ -335,6 +337,9 @@ static VOID CywWorker(PVOID Context)
         creditBefore=A->TxCreditWaits;
 /* TIMING-END */
         KeClearEvent(&N->PauseAck);
+        irqStatusAcksBefore=A->Transport.StatusAcks;
+        irqMailReadsBefore=A->Transport.MailReads;
+        irqFrameNotificationsBefore=A->Transport.FrameNotifications;
         KeAcquireSpinLock(&N->Lock,&irql);op=N->Request;N->Request=0;
         N->ControlBusy=op!=0;
         RtlCopyMemory(&request,&N->Connect,sizeof(request));RtlSecureZeroMemory(&N->Connect,sizeof(request));
@@ -388,7 +393,12 @@ static VOID CywWorker(PVOID Context)
         }
         Status=CywTxPostReceivePump(A,&N->Sends,&sentAfter);
         if(!NT_SUCCESS(Status))goto Failed;
-        Rpi5CywInterruptRearm(A);
+        interruptWake=Rpi5CywInterruptConsumeWake(A);
+        interruptUseful=(BOOLEAN)(i!=0 ||
+            A->Transport.StatusAcks!=irqStatusAcksBefore ||
+            A->Transport.MailReads!=irqMailReadsBefore ||
+            A->Transport.FrameNotifications!=irqFrameNotificationsBefore);
+        Rpi5CywInterruptRearm(A,interruptWake,interruptUseful);
 /* TIMING-BEGIN */
         CywTimingEnd(&A->Timing,CywTimeWorkerWork,cycleStart);
         previousCycle=cycleStart;haveCycle=TRUE;previousBlocked=A->TxCreditWaits!=creditBefore;
@@ -493,6 +503,7 @@ VOID CywNetworkPause(PRPI5CYW_ADAPTER A,BOOLEAN Paused)
     A->NdisPaused=Paused;
     if(!N)return;
     if(Paused)KeClearEvent(&N->PauseAck);
+    if(Paused)Rpi5CywInterruptQuiesce(A);
     InterlockedExchange(&N->Paused,Paused);N->Published=TRUE;KeSetEvent(&N->Wake,0,FALSE);
     if(Paused)CywScanQuiesce(A);
     CywRefreshTxGate(A);
@@ -529,6 +540,7 @@ NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER A,BOOLEAN On)
     N->Paused=(LONG)A->NdisPaused;N->TxSeq=0;N->TxMax=1;N->TxFlow=0;N->RxPending=FALSE;
     status=Rpi5CywDirectSdioProbe(A);
     if(!NT_SUCCESS(status))return status;
+    Rpi5CywInterruptResetRuntime(A);
     KeClearEvent(&N->ThreadStarted);
     InitializeObjectAttributes(&attr,NULL,OBJ_KERNEL_HANDLE,NULL,NULL);
     status=PsCreateSystemThread(&handle,THREAD_ALL_ACCESS,&attr,NULL,NULL,CywWorker,A);

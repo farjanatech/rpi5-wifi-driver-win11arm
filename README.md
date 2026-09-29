@@ -1,17 +1,13 @@
-> **Current main: performance 0.7.1.1.** The
-> existing 0.7.0.1 multi-block SDIO PIO, RX read-ahead/aggregation, 64-frame
-> queue and bounded pressure scheduling are preserved. This update registers
-> the UEFI-provided line interrupt only as a wake source; ISR/DPC never perform
-> SDIO commands, and the existing PASSIVE worker remains the sole bus owner.
-> Bounded polling remains active as fallback. See
-> [PERFORMANCE-0.7.1](./docs/PERFORMANCE-0.7.1.md).
+> **Branch `better-improvement`: performance 0.7.1.2.** This branch keeps
+> main 0.7.1.1's data path but corrects the SDHCI card-interrupt lifecycle found
+> in the September 29 Pi test. CARD_INT is masked in both host enable registers,
+> CCCR INTx is checked by the PASSIVE bus worker before rearm, and 32 consecutive
+> empty IRQ wakes trigger a safe polling fallback instead of an interrupt storm.
+> See [PERFORMANCE-0.7.1.2](./docs/PERFORMANCE-0.7.1.2.md).
 >
-> The installer no longer pins exp.0.3/exp.0.5 or any other UEFI git revision.
-> It accepts any Raspberry Pi 5 firmware that exposes the required
-> `ACPI\\RPI0011` device; the kernel then validates the expected SDHCI MMIO
-> resource layout, while interrupt wakeup may fall back to bounded polling.
-> DMA, DDR50 and host-TX aggregation are intentionally unchanged pending
-> separate hardware validation. Driver 0.7.1.1 is experimental/test-signed.
+> Main remains unchanged. UEFI compatibility remains capability/resource based,
+> not pinned to a firmware revision. DMA, DDR50, host-TX aggregation, firmware
+> and the 64-frame TX queue are unchanged in this candidate.
 
 # Raspberry Pi 5 CYW43455 Wi-Fi driver for Windows 11 ARM64
 

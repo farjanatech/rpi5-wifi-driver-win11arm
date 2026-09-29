@@ -2,6 +2,7 @@
 #include "../sdio/sdio.h"
 #include "../cyw43455/network.h"
 #include "statistics_flags.h"
+#include "interrupt_policy.h"
 
 static NDIS_HANDLE gRpi5CywDriverHandle;
 
@@ -24,15 +25,36 @@ Rpi5CywInterruptWrite32(PRPI5CYW_ADAPTER Adapter, ULONG Offset, ULONG Value)
     WRITE_REGISTER_ULONG((PULONG)((PUCHAR)Adapter->RegisterBase + Offset), Value);
 }
 
+/*
+ * Linux SDHCI masks SDIO CARD_INT in both Interrupt Status Enable and
+ * Interrupt Signal Enable while the SDIO core services the function IRQ.
+ * Do the same here. CARD_INT is level-like and is not dismissed by a blind
+ * write-one-to-clear; the card/function source must be serviced first.
+ */
 static VOID
-Rpi5CywSetCardInterruptSignal(PRPI5CYW_ADAPTER Adapter, BOOLEAN Enable)
+Rpi5CywSetCardInterruptEnable(PRPI5CYW_ADAPTER Adapter, BOOLEAN Enable)
 {
-    ULONG signal;
+    ULONG statusEnable, signalEnable;
     if (!Adapter || !Adapter->RegisterBase) return;
-    signal = Rpi5CywInterruptRead32(Adapter, SDHCI_INT_SIGNAL_ENABLE);
-    if (Enable) signal |= SDHCI_INT_CARD_INT;
-    else signal &= ~SDHCI_INT_CARD_INT;
-    Rpi5CywInterruptWrite32(Adapter, SDHCI_INT_SIGNAL_ENABLE, signal);
+
+    statusEnable = Rpi5CywInterruptRead32(Adapter, SDHCI_INT_STATUS_ENABLE);
+    signalEnable = Rpi5CywInterruptRead32(Adapter, SDHCI_INT_SIGNAL_ENABLE);
+    if (Enable)
+    {
+        statusEnable |= SDHCI_INT_CARD_INT;
+        signalEnable |= SDHCI_INT_CARD_INT;
+    }
+    else
+    {
+        statusEnable &= ~SDHCI_INT_CARD_INT;
+        signalEnable &= ~SDHCI_INT_CARD_INT;
+    }
+
+    Rpi5CywInterruptWrite32(Adapter, SDHCI_INT_STATUS_ENABLE, statusEnable);
+    Rpi5CywInterruptWrite32(Adapter, SDHCI_INT_SIGNAL_ENABLE, signalEnable);
+    KeMemoryBarrier();
+    Adapter->InterruptStatusEnable = statusEnable;
+    Adapter->InterruptSignalEnable = signalEnable;
 }
 
 _Use_decl_annotations_
@@ -58,15 +80,17 @@ Rpi5CywInterrupt(
     }
 
     /*
-     * Card interrupt is level-sensitive on this platform. Mask only this
-     * signal and dismiss only its host latch. The PASSIVE worker services and
-     * acknowledges firmware state before synchronized rearm.
+     * Mask the complete SDIO CARD_INT path before queuing work. Do not clear
+     * CARD_INT in INT_STATUS here: the SDIO function source is serviced by the
+     * one PASSIVE bus owner, then the worker explicitly rearms the host.
      */
-    Rpi5CywSetCardInterruptSignal(Adapter, FALSE);
-    Rpi5CywInterruptWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_CARD_INT);
-    KeMemoryBarrier();
+    Rpi5CywSetCardInterruptEnable(Adapter, FALSE);
     InterlockedExchange(&Adapter->InterruptNeedsRearm, 1);
     InterlockedIncrement((volatile LONG *)&Adapter->InterruptIsrCount);
+
+    if (Adapter->InterruptStormFallback)
+        return TRUE; /* Polling owns recovery; never queue an IRQ storm. */
+
     *QueueDefaultInterruptDpc = TRUE;
     return TRUE;
 }
@@ -85,7 +109,9 @@ Rpi5CywInterruptDpc(
     UNREFERENCED_PARAMETER(ReceiveThrottleParameters);
     UNREFERENCED_PARAMETER(NdisReserved2);
     if (!Adapter) return;
+
     InterlockedIncrement((volatile LONG *)&Adapter->InterruptDpcCount);
+    InterlockedExchange(&Adapter->InterruptWakePending, 1);
     if (!Adapter->IoStopped) CywNetworkWake(Adapter);
 }
 
@@ -94,16 +120,11 @@ BOOLEAN
 Rpi5CywInterruptRearmSync(NDIS_HANDLE SynchronizeContext)
 {
     PRPI5CYW_ADAPTER Adapter = (PRPI5CYW_ADAPTER)SynchronizeContext;
-    if (!Adapter || !Adapter->RegisterBase || Adapter->IoStopped || !Adapter->Network)
+    if (!Adapter || !Adapter->RegisterBase || Adapter->IoStopped ||
+        !Adapter->Network || Adapter->InterruptStormFallback)
         return FALSE;
 
-    /*
-     * Clear a stale host latch before signal enable. If the card source is
-     * still asserted, SDHCI will present a new card interrupt immediately.
-     */
-    Rpi5CywInterruptWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_CARD_INT);
-    Rpi5CywSetCardInterruptSignal(Adapter, TRUE);
-    KeMemoryBarrier();
+    Rpi5CywSetCardInterruptEnable(Adapter, TRUE);
     InterlockedExchange(&Adapter->InterruptNeedsRearm, 0);
     InterlockedIncrement((volatile LONG *)&Adapter->InterruptRearmCount);
     return TRUE;
@@ -115,9 +136,8 @@ Rpi5CywInterruptQuiesceSync(NDIS_HANDLE SynchronizeContext)
 {
     PRPI5CYW_ADAPTER Adapter = (PRPI5CYW_ADAPTER)SynchronizeContext;
     if (!Adapter || !Adapter->RegisterBase) return FALSE;
-    Rpi5CywSetCardInterruptSignal(Adapter, FALSE);
-    Rpi5CywInterruptWrite32(Adapter, SDHCI_INT_STATUS, SDHCI_INT_CARD_INT);
-    KeMemoryBarrier();
+
+    Rpi5CywSetCardInterruptEnable(Adapter, FALSE);
     InterlockedExchange(&Adapter->InterruptNeedsRearm, 1);
     return TRUE;
 }
@@ -126,7 +146,10 @@ _Use_decl_annotations_
 VOID
 Rpi5CywDisableInterrupt(NDIS_HANDLE MiniportInterruptContext)
 {
-    (VOID)Rpi5CywInterruptQuiesceSync(MiniportInterruptContext);
+    PRPI5CYW_ADAPTER Adapter = (PRPI5CYW_ADAPTER)MiniportInterruptContext;
+    if (!Adapter) return;
+    InterlockedIncrement((volatile LONG *)&Adapter->InterruptNdisDisableCalls);
+    (VOID)Rpi5CywInterruptQuiesceSync(Adapter);
 }
 
 _Use_decl_annotations_
@@ -135,18 +158,104 @@ Rpi5CywEnableInterrupt(NDIS_HANDLE MiniportInterruptContext)
 {
     PRPI5CYW_ADAPTER Adapter = (PRPI5CYW_ADAPTER)MiniportInterruptContext;
     if (!Adapter) return;
+
+    /*
+     * NDIS can call this callback for diagnostic/troubleshooting control.
+     * Never bypass the passive service/INTx check by re-enabling at DIRQL.
+     */
+    InterlockedIncrement((volatile LONG *)&Adapter->InterruptNdisEnableCalls);
     InterlockedExchange(&Adapter->InterruptNeedsRearm, 1);
     if (Adapter->Network && !Adapter->IoStopped)
-        (VOID)Rpi5CywInterruptRearmSync(Adapter);
+        CywNetworkWake(Adapter);
+}
+
+BOOLEAN
+Rpi5CywInterruptConsumeWake(PRPI5CYW_ADAPTER Adapter)
+{
+    if (!Adapter) return FALSE;
+    return (BOOLEAN)(InterlockedExchange(&Adapter->InterruptWakePending, 0) != 0);
 }
 
 VOID
-Rpi5CywInterruptRearm(PRPI5CYW_ADAPTER Adapter)
+Rpi5CywInterruptResetRuntime(PRPI5CYW_ADAPTER Adapter)
 {
+    if (!Adapter) return;
+    Adapter->InterruptStormFallback = 0;
+    Adapter->InterruptEmptyWakeStreak = 0;
+    InterlockedExchange(&Adapter->InterruptWakePending, 0);
+    InterlockedExchange(&Adapter->InterruptNeedsRearm, 1);
+}
+
+VOID
+Rpi5CywInterruptRearm(
+    PRPI5CYW_ADAPTER Adapter,
+    BOOLEAN InterruptWake,
+    BOOLEAN UsefulWork
+    )
+{
+    UCHAR pending = 0;
+    ULONG functions, nextStreak;
+    NTSTATUS status;
+
     if (!Adapter || !Adapter->InterruptRegistered || !Adapter->InterruptHandle ||
-        Adapter->IoStopped || !Adapter->Network ||
+        Adapter->IoStopped || !Adapter->Network || Adapter->InterruptStormFallback ||
         InterlockedCompareExchange(&Adapter->InterruptNeedsRearm, 0, 0) == 0)
         return;
+    if (KeGetCurrentIrql() != PASSIVE_LEVEL)
+        return;
+
+    /*
+     * CCCR INTx is the card-level truth for Function 1/2 pending state. This
+     * CMD52 is performed only by the existing PASSIVE bus owner.
+     */
+    status = SdioCmd52Read(Adapter, 0, CYW_SDIO_CCCR_INT_PENDING, &pending);
+    Adapter->InterruptPendingReads++;
+    if (!NT_SUCCESS(status))
+    {
+        Adapter->InterruptPendingReadFailures++;
+        if (!Adapter->InterruptStormFallback)
+            Adapter->InterruptStormFallbackCount++;
+        Adapter->InterruptStormFallback = 1;
+        Adapter->InterruptEmptyWakeStreak = 0;
+        return; /* Stay masked and use the proven polling path. */
+    }
+
+    functions = CywInterruptPendingFunctions(pending);
+    if (functions & CYW_INTERRUPT_PENDING_F1) Adapter->InterruptPendingF1++;
+    if (functions & CYW_INTERRUPT_PENDING_F2) Adapter->InterruptPendingF2++;
+    if (!functions) Adapter->InterruptPendingEmpty++;
+
+    if (InterruptWake)
+    {
+        if (UsefulWork)
+            Adapter->InterruptUsefulWakeCount++;
+        else if (!functions)
+            Adapter->InterruptEmptyWakeCount++;
+    }
+
+    nextStreak = CywInterruptNextEmptyWakeStreak(
+        InterruptWake ? 1u : 0u, UsefulWork ? 1u : 0u, pending,
+        Adapter->InterruptEmptyWakeStreak);
+    Adapter->InterruptEmptyWakeStreak = nextStreak;
+
+    if (CywInterruptUsePollingFallback(nextStreak))
+    {
+        if (!Adapter->InterruptStormFallback)
+            Adapter->InterruptStormFallbackCount++;
+        Adapter->InterruptStormFallback = 1;
+        return; /* ISR already masked both host CARD_INT enable registers. */
+    }
+
+    if (functions)
+    {
+        /*
+         * Function interrupt is still asserted. Keep host CARD_INT masked.
+         * The worker's bounded poll loop will service it and try again.
+         */
+        Adapter->InterruptRearmDeferred++;
+        Adapter->InterruptEmptyWakeStreak = 0;
+        return;
+    }
 
     (VOID)NdisMSynchronizeWithInterruptEx(
         Adapter->InterruptHandle, 0, Rpi5CywInterruptRearmSync, Adapter);
@@ -171,7 +280,7 @@ Rpi5CywRegisterInterrupt(PRPI5CYW_ADAPTER Adapter)
     Adapter->InterruptRegistered = 0;
     Adapter->InterruptType = 0;
     Adapter->InterruptHandle = NULL;
-    InterlockedExchange(&Adapter->InterruptNeedsRearm, 1);
+    Rpi5CywInterruptResetRuntime(Adapter);
 
     if (!Adapter->InterruptResourceCount) return;
 
@@ -193,10 +302,13 @@ Rpi5CywRegisterInterrupt(PRPI5CYW_ADAPTER Adapter)
     {
         Adapter->InterruptRegistered = 1;
         Adapter->InterruptType = (ULONG)Characteristics.InterruptType;
+
+        /* Probe leaves SIGNAL_ENABLE at zero, but also mask CARD_INT in the
+         * status-enable register until the PASSIVE worker is fully ready. */
+        Rpi5CywSetCardInterruptEnable(Adapter, FALSE);
     }
     else
     {
-        /* Interrupt wakeup is an optimization; polling remains functional. */
         Adapter->InterruptHandle = NULL;
     }
 }
@@ -332,7 +444,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 32);
+    SET_DWORD(L"DiagVersion", 33);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -581,10 +693,26 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"InterruptRegistered", Adapter->InterruptRegistered);
     SET_DWORD(L"InterruptType", Adapter->InterruptType);
     SET_DWORD(L"InterruptNeedsRearm", Adapter->InterruptNeedsRearm);
+    SET_DWORD(L"InterruptWakePending", Adapter->InterruptWakePending);
     SET_DWORD(L"InterruptIsrCount", Adapter->InterruptIsrCount);
     SET_DWORD(L"InterruptDpcCount", Adapter->InterruptDpcCount);
     SET_DWORD(L"InterruptRearmCount", Adapter->InterruptRearmCount);
     SET_DWORD(L"InterruptSpuriousCount", Adapter->InterruptSpuriousCount);
+    SET_DWORD(L"InterruptNdisEnableCalls", Adapter->InterruptNdisEnableCalls);
+    SET_DWORD(L"InterruptNdisDisableCalls", Adapter->InterruptNdisDisableCalls);
+    SET_DWORD(L"InterruptPendingReads", Adapter->InterruptPendingReads);
+    SET_DWORD(L"InterruptPendingReadFailures", Adapter->InterruptPendingReadFailures);
+    SET_DWORD(L"InterruptPendingF1", Adapter->InterruptPendingF1);
+    SET_DWORD(L"InterruptPendingF2", Adapter->InterruptPendingF2);
+    SET_DWORD(L"InterruptPendingEmpty", Adapter->InterruptPendingEmpty);
+    SET_DWORD(L"InterruptRearmDeferred", Adapter->InterruptRearmDeferred);
+    SET_DWORD(L"InterruptUsefulWakeCount", Adapter->InterruptUsefulWakeCount);
+    SET_DWORD(L"InterruptEmptyWakeCount", Adapter->InterruptEmptyWakeCount);
+    SET_DWORD(L"InterruptEmptyWakeStreak", Adapter->InterruptEmptyWakeStreak);
+    SET_DWORD(L"InterruptStormFallback", Adapter->InterruptStormFallback);
+    SET_DWORD(L"InterruptStormFallbackCount", Adapter->InterruptStormFallbackCount);
+    SET_DWORD(L"InterruptStatusEnable", Adapter->InterruptStatusEnable);
+    SET_DWORD(L"InterruptSignalEnable", Adapter->InterruptSignalEnable);
     SET_DWORD(L"RegPhysHi", Adapter->RegisterPhysical.HighPart);
     SET_DWORD(L"RegPhysLo", Adapter->RegisterPhysical.LowPart);
     SET_DWORD(L"RegLength", Adapter->RegisterLength);
@@ -989,7 +1117,7 @@ Rpi5CywQueryInformation(
             return Rpi5CywCopyQuery(OidRequest, &Data.Ushort, sizeof(Data.Ushort));
 
         case OID_GEN_VENDOR_DRIVER_VERSION:
-            Data.Ulong = 0x00070101;
+            Data.Ulong = 0x00070102;
             return Rpi5CywCopyQuery(OidRequest, &Data.Ulong, sizeof(Data.Ulong));
 
         case OID_GEN_CURRENT_PACKET_FILTER:

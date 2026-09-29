@@ -75,6 +75,7 @@ Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0-alpha.2.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.1.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.1.2.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -108,45 +109,41 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance 0.7.1.1 interrupt-wakeup + UEFI-agnostic installer
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - better-improvement 0.7.1.2
 
 Configuration: $Configuration
 Platform:      $Platform
 Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-Source branch: main
-Rollback source: bdfa6f5b3bbe130e41abd67475411e94afd8a0f1
+Source branch: better-improvement
+Rollback source: 1b70aacdda3efce85d049d229342fbafcc467b5e
 Architecture: ACPI\\RPI0011 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
 
-New: NDIS line-interrupt registration using only the SDHCI card interrupt as a
-wake source. ISR/DPC never perform SDIO commands; the existing PASSIVE worker
-remains the sole bus/FIFO owner and synchronized rearm occurs after service.
-The 10 ms idle poll and bounded credit retry remain fallback paths.
-DMA, DDR50, host-TX aggregation, firmware/radio settings, the 64-frame queue,
-multi-block PIO, RX aggregation/read-ahead and authentication are unchanged.
+New: bounded SDIO card-interrupt lifecycle. CARD_INT is masked in both host
+interrupt-enable registers, the ISR never performs SDIO I/O or blindly clears
+the level-like CARD_INT status, and the PASSIVE worker checks CCCR INTx before
+synchronized rearm. Thirty-two consecutive empty IRQ wakes disable the hardware
+IRQ path for that power session and retain the proven bounded polling path.
 
-Install only on the Pi: extract the whole package, run Install-RPi5-WiFi-Driver.cmd
-and approve elevation. Save work and restart if requested. Use the existing
-connector/profile. The installer checks package hashes, signer, ARM64, ACPI
-device and existing security prerequisites. UEFI git/version strings are not
-allowlisted; compatibility is decided by the exact ACPI target and the kernel's
-SDHCI resource validation. It does not enable Test Signing, change Secure
-Boot/BCD/UEFI, delete old drivers, or replace private credentials.
+Unchanged: UEFI-version-independent compatibility, firmware/radio settings,
+50/25 MHz SDR policy, multi-block PIO, RX aggregation/read-ahead, 64-frame TX
+queue, authentication, country/band policy, DMA/DDR50 and host-TX aggregation.
 
-After connecting, Check-RPi5-WiFi-Readiness.cmd collects the bounded workload
-and diagnostics. Compare interrupt counters, queue pressure, SDIO wait sleeps,
-latency and throughput against the rollback source on the same Pi/router/band.
+Install only on the Pi: extract the whole package and run
+Install-RPi5-WiFi-Driver.cmd. Do not change UEFI or router settings for the A/B
+comparison. After reconnecting, run Check-RPi5-WiFi-Readiness.cmd and the same
+128 MiB performance workload. Inspect the new interrupt pending/empty/fallback
+counters before deciding whether to continue with TX-path optimization.
 
-Historical EXP/PERFORMANCE documents remain for traceability;
-PERFORMANCE-0.7.1.md is authoritative for this candidate.
+PERFORMANCE-0.7.1.2.md is authoritative for this branch candidate.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.7.1.1
-performance_branch=main
-performance_baseline=bdfa6f5b3bbe130e41abd67475411e94afd8a0f1
+driver_version=0.7.1.2
+performance_branch=better-improvement
+performance_baseline=1b70aacdda3efce85d049d229342fbafcc467b5e
 measurement_utility_version=0.6.27.1
 startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration
