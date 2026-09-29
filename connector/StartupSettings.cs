@@ -7,7 +7,7 @@ internal interface IStartupSettings
     SavedNetwork? Load();
     byte[] Unprotect(SavedNetwork profile);
     bool Enabled();
-    void Enable(string country, string ssid, byte[] key);
+    void Enable(string country, string ssid, byte[] key, BandPreference band);
     void Disable(bool forget);
 }
 internal sealed class StartupSettings : IStartupSettings
@@ -15,6 +15,6 @@ internal sealed class StartupSettings : IStartupSettings
     public SavedNetwork? Load() => Startup.Load();
     public byte[] Unprotect(SavedNetwork profile) => Startup.Unprotect(profile);
     public bool Enabled() => Startup.Enabled();
-    public void Enable(string country, string ssid, byte[] key) => Startup.Enable(country, ssid, key);
+    public void Enable(string country, string ssid, byte[] key, BandPreference band) => Startup.Enable(country, ssid, key, band);
     public void Disable(bool forget) => Startup.Disable(forget);
 }
