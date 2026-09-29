@@ -1,0 +1,154 @@
+name: Publish portable 0.7.0 release
+
+on:
+  push:
+    branches: [feature/global-capability-wifi-manager]
+    paths: ['.github/workflows/release-portable.yml']
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: farjanatech/rpi5-wifi-driver-win11arm
+      DRIVER_RUN: '36537523516'
+      DRIVER_SHA: '430a2295da6cd5aaa2b88b21356a7d80626bec9a'
+      CONNECTOR_RUN: '36535171036'
+      CONNECTOR_SHA: 'a0606e272c4614db4f5171f203dcd150311b7cc6'
+      RELEASE_TAG: 'driver-portable0.7.0'
+      RELEASE_ZIP: 'RPi5-WiFi-Windows11-ARM64-portable0.7.0.zip'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify release source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$DRIVER_SHA" HEAD
+          git merge-base --is-ancestor "$CONNECTOR_SHA" HEAD
+          mapfile -t changed < <(git diff --name-only "$DRIVER_SHA"..HEAD)
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/workflows/release-portable.yml|tests/portable_scope_tests.ps1) ;;
+              *) echo "Untested change after driver build: $path" >&2; exit 1 ;;
+            esac
+          done
+          git diff --exit-code "$CONNECTOR_SHA"..HEAD -- connector/
+
+      - name: Download tested driver and WiFi Manager artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run download "$DRIVER_RUN" --name rpi5-cyw43455-direct-sdio-ndis-arm64-release --dir package
+          gh run download "$CONNECTOR_RUN" --name rpi5-wifi-connector-arm64 --dir connector
+
+      - name: Verify driver package and performance tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx "driver_commit=$DRIVER_SHA" <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'driver_version=0.7.0.2' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'release_variant=driver-portable0.7.0' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'region_policy=portable firmware-owned domain; explicit ISO SET/readback preserved; no regulatory override' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'measurement_utility_version=0.6.27.1' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          test -s package/rpi5cyw.sys
+          test -s package/rpi5cyw.cat
+          test -s package/rpi5cyw-test.cer
+          test -s package/Install-RPi5-WiFi-Driver.cmd
+          test -s package/PORTABLE-0.7.0.md
+          test -s package/Test-RPi5-WiFi-Performance.cmd
+          test -s package/Test-RPi5-WiFi-Performance.ps1
+          test -s package/Measure-RPi5-WiFi-Load.ps1
+          test -s package/RPi5-WiFi-DownloadTiming.ps1
+          test -s package/RPi5-WiFi-MeasurementClock.ps1
+          test -s package/Get-RPi5-WiFi-Radio.ps1
+          test -s package/Get-RPi5-WiFi-Timing.ps1
+          test -s package/Get-RPi5-WiFi-Transport.ps1
+          test -s package/RPi5-WiFi-Operations.ps1
+          grep -Fq 'Test-RPi5-WiFi-Performance.cmd' package/README-TESTING.txt
+          grep -Fq 'capability-based' package/README-TESTING.txt
+          (cd package && tr -d '\r' < SHA256SUMS.txt | sha256sum --check)
+
+      - name: Verify standalone WiFi Manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx "commit=$CONNECTOR_SHA" <(tr -d '\r' < connector/BUILD.txt)
+          grep -Fx 'version=0.7.0.0' <(tr -d '\r' < connector/BUILD.txt)
+          grep -Fx 'architecture=ARM64' <(tr -d '\r' < connector/BUILD.txt)
+          grep -Fx 'self_contained=true' <(tr -d '\r' < connector/BUILD.txt)
+          test -s connector/RPi5-WiFi-Connector.exe
+          (cd connector && tr -d '\r' < SHA256SUMS.txt | sha256sum --check)
+
+      - name: Assemble complete release package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp connector/RPi5-WiFi-Connector.exe package/RPi5-WiFi-Connector.exe
+          cp connector/BUILD.txt package/WIFI-MANAGER-BUILD.txt
+          cp connector/SHA256SUMS.txt package/WIFI-MANAGER-SHA256SUMS.txt
+          cat > package/START-HERE.txt <<'EOF'
+          Raspberry Pi 5 Wi-Fi Portable 0.7.0
+          
+          1. Install the driver with Install-RPi5-WiFi-Driver.cmd and restart if requested.
+          2. Open RPi5-WiFi-Connector.exe (WiFi Manager), scan for an SSID, select Auto / 2.4 GHz / 5 GHz, and connect.
+          3. To check Wi-Fi performance after connecting, run Test-RPi5-WiFi-Performance.cmd.
+          4. For readiness/diagnostics, run Check-RPi5-WiFi-Readiness.cmd or Run-RPi5-WiFi-Diagnostics.cmd.
+          
+          UEFI revision is not hard-coded. The installer requires the compatible ACPI\\RPI0011 direct-SDIO interface.
+          Automatic regulatory mode uses the domain already active in firmware/CLM; it does not force an unsupported country.
+          This is an experimental test-signed prerelease and still needs physical Raspberry Pi validation.
+          EOF
+          (cd package && find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          mkdir -p release-output
+          (cd package && zip -q -r "../release-output/$RELEASE_ZIP" .)
+          cp connector/RPi5-WiFi-Connector.exe release-output/RPi5-WiFi-Connector.exe
+          (cd release-output && sha256sum "$RELEASE_ZIP" RPi5-WiFi-Connector.exe > SHA256SUMS.txt)
+
+      - name: Publish GitHub prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          cat > release-notes.md <<EOF
+          # Portable 0.7.0 — global-capability WiFi Manager
+          
+          Complete Raspberry Pi 5 Windows 11 ARM64 Wi-Fi package with the latest portable driver and standalone WiFi Manager.
+          
+          ## Included
+          - test-signed direct-SDIO CYW43455 driver **0.7.0.2**
+          - **WiFi Manager 0.7.0.0** single-file ARM64 EXE
+          - installer that is **not tied to a fixed UEFI revision**
+          - Auto / 2.4 GHz / 5 GHz connection preference
+          - SSID scanning and WPA2-Personal/AES connection
+          - protected optional reconnect-at-boot profile
+          - diagnostics/readiness utilities
+          - **Wi-Fi performance checking tools**, including `Test-RPi5-WiFi-Performance.cmd`
+          
+          ## UEFI compatibility
+          UEFI revision strings are informational only. The installer requires the actual compatible `ACPI\\RPI0011` direct-SDIO interface and normal hardware/security prerequisites.
+          
+          ## Regulatory behavior
+          The old US-only host admission is removed. Automatic mode uses the regulatory domain already active in firmware/CLM and does not force another country. Explicit ISO-country requests still require firmware acceptance/readback. No CLM, RF power, DFS or firmware regulatory restriction is bypassed.
+          
+          ## Performance checking
+          The performance utility and its dependencies are bundled in the ZIP and were exercised by driver CI run **$DRIVER_RUN**. After connecting over Wi-Fi, run `Test-RPi5-WiFi-Performance.cmd`. For comparable results use the same Pi/router/band/channel/distance and disconnect wired Ethernet during throughput measurement.
+          
+          ## Validation
+          Driver CI: https://github.com/$GH_REPO/actions/runs/$DRIVER_RUN
+          
+          WiFi Manager CI: https://github.com/$GH_REPO/actions/runs/$CONNECTOR_RUN
+          
+          This remains a **prerelease** because physical Raspberry Pi 5 validation is still required.
+          EOF
+          gh release create "$RELEASE_TAG"             "release-output/$RELEASE_ZIP"             release-output/RPi5-WiFi-Connector.exe             release-output/SHA256SUMS.txt             --title 'Portable 0.7.0 — global-capability WiFi Manager'             --notes-file release-notes.md             --target "$GITHUB_SHA"             --prerelease
