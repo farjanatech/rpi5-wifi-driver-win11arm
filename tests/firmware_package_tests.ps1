@@ -21,7 +21,8 @@ if ($firmware -notmatch 'Version: 7\.45\.265 \(28bca26 CY\)' -or
     $firmware -notmatch 'FWID 01-b677b91b') { throw 'Unexpected firmware version/variant.' }
 $source = Get-Content -LiteralPath (Join-Path $Directory 'FIRMWARE-SOURCE.txt') -Raw
 if ($source -notmatch '3bab0f823f5b53150b76aab77093adef6655b920' -or
-    $source -notmatch 'US-only' -or $source -notmatch 'previously rejected BD') { throw 'Firmware source/scope notice missing.' }
+    $source -notmatch 'Portable host package' -or $source -notmatch 'never substituted' -or
+    $source -notmatch 'channels already permitted by firmware/CLM') { throw 'Firmware source/scope notice missing.' }
 $copyright = Get-Content -LiteralPath (Join-Path $Directory 'FIRMWARE-COPYRIGHT.txt') -Raw
 if ($copyright -notmatch 'License: binary-redist-Cypress' -or
     $copyright -notmatch 'DRIVER END USER LICENSE AGREEMENT') { throw 'Complete upstream firmware licence missing.' }
