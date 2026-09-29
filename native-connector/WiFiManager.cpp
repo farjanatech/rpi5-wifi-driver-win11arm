@@ -13,6 +13,9 @@
 #include <thread>
 #include <atomic>
 #include <algorithm>
+#include <stdexcept>
+#include <cstdlib>
+#include <cstring>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "bcrypt.lib")
@@ -285,7 +288,7 @@ static LRESULT CALLBACK WndProc(HWND h,UINT m,WPARAM w,LPARAM l) {
         gMain=h;
         Label(L"WiFi Manager",24,18,360,38,gTitleFont);
         Label(L"Nearby networks",24,68,250,24);
-        gScan=Button(L"Scan",274,62,86,32,ID_SCAN);
+        gScan=Button(L"Scan",ID_SCAN,274,62,86,32);
         gList=CreateWindowExW(WS_EX_CLIENTEDGE,WC_LISTVIEWW,L"",WS_CHILD|WS_VISIBLE|WS_TABSTOP|LVS_REPORT|LVS_SINGLESEL,
             24,102,420,340,h,(HMENU)ID_LIST,nullptr,nullptr);
         SetFont(gList,gFont);
