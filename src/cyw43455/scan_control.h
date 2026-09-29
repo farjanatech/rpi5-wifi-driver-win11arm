@@ -2,7 +2,6 @@
  * Memory-only control dispatch. Caller holds ControlLock to pin the adapter.
  * No SDIO, firmware command, pending IRP, user pointer or packet-path change.
  */
-#include "us_region.h"
 static NTSTATUS CywScanControl(PRPI5CYW_ADAPTER A,ULONG Code,PUCHAR Buffer,
     ULONG InputLength,ULONG OutputLength,PULONG Bytes)
 {
