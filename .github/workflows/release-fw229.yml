@@ -1,0 +1,166 @@
+name: Publish portable fw229 compatibility candidate
+
+on:
+  push:
+    branches: [feature/portable-fw229-native-ui]
+    paths: ['.github/workflows/release-fw229.yml']
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: farjanatech/rpi5-wifi-driver-win11arm
+      DRIVER_RUN: '36553624822'
+      DRIVER_SHA: '95df7790ac4f8645d90fc96c0e325a0669a9cb38'
+      NATIVE_RUN: '36552982090'
+      NATIVE_SHA: '06136fb1febd4209782492b6b7d4830fa51fe7a8'
+      RELEASE_TAG: 'driver-portable0.7.0.1-fw229'
+      RELEASE_ZIP: 'RPi5-WiFi-Windows11-ARM64-portable0.7.0.1-fw229.zip'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tested source scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "$DRIVER_SHA" HEAD
+          mapfile -t changed < <(git diff --name-only "$DRIVER_SHA"..HEAD)
+          for path in "${changed[@]}"; do
+            case "$path" in
+              .github/workflows/release-fw229.yml) ;;
+              *) echo "Untested change after driver build: $path" >&2; exit 1 ;;
+            esac
+          done
+          git diff --exit-code "$NATIVE_SHA"..HEAD -- native-connector/
+
+      - name: Download tested driver package
+        uses: actions/download-artifact@v4
+        with:
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-release
+          path: package
+          run-id: ${{ env.DRIVER_RUN }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Download tested native WiFi Manager
+        uses: actions/download-artifact@v4
+        with:
+          name: rpi5-wifi-manager-native-arm64
+          path: native
+          run-id: ${{ env.NATIVE_RUN }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Verify exact driver firmware and performance tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx "driver_commit=$DRIVER_SHA" <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'driver_version=0.7.0.3' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'release_variant=driver-portable0.7.0.1-fw229' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'firmware_version=7.45.229' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          grep -Fx 'firmware_source=ahmedarif193/reactos@929bdd689d1e18d0ef71214741d4e16eec74409c' <(tr -d '\r' < package/SOURCE_REVISION.txt)
+          sha256sum package/cyfmac43455-sdio.bin | grep -qi '^cf79e8e8727d103a94cd243f1d98770fa29f5da25df251d0d31b3696f3b4ac6a '
+          sha256sum package/cyfmac43455-sdio.clm_blob | grep -qi '^2dbd7d22fc9af0eb560ceab45b19646d211bc7b34a1dd00c6bfac5dd6ba25e8a '
+          test -s package/Test-RPi5-WiFi-Performance.cmd
+          test -s package/Test-RPi5-WiFi-Performance.ps1
+          test -s package/Measure-RPi5-WiFi-Load.ps1
+          test -s package/RPi5-WiFi-DownloadTiming.ps1
+          test -s package/Get-RPi5-WiFi-Radio.ps1
+          test -s package/Get-RPi5-WiFi-Timing.ps1
+          test -s package/Get-RPi5-WiFi-Transport.ps1
+          test -s package/PORTABLE-0.7.0.1-FW229.md
+          (cd package && tr -d '\r' < SHA256SUMS.txt | sha256sum --check)
+
+      - name: Verify native manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fx "commit=$NATIVE_SHA" <(tr -d '\r' < native/BUILD.txt)
+          grep -Fx 'version=0.7.0.1-fw229' <(tr -d '\r' < native/BUILD.txt)
+          grep -Fx 'architecture=ARM64' <(tr -d '\r' < native/BUILD.txt)
+          grep -Fx 'implementation=native Win32 C++' <(tr -d '\r' < native/BUILD.txt)
+          grep -Fx 'runtime_dependency=none' <(tr -d '\r' < native/BUILD.txt)
+          test "$(stat -c%s native/RPi5-WiFi-Manager.exe)" -eq 163328
+          (cd native && tr -d '\r' < SHA256SUMS.txt | sha256sum --check)
+
+      - name: Assemble complete candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f package/RPi5-WiFi-App.cmd package/RPi5-WiFi-App.ps1
+          cp native/RPi5-WiFi-Manager.exe package/RPi5-WiFi-Manager.exe
+          cp native/BUILD.txt package/WIFI-MANAGER-BUILD.txt
+          cp native/SHA256SUMS.txt package/WIFI-MANAGER-SHA256SUMS.txt
+          cat > package/START-HERE.txt <<'EOF'
+          Raspberry Pi 5 Wi-Fi Portable 0.7.0.1-fw229 A/B Candidate
+
+          1. Extract this whole ZIP into a new folder.
+          2. Run Install-RPi5-WiFi-Driver.cmd as Administrator and restart if requested.
+          3. Open RPi5-WiFi-Manager.exe.
+          4. Scan, select the SSID/band, enter only the WPA2 password, and Connect.
+          5. If connected, run Test-RPi5-WiFi-Performance.cmd for performance checking.
+          6. Send diagnostics if connection still fails, especially the ConnectStep/FirmwareError fields.
+
+          This A/B package restores firmware 7.45.229 + its matching CLM while keeping the
+          portable UEFI-independent host driver. The GUI is native Win32 ARM64 and requires no .NET runtime.
+          EOF
+          (cd package && find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS.txt)
+          mkdir -p release-output
+          (cd package && zip -q -r "../release-output/$RELEASE_ZIP" .)
+          cp native/RPi5-WiFi-Manager.exe release-output/RPi5-WiFi-Manager.exe
+          (cd release-output && sha256sum "$RELEASE_ZIP" RPi5-WiFi-Manager.exe > SHA256SUMS.txt)
+
+      - name: Publish prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'EOF'
+          # Portable 0.7.0.1-fw229 — firmware A/B compatibility candidate
+
+          This candidate is specifically for testing the suspected firmware regression seen with 7.45.265.
+
+          ## What changed
+          - restores the previous **CYW43455 firmware 7.45.229**
+          - restores its matching **7,163-byte CLM**
+          - keeps the same Pi 5 calibration/NVRAM bytes
+          - keeps the Portable UEFI-independent/capability-based driver behavior
+          - driver package version **0.7.0.3**
+          - replaces the large .NET connector with a **163,328-byte native ARM64 Win32 WiFi Manager**
+
+          ## WiFi Manager
+          The GUI is intentionally simple: nearby SSIDs, Auto / 2.4 GHz / 5 GHz, SSID, WPA2 password, Connect, Disconnect and clear status. There is **no username field** and no .NET runtime dependency.
+
+          ## Why this firmware rollback
+          The 7.45.265 physical run reached connection step `sup_wpa` and returned firmware error -23 (unsupported). The host WPA setup sequence at that point matches the previous working source. This release changes the firmware pair rather than hiding/ignoring that error.
+
+          ## Performance checking
+          The complete ZIP includes `Test-RPi5-WiFi-Performance.cmd` plus its timing/radio/transport dependencies. Run it only after Wi-Fi successfully authenticates.
+
+          ## Validation
+          Driver/package CI: https://github.com/farjanatech/rpi5-wifi-driver-win11arm/actions/runs/36553624822
+
+          Native WiFi Manager CI: https://github.com/farjanatech/rpi5-wifi-driver-win11arm/actions/runs/36552982090
+
+          This remains a prerelease until the A/B result is confirmed on the physical Raspberry Pi 5.
+          EOF
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release already exists; refusing to replace tested assets." >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            "release-output/$RELEASE_ZIP" \
+            release-output/RPi5-WiFi-Manager.exe \
+            release-output/SHA256SUMS.txt \
+            --title 'Portable 0.7.0.1-fw229 — firmware A/B + native WiFi Manager' \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA" \
+            --prerelease
