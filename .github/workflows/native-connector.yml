@@ -1,0 +1,74 @@
+name: Build native ARM64 WiFi Manager
+
+on:
+  push:
+    branches: [feature/portable-fw229-native-ui]
+    paths: ['native-connector/**', '.github/workflows/native-connector.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate Visual Studio
+        id: vs
+        shell: pwsh
+        run: |
+          $vswhere="${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install=& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
+          if(-not $install){throw 'Visual Studio ARM64 C++ tools not found.'}
+          "path=$install" >> $env:GITHUB_OUTPUT
+          New-Item -ItemType Directory -Force native-out\x64,native-out\arm64 | Out-Null
+
+      - name: Build x64 self-test host
+        shell: cmd
+        run: |
+          call "${{ steps.vs.outputs.path }}\VC\Auxiliary\Build\vcvarsall.bat" x64
+          cl /nologo /std:c++20 /W3 /O1 /Os /MT /EHsc /DUNICODE /D_UNICODE native-connector\WiFiManager.cpp /Fe:native-out\x64\RPi5-WiFi-Manager.exe /link /SUBSYSTEM:WINDOWS /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'"
+          if errorlevel 1 exit /b %errorlevel%
+
+      - name: Run protocol and WPA2 self-test
+        shell: pwsh
+        run: |
+          $p=Start-Process -FilePath .\native-out\x64\RPi5-WiFi-Manager.exe -ArgumentList '--self-test' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw "Native WiFi Manager self-test failed: $($p.ExitCode)"}
+
+      - name: Build optimized ARM64 standalone EXE
+        shell: cmd
+        run: |
+          call "${{ steps.vs.outputs.path }}\VC\Auxiliary\Build\vcvarsall.bat" x64_arm64
+          cl /nologo /std:c++20 /W3 /O1 /Os /GL /MT /EHsc /DUNICODE /D_UNICODE native-connector\WiFiManager.cpp /Fe:native-out\arm64\RPi5-WiFi-Manager.exe /link /LTCG /OPT:REF /OPT:ICF /SUBSYSTEM:WINDOWS /MANIFESTUAC:"level='requireAdministrator' uiAccess='false'"
+          if errorlevel 1 exit /b %errorlevel%
+
+      - name: Verify ARM64 executable and size
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path native-out\arm64\RPi5-WiFi-Manager.exe).Path
+          $bytes=[IO.File]::ReadAllBytes($exe)
+          $pe=[BitConverter]::ToInt32($bytes,0x3c)
+          if([BitConverter]::ToUInt16($bytes,$pe+4) -ne 0xaa64){throw 'Native WiFi Manager is not ARM64.'}
+          $size=(Get-Item $exe).Length
+          if($size -ge 2000000){throw "Native WiFi Manager unexpectedly large: $size bytes"}
+          (Get-FileHash $exe -Algorithm SHA256).Hash+'  RPi5-WiFi-Manager.exe' | Set-Content native-out\arm64\SHA256SUMS.txt -Encoding ASCII
+          @"
+          commit=$env:GITHUB_SHA
+          version=0.7.0.1-fw229
+          architecture=ARM64
+          implementation=native Win32 C++
+          runtime_dependency=none
+          size_bytes=$size
+          features=scan;auto-band;2.4GHz;5GHz;WPA2-password;connect;disconnect
+          "@ | Set-Content native-out\arm64\BUILD.txt -Encoding ASCII
+          Get-Content native-out\arm64\BUILD.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpi5-wifi-manager-native-arm64
+          path: native-out/arm64/
+          if-no-files-found: error
+          retention-days: 90
