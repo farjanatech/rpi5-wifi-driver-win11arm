@@ -11,6 +11,7 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
     uint32_t countryCount=0,countryListed=0;
     UCHAR rsn[22]={0x30,0x14,1,0,0,0x0f,0xac,4,1,0,0,0x0f,0xac,4,1,0,0,0x0f,0xac,2,0,0};
     NTSTATUS Status;
+    BOOLEAN autoCountry=CywCountryAuto(R->Country);
     A->Network->Associated=A->Network->Authorized=FALSE;CywLink(A,FALSE);
     A->NetworkPhase=510;A->NetworkStatus=STATUS_SUCCESS;
     A->JoinPreferenceAccepted=0;A->JoinPreferenceError=0;A->JoinPreferenceStatus=(NTSTATUS)0x103;
@@ -56,6 +57,13 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
     if(A->FirmwareReplyLength!=sizeof(country)) {Status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
     A->CountryBefore=(ULONG)country[0]|((ULONG)country[1]<<8);
     A->CountryBeforeRevision=CywLe32(country+4);
+    if(autoCountry) {
+        if(!CywCountryValueUsable(country,A->FirmwareReplyLength)) {
+            Status=STATUS_DEVICE_DATA_ERROR;goto Exit;
+        }
+        A->CountrySetMode=5; /* Firmware-owned/current regulatory domain. */
+        goto CountryVerified;
+    }
     if(CywCountryMatches(R->Country,country,A->FirmwareReplyLength)) {
         A->CountrySetMode=1; /* Already matches the user's physical location. */
         goto CountryVerified;
@@ -88,13 +96,17 @@ CountryVerified:
     CywPut16(pmk,32);RtlCopyMemory(pmk+4,R->Pmk,32);
     STEP(11,CywFirmwareCommand(A,268,TRUE,pmk,sizeof(pmk)));
     STEP(12,CywCmdInt(A,2,0));
-    STEP(18,CywApplyJoinPreference(A));
+    STEP(18,CywApplyJoinPreference(A,R->Reserved[0]));
     CywPut32(ssid,R->SsidLength);RtlCopyMemory(ssid+4,R->Ssid,R->SsidLength);
     if(A->JoinPreferenceAccepted) {
-        Status=CywJoinSelectedBand(A,ssid);
+        Status=CywJoinSelectedBand(A,ssid,R->Reserved[0]);
     } else {
-        /* An explicitly unsupported preference retains the working legacy
-         * asynchronous join, without claiming a verified preferred band. */
+        /* Explicit band selection must never silently fall back to another
+         * band when firmware does not implement join_pref. */
+        if(R->Reserved[0]!=CYW_BAND_PREF_AUTO) {
+            Status=STATUS_NOT_SUPPORTED;goto Exit;
+        }
+        /* Auto may retain the legacy asynchronous join on old firmware. */
         A->BandSelection[1]=7;A->BandSelection[3]=(ULONG)A->JoinPreferenceStatus;
         A->BandSelection[13]=1;
         STEP(13,CywFirmwareCommand(A,26,TRUE,ssid,sizeof(ssid)));
