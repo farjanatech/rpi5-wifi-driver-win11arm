@@ -55,7 +55,7 @@ internal static class SelfTests
             byte[] pmk = Protocol.Derive("IEEE", "password");
             Check(Convert.ToHexString(pmk).Equals("F42C6FC52DF0EBEF9EBB4B90B38A5F902E83FE1B135A70E23AED762E9710A12E", StringComparison.Ordinal), "WPA2 PBKDF2 vector");
             var request = Protocol.Connect(Protocol.AutoCountry, "IEEE", pmk, BandPreference.GHz5);
-            Check(request.Length == 76 && Protocol.U32(request, 0) == 1 && Protocol.U32(request, 4) == 4 && request[8] == 'B' && request[9] == 'D' && request.AsSpan(44).SequenceEqual(pmk), "connect ABI");
+            Check(request.Length == 76 && Protocol.U32(request, 0) == 1 && Protocol.U32(request, 4) == 4 && request[8] == 'Z' && request[9] == 'Z' && request[10] == (byte)BandPreference.GHz5 && request[11] == 0 && request.AsSpan(44).SequenceEqual(pmk), "connect ABI");
             CryptographicOperations.ZeroMemory(request);
             var scan = Protocol.Scan("BD"); Check(scan.Length == 8 && scan[6] == 0 && scan[7] == 0, "scan ABI");
             Check(LiveState.Parse(Status(421)).Progress.Contains("50%"), "verification progress");
