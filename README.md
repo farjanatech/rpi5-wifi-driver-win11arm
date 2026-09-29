@@ -1,17 +1,20 @@
-> **This branch: installer-only alpha.3-US.1 update (driver still 0.7.0.2).**
-> Exact UEFI revision restrictions are removed; hardware and security checks
-> remain. Signed driver/firmware and the existing GUI are unchanged. Read
-> [the installer update guide](./docs/INSTALLER-UEFI-REVISION.md).
+> **This branch: portable 0.7.0 WiFi Manager candidate.**
+> The installer is capability-based, not tied to an exact UEFI release: UEFI
+> revision text is informational, while the direct-SDIO `ACPI\RPI0011`
+> interface and normal driver/security checks remain required.
 >
-> Base package: US-only firmware comparison alpha.3 (driver 0.7.0.2).
-> Official Raspberry Pi OS standard firmware **7.45.265**, matching regulatory
-> data, unchanged Pi calibration, and alpha.1's exact packet path/scheduling.
-> Only host runtime difference: US-only scan/connect admission, not country substitution.
-> Read [the US candidate guide](./docs/PERFORMANCE-0.7.0-alpha.3-us.md) first.
-> For a Pi physically in the United States only; enter **US** in the connector.
-> This pair previously rejected BD. No physical US compatibility or speed claim.
-> Alpha.1, alpha.2, driver exp0.6.29.1, connector exp0.6.29.2 and UEFI remain unchanged.
-> The notes below describe the preserved baseline and earlier releases.
+> The experimental US-only host admission has been removed. WiFi Manager uses
+> the firmware/CLM current regulatory domain by default and never substitutes
+> or forces another country. Explicit ISO country requests still require
+> firmware SET/readback. Auto / 2.4 GHz / 5 GHz connection preferences are
+> supported and explicit band choices are verified after association.
+>
+> The standalone compressed ARM64 EXE scans SSIDs, accepts WPA2-Personal
+> passwords, can save an encrypted reboot profile, and uses a compact dark UI.
+> Enterprise username/EAP, WPA3 and Open-network authentication are not claimed
+> by this branch. See [PORTABLE-0.7.0](./docs/PORTABLE-0.7.0.md).
+> Physical Raspberry Pi validation is still required before production use.
+> Historical notes below are retained for traceability.
 
 > Baseline maintenance package: **exp0.6.29.1** — installer support for working
 > UEFI exp.0.5 and the supplied connector EXE/window icon. The signed .29 driver
