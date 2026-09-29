@@ -26,9 +26,9 @@ int main(void)
     request.Version=2;CHECK(!CywValidConnect(&request));request.Version=1;
     request.SsidLength=0;CHECK(!CywValidConnect(&request));
     request.SsidLength=33;CHECK(!CywValidConnect(&request));request.SsidLength=32;
-    memset(country,0,sizeof(country));country[0]=country[8]='X';country[1]=country[9]='2';CywPut32(country+4,7);
+    memset(country,0,sizeof(country));country[0]=country[8]='X';country[1]=country[9]='Z';CywPut32(country+4,7);
     CHECK(CywCountryValueUsable(country,sizeof(country)));
-    country[9]='3';CHECK(!CywCountryValueUsable(country,sizeof(country)));country[9]='2';
+    country[9]='Y';CHECK(!CywCountryValueUsable(country,sizeof(country)));country[9]='Z';
     CywPut32(country+4,0xffffffffu);CHECK(!CywCountryValueUsable(country,sizeof(country)));
     printf("Portable country/band admission: %s\n",Failures?"FAIL":"PASS");
     return Failures?1:0;
