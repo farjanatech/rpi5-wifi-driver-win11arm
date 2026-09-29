@@ -14,10 +14,10 @@ internal static class UiTests
         public SavedNetwork? Load() => Profile;
         public byte[] Unprotect(SavedNetwork profile) => Key?.ToArray() ?? throw new InvalidOperationException("No synthetic key.");
         public bool Enabled() => Active;
-        public void Enable(string country, string ssid, byte[] key)
+        public void Enable(string country, string ssid, byte[] key, BandPreference band)
         {
             if (Key != null) CryptographicOperations.ZeroMemory(Key);
-            Key = key.ToArray(); Profile = new(1, country, ssid, "synthetic-not-a-real-key"); Active = true; Saves++;
+            Key = key.ToArray(); Profile = new(2, country, ssid, "synthetic-not-a-real-key", (int)band); Active = true; Saves++;
         }
         public void Disable(bool forget)
         {
@@ -71,7 +71,6 @@ internal static class UiTests
         T Find<T>(string name) where T : Control => (T)form.Controls.Find(name, true).Single();
         Button Button(string name) => Find<Button>(name);
         form.Show(); Application.DoEvents();
-        Find<TextBox>("country").Text = "BD"; Find<CheckBox>("confirm").Checked = true;
         Check(!Button("disable").Enabled && !Button("forget").Enabled, "absent startup/profile should not offer destructive actions");
         Check(Button("scan").Enabled, "ready disconnected scan disabled"); Button("scan").PerformClick();
         var list = Find<ListView>("networks");
@@ -99,7 +98,7 @@ internal static class UiTests
         Check(driver.Connects == 1 && password.Text == "", "connect did not clear password or submitted duplicate join");
         Check(!Button("scan").Enabled && Find<Label>("status").Text.Contains("Disconnect first"), "connected scanning restriction unclear");
         Button("save").PerformClick(); Application.DoEvents();
-        Check(settings.Saves == 1 && settings.Active && settings.Profile?.Ssid == ssid.Text && settings.Key?.Length == 32,
+        Check(settings.Saves == 1 && settings.Active && settings.Profile?.Ssid == ssid.Text && settings.Profile?.Band == (int)BandPreference.GHz5 && settings.Key?.Length == 32,
             "save handler failed to reuse authenticated session key; saves=" + settings.Saves + "; UI=" + Find<Label>("status").Text);
         Check(Button("disable").Enabled && Button("forget").Enabled, "saved actions not enabled");
         Button("disable").PerformClick(); Application.DoEvents();
