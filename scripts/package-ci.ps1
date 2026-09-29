@@ -73,7 +73,7 @@ Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0-alpha.3-us.md') $stage
+Copy-Item (Join-Path $root 'docs\PORTABLE-0.7.0.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -125,12 +125,12 @@ No existing private profile is overwritten by this package.
 
 New: official Raspberry Pi OS standard 7.45.265 firmware and its matching CLM.
 The Pi board file is byte-identical. The only host runtime change from alpha.1
-is US-only scan/connect admission; radio-up still requires verified US readback.
+uses firmware-owned regulatory mode by default; explicit country requests still require matching firmware readback.
 SDIO multi-block PIO, read-ahead, RX aggregation, scheduling, queues, bus speed,
 authentication, connector ABI and UEFI remain at alpha.1. No alpha.2 pressure pump.
 No measured speed or hardware compatibility claim. WPA2 firmware offload,
 scanning, US acceptance, reboot and throughput require physical validation.
-See PERFORMANCE-0.7.0-alpha.3-us.md for scope, limitations and rollback.
+See PORTABLE-0.7.0.md for scope, limitations and rollback.
 Interrupt/DMA/DDR50 support is NOT implemented in this candidate.
 Firmware/CLM bytes and RF tables are unmodified; this is not RF certification.
 This same 7.45.265/CLM pair previously rejected BD. Do NOT use it in Bangladesh.
@@ -158,14 +158,14 @@ Passing CI is not hardware certification. Compare on the SAME US-located Pi,
 router, band/channel and workload; cross-country runs are not controlled A/B.
 
 Historical EXP/PERFORMANCE documents in the ZIP describe earlier versions;
-PERFORMANCE-0.7.0-alpha.3-us.md is authoritative for this candidate.
+PORTABLE-0.7.0.md is authoritative for this candidate.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
 driver_version=0.7.0.2
-release_variant=driver-perf0.7.0-alpha.3-us
-region_policy=US-only; no automatic substitution; firmware country SET/readback required
+release_variant=driver-portable0.7.0
+region_policy=portable firmware-owned domain; explicit ISO SET/readback preserved; no regulatory override
 firmware_version=7.45.265
 firmware_source=RPi-Distro/firmware-nonfree@3bab0f823f5b53150b76aab77093adef6655b920
 performance_branch=feature/perf-alpha3-rpi-firmware
