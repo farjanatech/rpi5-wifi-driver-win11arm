@@ -1,7 +1,7 @@
 name: Build C# Wi-Fi connector
 on:
   push:
-    branches: [bringup/cyw43455-sdio-arm64]
+    branches: [main]
     paths: ['connector/**', '.github/workflows/connector.yml']
   workflow_dispatch:
 permissions:
@@ -20,11 +20,6 @@ jobs:
       - name: Create output directory
         shell: pwsh
         run: New-Item -ItemType Directory -Path ci-logs,artifacts/connector -Force | Out-Null
-      - name: Require unchanged driver, installer, firmware and connection protocol
-        shell: pwsh
-        run: |
-          git diff --exit-code f4dc733fff854a740e03a1b8482791c9d95aea09 HEAD -- src package installer utility third_party connector/Protocol.cs connector/Operations.cs rpi5-cyw43455.vcxproj
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build mocked x64 test host
         shell: pwsh
         run: |

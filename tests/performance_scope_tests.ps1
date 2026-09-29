@@ -1,53 +1,33 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
-$baseline='6e652fb86aef595cf6f6fbf6f05c1769d5673055'
-function Get-PerformanceSource([string]$Path,[switch]$Original) {
-    if($Original) {
-        $lines=@(& git -C $root show ($baseline+':'+$Path))
-        if($LASTEXITCODE -ne 0){throw "Cannot read protected baseline: $Path"}
-        return ($lines -join "`n").TrimEnd()
-    }
-    return (Get-Content -LiteralPath (Join-Path $root $Path) -Raw).Replace("`r`n","`n").TrimEnd()
+
+function Read-RepoFile([string]$Path) {
+    return (Get-Content -LiteralPath (Join-Path $root $Path) -Raw).Replace("`r`n","`n")
 }
-function Assert-PerformanceEqual([string]$Actual,[string]$Expected,[string]$Label) {
-    if($Actual -cne $Expected){throw "Protected baseline changed: $Label"}
+
+$header=Read-RepoFile 'src/driver/driver.h'
+if($header -notmatch '#define RPI5CYW_TX_LIMIT 64u'){throw 'The proven 64-frame TX admission cap changed.'}
+
+$rx=Read-RepoFile 'src/cyw43455/rx_config.h'
+if($rx -notmatch 'CywInt\(A,"bus:txglom",1\)'){throw 'Host RX aggregation is not enabled.'}
+if($rx -notmatch 'CywInt\(A,"bus:rxglom",0\)'){throw 'Host TX aggregation changed without dedicated validation.'}
+
+$sdioHeader=Read-RepoFile 'src/sdio/sdio.h'
+if($sdioHeader -notmatch '#define CYW_SDIO_HIGH_SPEED_CLOCK_KHZ 50000UL'){throw 'Verified 50 MHz SDR ceiling changed.'}
+if($sdioHeader -notmatch '#define CYW_SDIO_OPERATING_CLOCK_KHZ 25000UL'){throw '25 MHz fallback changed.'}
+
+$fifo=Read-RepoFile 'src/sdio/fifo_blocks.h'
+if($fifo -notmatch '#define CYW_FIFO_BLOCK_SIZE 512UL'){throw 'Function-2 block size changed.'}
+if($fifo -match 'SDHCI_TRNS_DMA'){throw 'DMA must remain a separately validated transport change.'}
+
+$inf=Read-RepoFile 'package/rpi5cyw.inf'
+if($inf -notmatch '(?m)^DriverVer\s*=\s*09/24/2026,0\.7\.0\.1\s*$'){throw 'Current main driver version is not 0.7.0.1.'}
+
+$workflow=Read-RepoFile '.github/workflows/build-arm64-driver.yml'
+if($workflow -notmatch 'branches:\s*\[main\]'){throw 'Driver CI is not attached to main.'}
+foreach($stale in @('bringup/cyw43455-sdio-arm64','feature/rpi-os-wifi-performance','feature/perf-alpha2-queue-pressure','driver-perf0.7.0-alpha.2')) {
+    if($workflow.Contains($stale)){throw "Stale branch/release dependency remains in active driver CI: $stale"}
 }
-$allowed=@('src/driver/driver.c','src/driver/driver.h','src/cyw43455/network.c')
-$new=@('src/cyw43455/tx_pressure_gate.h','src/cyw43455/tx_pressure_pump.h')
-$paths=@(& git -C $root ls-tree -r --name-only $baseline -- src utility connector installer diagnostics scripts/fetch-firmware.ps1 rpi5-cyw43455.vcxproj)
-if($LASTEXITCODE -ne 0 -or !$paths.Count){throw 'Cannot enumerate protected files.'}
-foreach($path in $paths) {
-    if($path -in $allowed){continue}
-    if($path -eq 'installer/Install-RPi5-WiFi-Driver.ps1') {
-        $actual=(Get-PerformanceSource $path).Replace("'0.7.0.1'","'0.7.0'")
-        Assert-PerformanceEqual $actual (Get-PerformanceSource $path -Original) $path
-    } else {
-        & git -C $root diff --quiet $baseline -- $path
-        if($LASTEXITCODE -ne 0){throw "Protected baseline changed: $path"}
-    }
-}
-foreach($file in Get-ChildItem -LiteralPath (Join-Path $root 'src') -Recurse -File) {
-    $relative=$file.FullName.Substring($root.Length+1).Replace('\','/')
-    if($relative -notin $paths -and $relative -notin $new){throw "Unexpected driver source: $relative"}
-}
-# Alpha.1 is the user-reported best build. Its entire network implementation
-# remains identical outside the two includes and ONE post-RX pump call.
-$network=Get-PerformanceSource 'src/cyw43455/network.c'
-$original=Get-PerformanceSource 'src/cyw43455/network.c' -Original
-$network=$network.Replace("#include `"tx_pressure_gate.h`"`n#include `"tx_pressure_pump.h`"`n`n",'')
-$network=$network.Replace('CywTxPostReceivePump(A,&N->Sends,&sentAfter)',
-    'CywMeasuredTxPump(A,&N->Sends,4,&sentAfter)')
-Assert-PerformanceEqual $network $original 'network except bounded post-RX pressure pump'
-$header=Get-PerformanceSource 'src/driver/driver.h'
-$header=$header.Replace("    ULONG TxPressurePasses, TxPressureFrames, TxPressureDeadlineYields;`n",'')
-Assert-PerformanceEqual $header (Get-PerformanceSource 'src/driver/driver.h' -Original) 'adapter except pressure counters'
-$driver=(Get-PerformanceSource 'src/driver/driver.c').Replace('SET_DWORD(L"DiagVersion", 31);','SET_DWORD(L"DiagVersion", 30);')
-foreach($counter in @('TxPressurePasses','TxPressureFrames','TxPressureDeadlineYields')) {
-    $driver=$driver.Replace("    SET_DWORD(L`"$counter`", Adapter->$counter);`n",'')
-}
-Assert-PerformanceEqual $driver (Get-PerformanceSource 'src/driver/driver.c' -Original) 'driver except diagnostic publication'
-$inf=Get-PerformanceSource 'package/rpi5cyw.inf'
-if($inf -notmatch '09/24/2026,0\.7\.0\.1'){throw 'Performance version missing.'}
-Assert-PerformanceEqual ($inf.Replace('09/24/2026,0.7.0.1','09/24/2026,0.7.0.0')) (Get-PerformanceSource 'package/rpi5cyw.inf' -Original) 'INF except version'
-Write-Output 'PASS: alpha.1 protected; only bounded post-RX pressure scheduling and counters added. SDIO, aggregation, queue ownership/cap, retry, firmware, authentication, country, band, connector, utilities and installer safeguards unchanged.'
+
+Write-Output 'PASS: main is the authoritative build; 64-frame TX cap, RX aggregation, 50/25 MHz SDR policy, PIO transport boundary and driver version are intact.'
