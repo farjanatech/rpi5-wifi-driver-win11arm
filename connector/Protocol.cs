@@ -70,8 +70,10 @@ internal record ScanReport(uint Generation, uint State, uint Status, int Firmwar
         return new(generation, state, Protocol.U32(data, 12), BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(28)), flags != 0, entries);
     }
 }
+internal enum BandPreference : byte { Auto = 0, GHz24 = 1, GHz5 = 2 }
 internal static class Protocol
 {
+    public const string AutoCountry = "ZZ";
     public static readonly UTF8Encoding Utf8 = new(false, true);
     public static uint U32(byte[] b, int o) => BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(o, 4));
     public static void Put(byte[] b, int o, uint v) => BinaryPrimitives.WriteUInt32LittleEndian(b.AsSpan(o, 4), v);
@@ -91,16 +93,18 @@ internal static class Protocol
         try { return Rfc2898DeriveBytes.Pbkdf2(bytes, Utf8.GetBytes(ssid), 4096, HashAlgorithmName.SHA1, 32); }
         finally { CryptographicOperations.ZeroMemory(bytes); }
     }
-    public static byte[] Connect(string country, string ssid, byte[] pmk)
+    public static byte[] Connect(string country, string ssid, byte[] pmk, BandPreference band = BandPreference.Auto)
     {
-        if (!ValidCountry(country) || !ValidSsid(ssid) || pmk.Length != 32) throw new ArgumentException("Invalid connection profile.");
+        if (!ValidCountry(country) || !ValidSsid(ssid) || pmk.Length != 32 || band is < BandPreference.Auto or > BandPreference.GHz5)
+            throw new ArgumentException("Invalid connection profile.");
         byte[] b = new byte[76], name = Utf8.GetBytes(ssid);
-        Put(b, 0, 1); Put(b, 4, (uint)name.Length); Encoding.ASCII.GetBytes(country).CopyTo(b, 8); name.CopyTo(b, 12); pmk.CopyTo(b, 44);
+        Put(b, 0, 1); Put(b, 4, (uint)name.Length); Encoding.ASCII.GetBytes(country).CopyTo(b, 8);
+        b[10] = (byte)band; name.CopyTo(b, 12); pmk.CopyTo(b, 44);
         return b;
     }
     public static byte[] Scan(string country)
     {
-        if (!ValidCountry(country)) throw new ArgumentException("Confirm the country where the Pi is physically located.");
+        if (!ValidCountry(country)) throw new ArgumentException("Invalid regulatory-domain request.");
         byte[] b = new byte[8]; Put(b, 0, 1); Encoding.ASCII.GetBytes(country).CopyTo(b, 4); return b;
     }
 }
