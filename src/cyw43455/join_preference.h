@@ -6,9 +6,10 @@
  * remain eligible and the firmware uses the requested SSID/country/security.
  */
 #include "band_policy.h"
-static NTSTATUS CywSetJoinPreference(PRPI5CYW_ADAPTER A,BOOLEAN Prefer5)
+static NTSTATUS CywSetJoinPreference(PRPI5CYW_ADAPTER A,UCHAR Preference)
 {
-    UCHAR preference[8];ULONG length=CywBuildJoinPreference(Prefer5,preference);
+    UCHAR preference[8];ULONG length=CywBuildJoinPreference(Preference,preference);
+    if(!length)return STATUS_INVALID_PARAMETER;
     NTSTATUS status;
     A->JoinPreferenceAccepted=0;A->JoinPreferenceError=0;
     A->FirmwareError=0;
@@ -21,5 +22,8 @@ static NTSTATUS CywSetJoinPreference(PRPI5CYW_ADAPTER A,BOOLEAN Prefer5)
         return STATUS_SUCCESS;
     return status;
 }
-static NTSTATUS CywApplyJoinPreference(PRPI5CYW_ADAPTER A)
-{return CywSetJoinPreference(A,TRUE);}
+static NTSTATUS CywApplyJoinPreference(PRPI5CYW_ADAPTER A,UCHAR Preference)
+{
+    /* Auto retains the previous 5-GHz-first/fallback behavior. */
+    return CywSetJoinPreference(A,Preference==CYW_BAND_PREF_AUTO?CYW_BAND_PREF_5:Preference);
+}
