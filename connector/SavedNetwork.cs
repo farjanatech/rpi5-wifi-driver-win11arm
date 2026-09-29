@@ -7,7 +7,7 @@ using System.Xml.Linq;
 
 namespace Rpi5Wifi;
 
-internal sealed record SavedNetwork(int Version, string Country, string Ssid, string ProtectedKey);
+internal sealed record SavedNetwork(int Version, string Country, string Ssid, string ProtectedKey, int Band = 0);
 internal static class Startup
 {
     public const string TaskName = "RPi5 WiFi Connector";
@@ -68,7 +68,8 @@ internal static class Startup
         AssertPrivate(new DirectoryInfo(DirectoryPath)); AssertPrivate(new FileInfo(ProfilePath));
         if (new FileInfo(ProfilePath).Length > 8192) throw new InvalidDataException("Invalid saved profile size.");
         var profile = JsonSerializer.Deserialize<SavedNetwork>(File.ReadAllText(ProfilePath));
-        if (profile == null || profile.Version != 1 || !Protocol.ValidCountry(profile.Country) || !Protocol.ValidSsid(profile.Ssid) || profile.ProtectedKey.Length > 4096)
+        if (profile == null || profile.Version is < 1 or > 2 || !Protocol.ValidCountry(profile.Country) ||
+            !Protocol.ValidSsid(profile.Ssid) || profile.ProtectedKey.Length > 4096 || profile.Band is < 0 or > 2)
             throw new InvalidDataException("Invalid saved profile.");
         return profile;
     }
@@ -113,9 +114,10 @@ internal static class Startup
         catch (Exception ex) when ((uint)ex.HResult is 0x80070002 or 0x8004130F) { return null; }
     }
     internal static dynamic? FindTask(dynamic root, string name) => LookupTask(() => (object)root.GetTask(name));
-    public static void Enable(string country, string ssid, byte[] pmk)
+    public static void Enable(string country, string ssid, byte[] pmk, BandPreference band)
     {
-        if (!Protocol.ValidCountry(country) || !Protocol.ValidSsid(ssid) || pmk.Length != 32) throw new ArgumentException("Invalid profile.");
+        if (!Protocol.ValidCountry(country) || !Protocol.ValidSsid(ssid) || pmk.Length != 32 || band is < BandPreference.Auto or > BandPreference.GHz5)
+            throw new ArgumentException("Invalid profile.");
         using var lease = new OperationLease();
         dynamic service = Scheduler(); dynamic root = service.GetFolder(@"\");
         // Never silently replace the existing PowerShell startup mechanism.
@@ -130,7 +132,7 @@ internal static class Startup
         {
             File.Copy(source, ExePath, true); SealFile(ExePath);
         }
-        var profile = new SavedNetwork(1, country, ssid, Convert.ToBase64String(ProtectedData.Protect(pmk, Entropy, DataProtectionScope.LocalMachine)));
+        var profile = new SavedNetwork(2, country, ssid, Convert.ToBase64String(ProtectedData.Protect(pmk, Entropy, DataProtectionScope.LocalMachine)), (int)band);
         File.WriteAllText(ProfilePath, JsonSerializer.Serialize(profile)); SealFile(ProfilePath);
         root.RegisterTask(TaskName, TaskXml(ExePath), 6, "SYSTEM", null, 5, "D:P(A;;FA;;;SY)(A;;FA;;;BA)");
     }
@@ -171,7 +173,7 @@ internal static class Startup
             if (current.Authenticated) return "AlreadyAuthenticated";
             if (!current.Idle) return null;
             var profile = load(); byte[] pmk = unprotect(profile);
-            try { return Operations.Connect(driver, profile.Country, profile.Ssid, pmk, CancellationToken.None, _ => { }) ? "Authenticated" : "AlreadyAuthenticated"; }
+            try { return Operations.Connect(driver, profile.Country, profile.Ssid, pmk, (BandPreference)profile.Band, CancellationToken.None, _ => { }) ? "Authenticated" : "AlreadyAuthenticated"; }
             finally { CryptographicOperations.ZeroMemory(pmk); }
         }
         catch (OperationBusyException) { return null; }
