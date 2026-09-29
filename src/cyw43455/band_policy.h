@@ -10,12 +10,21 @@
 #define CYW_BAND_JOIN_WAIT_100NS 150000000ULL
 #define CYW_BAND_MIN_5GHZ_RSSI (-70)
 
-static __inline unsigned CywBuildJoinPreference(int prefer5,unsigned char out[8])
+static __inline unsigned CywBuildJoinPreference(unsigned preference,unsigned char out[8])
 {
-    static const unsigned char band[8]={3,2,0,1,1,2,0,0};
-    static const unsigned char rssi[8]={1,2,0,0,0,0,0,0};
-    unsigned i;for(i=0;i<8;i++)out[i]=prefer5?band[i]:rssi[i];
-    return prefer5?8u:4u;
+    static const unsigned char rssi[4]={1,2,0,0};
+    unsigned char band;
+    unsigned i;
+    if(preference>CYW_BAND_PREF_5)return 0;
+    if(preference==CYW_BAND_PREF_AUTO) {
+        for(i=0;i<4;i++)out[i]=rssi[i];
+        return 4u;
+    }
+    /* Broadcom WLC_BAND_5G=1, WLC_BAND_2G=2. */
+    band=preference==CYW_BAND_PREF_5?1u:2u;
+    out[0]=3;out[1]=2;out[2]=0;out[3]=band;
+    for(i=0;i<4;i++)out[4+i]=rssi[i];
+    return 8u;
 }
 static __inline int CywBandMacValid(const unsigned char *p)
 {
@@ -37,11 +46,12 @@ static __inline int CywBandReadback(const unsigned char *channel,unsigned channe
     out[0]=c;out[1]=(unsigned long)dbm;
     out[2]=CywLe32(before);out[3]=CywLe16(before+4);return 1;
 }
-static __inline int CywBandCandidateUsable(unsigned long channel,unsigned long rssi)
+static __inline int CywBandCandidateUsable(unsigned preference,unsigned long channel,unsigned long rssi)
 {
-    /* Prefer a reasonably strong 5 GHz association, not an arbitrarily weak
-     * one. RSSI is only a conservative eligibility floor, not a speed score.
-     * A valid 2.4 GHz result is permitted if firmware found no preferred AP. */
+    if(!channel || channel>196 || (channel>14 && channel<32))return 0;
+    if(preference==CYW_BAND_PREF_24)return channel<=14;
+    if(preference==CYW_BAND_PREF_5)return channel>14;
+    /* Auto keeps the proven preference/fallback policy. */
     return channel<=14 || (int)rssi>=CYW_BAND_MIN_5GHZ_RSSI;
 }
 static __inline int CywBandStationAuthorized(const unsigned char *data,unsigned length,
