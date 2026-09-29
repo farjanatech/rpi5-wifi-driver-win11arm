@@ -7,6 +7,7 @@ on:
       - feature/rpi-os-wifi-performance
       - feature/perf-alpha3-rpi-firmware
       - feature/global-capability-wifi-manager
+      - feature/portable-fw229-native-ui
   workflow_dispatch:
     inputs:
       release_id:
@@ -42,7 +43,7 @@ jobs:
           fetch-depth: 0
 
       - name: Enforce performance-branch isolation and protected baseline scope
-        if: github.ref != 'refs/heads/feature/global-capability-wifi-manager'
+        if: github.ref != 'refs/heads/feature/global-capability-wifi-manager' && github.ref != 'refs/heads/feature/portable-fw229-native-ui'
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_scope_tests.ps1
@@ -53,6 +54,13 @@ jobs:
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/portable_scope_tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Enforce fw229 compatibility-candidate scope
+        if: github.ref == 'refs/heads/feature/portable-fw229-native-ui'
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/fw229_scope_tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Add MSBuild to PATH
