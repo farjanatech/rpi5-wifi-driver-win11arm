@@ -29,9 +29,10 @@ debian/added-firmware/brcm/brcmfmac43455-sdio.txt; 2074 bytes; unchanged calibra
 Pi 5 Model B aliases select these files; standard has update-alternatives priority 50.
 Full upstream debian/copyright (including binary-redist-Cypress) is included unmodified.
 Use only with the intended Cypress CYW43455 device under those separate terms, not GPL.
-US-only host package: existing country SET/readback checks remain mandatory.
-This firmware/CLM pair previously rejected BD; it is NOT a Bangladesh update.
-Physical US operation, WPA2 offload compatibility and speed are not verified by CI.
+Portable host package: the GUI defaults to the firmware/CLM current regulatory domain.
+Explicit ISO country requests are still validated by firmware SET/readback and are never substituted.
+An unsupported country is not forced into firmware; portable mode uses only channels already permitted by firmware/CLM.
+Physical operation, WPA2 offload compatibility and speed are not verified by CI.
 This is not a regulatory certification. No firmware/CLM bytes or power tables are edited.
 "@ |
     Set-Content -LiteralPath (Join-Path $Destination 'FIRMWARE-SOURCE.txt') -Encoding ASCII
