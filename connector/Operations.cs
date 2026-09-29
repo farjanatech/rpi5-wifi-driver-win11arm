@@ -36,13 +36,13 @@ internal static class Operations
 {
     // Called on one dedicated worker thread, so named-mutex ownership never
     // crosses an await. Status calls are memory-only, not radio polling.
-    public static bool Connect(IDriver driver, string country, string ssid, byte[] pmk, CancellationToken cancel, Action<string> progress)
+    public static bool Connect(IDriver driver, string country, string ssid, byte[] pmk, BandPreference band, CancellationToken cancel, Action<string> progress)
     {
         using var lease = new OperationLease();
         var state = LiveState.Parse(driver.Call(0x126004));
         if (state.Authenticated && state.Status == 0) { progress("Already connected; no reconnect requested."); return false; }
         if (!state.Idle) throw new InvalidOperationException("Driver must be disconnected and ready before connecting.");
-        byte[] request = Protocol.Connect(country, ssid, pmk);
+        byte[] request = Protocol.Connect(country, ssid, pmk, band);
         try { cancel.ThrowIfCancellationRequested(); driver.Call(0x12A000, request); }
         finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(request); }
         var watch = Stopwatch.StartNew();
