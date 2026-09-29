@@ -1,6 +1,6 @@
 # Performance 0.7.1: SDIO card-interrupt wakeups
 
-Driver version **0.7.1.0** on the single authoritative `main` branch.
+Driver version **0.7.1.1** on the single authoritative `main` branch.
 
 This is a focused latency/stability candidate. It preserves the 0.7.0.1 packet
 format, 64-frame TX admission cap, immediate NDIS completion ownership,
@@ -29,6 +29,18 @@ The driver now registers that resource with NDIS and enables only the SDHCI
 
 No DMA, scatter/gather, DDR50, host-TX glom, larger queue, firmware change or
 radio-setting change is included.
+
+## UEFI compatibility policy
+
+0.7.1.1 removes the old installer allowlist for specific UEFI git revisions.
+The package does **not** require exp.0.3, exp.0.5, or any other named firmware
+version. Installation requires Raspberry Pi 5 ARM64 plus the exact
+`ACPI\\RPI0011` target. The kernel then performs the stronger platform check:
+it accepts only the expected SDHCI MMIO base/length before accessing hardware.
+The line interrupt remains optional because the bounded polling path is retained.
+
+This means a newer or custom UEFI can run the driver without repackaging as long
+as it exposes the compatible direct-SDIO ACPI/resource contract.
 
 ## Diagnostics
 

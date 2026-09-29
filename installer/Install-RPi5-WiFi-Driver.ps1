@@ -7,23 +7,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.7.1.0'
-# Reviewed direct-SDIO ACPI/platform builds only. Do not admit arbitrary firmware.
-$script:SupportedUefiRevisions = @(
-    'bda4c47626ad922229dbefd7175b650562a0a64f', # UEFI exp.0.3
-    '838d87df37fe1b27c75a674fca64c1fa067413e3'  # UEFI exp.0.5 settings-save fix
-)
-
-function Get-Rpi5CompatibleUefiRevision {
-    param([AllowNull()][AllowEmptyString()][string]$BiosText)
-    if ([string]::IsNullOrWhiteSpace($BiosText)) { return $null }
-    foreach ($revision in $script:SupportedUefiRevisions) {
-        $shortRevision = $revision.Substring(0,7)
-        $pattern = '(?i)(?<![0-9a-f])(?:' + $revision + '|' + $shortRevision + ')(?![0-9a-f])'
-        if ([regex]::IsMatch($BiosText,$pattern)) { return $shortRevision }
-    }
-    return $null
-}
+$script:InstallerVersion = '0.7.1.1'
+# Compatibility is capability/resource based, not tied to a UEFI git revision.
+# The installer requires the exact ACPI target; the kernel validates the SDHCI
+# MMIO/resource layout before touching the controller. Interrupt wakeup is
+# optional because the proven bounded polling path remains available.
 
 function Test-Rpi5PnpSuccess {
     param([int]$Code)
@@ -104,17 +92,14 @@ function Get-Rpi5TargetDevice {
         return [pscustomobject]@{ Method='Win32_PnPEntity'; InstanceId=$entity.PNPDeviceID; Status=$entity.Status }
     }
 
-    # Some Pi 5 Windows builds expose an unbound ACPI node only through this
-    # inventory class. Accept it only when the exact matching UEFI is running.
-    $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
-    $biosText = "$($bios.SMBIOSBIOSVersion) $($bios.BIOSVersion -join ' ')"
-    if (Get-Rpi5CompatibleUefiRevision -BiosText $biosText) {
-        $signedNode = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
-            Where-Object { $_.DeviceID -match $hardwarePattern } |
-            Select-Object -First 1
-        if ($signedNode) {
-            return [pscustomobject]@{ Method='Win32_PnPSignedDriver+matching-UEFI'; InstanceId=$signedNode.DeviceID; Status='Unbound' }
-        }
+    # Some Pi 5 Windows builds expose an unbound ACPI node only through the
+    # signed-driver inventory. Match the exact ACPI target; do not infer
+    # compatibility from a firmware version string.
+    $signedNode = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
+        Where-Object { $_.DeviceID -match $hardwarePattern } |
+        Select-Object -First 1
+    if ($signedNode) {
+        return [pscustomobject]@{ Method='Win32_PnPSignedDriver'; InstanceId=$signedNode.DeviceID; Status='Unbound' }
     }
     return $null
 }
@@ -182,19 +167,12 @@ function Invoke-Rpi5DriverInstall {
             'Collect-RPi5-WiFi-Diagnostics.ps1')
         Write-InstallMessage "Verified $verifiedFiles package files against SHA256SUMS.txt."
 
-        $bios = Get-CimInstance Win32_BIOS
-        $biosText = "$($bios.SMBIOSBIOSVersion) $($bios.BIOSVersion -join ' ')"
-        $compatibleRevision = Get-Rpi5CompatibleUefiRevision -BiosText $biosText
-        if (-not $compatibleRevision) {
-            throw 'Supported direct-SDIO UEFI was not detected. Requires exp.0.3 (bda4c47) or exp.0.5 (838d87d). Unknown revisions are not accepted; do not bypass this check.'
-        }
-        Write-InstallMessage "Supported direct-SDIO UEFI revision $compatibleRevision detected."
-
         $device = Get-Rpi5TargetDevice
         if (-not $device) {
             throw 'ACPI\RPI0011 was not found through PnP or CIM. Refusing to force-install the driver.'
         }
-        Write-InstallMessage "Target device found: $($device.InstanceId) via $($device.Method), status=$($device.Status)."
+        Write-InstallMessage "Compatible ACPI target found: $($device.InstanceId) via $($device.Method), status=$($device.Status)."
+        Write-InstallMessage 'UEFI revision is not pinned. The driver will validate the SDHCI MMIO/resource layout; interrupt wakeup may fall back to bounded polling.'
 
         $secureBoot = $null
         try {

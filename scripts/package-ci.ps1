@@ -108,7 +108,7 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance 0.7.1.0 interrupt-wakeup candidate
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance 0.7.1.1 interrupt-wakeup + UEFI-agnostic installer
 
 Configuration: $Configuration
 Platform:      $Platform
@@ -129,9 +129,10 @@ multi-block PIO, RX aggregation/read-ahead and authentication are unchanged.
 Install only on the Pi: extract the whole package, run Install-RPi5-WiFi-Driver.cmd
 and approve elevation. Save work and restart if requested. Use the existing
 connector/profile. The installer checks package hashes, signer, ARM64, ACPI
-device, matching UEFI and existing security prerequisites. It does not enable
-Test Signing, change Secure Boot/BCD/UEFI, delete old drivers, or replace private
-credentials.
+device and existing security prerequisites. UEFI git/version strings are not
+allowlisted; compatibility is decided by the exact ACPI target and the kernel's
+SDHCI resource validation. It does not enable Test Signing, change Secure
+Boot/BCD/UEFI, delete old drivers, or replace private credentials.
 
 After connecting, Check-RPi5-WiFi-Readiness.cmd collects the bounded workload
 and diagnostics. Compare interrupt counters, queue pressure, SDIO wait sleeps,
@@ -143,7 +144,7 @@ PERFORMANCE-0.7.1.md is authoritative for this candidate.
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.7.1.0
+driver_version=0.7.1.1
 performance_branch=main
 performance_baseline=bdfa6f5b3bbe130e41abd67475411e94afd8a0f1
 measurement_utility_version=0.6.27.1
@@ -154,6 +155,7 @@ driver_commit=$env:GITHUB_SHA
 workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 reactos_reference=9130f67a8e8c759da5acbbfe613f776b07b21698
 matching_acpi_id=ACPI\\RPI0011
+uefi_policy=capability-based; no fixed firmware revision
 "@ | Set-Content (Join-Path $stage 'SOURCE_REVISION.txt') -Encoding UTF8
 
 @'
@@ -174,7 +176,7 @@ $device = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
     Where-Object { $_.InstanceId -match '^ACPI\\RPI0011(?:\\|$)' } |
     Select-Object -First 1
 if (-not $device) {
-    throw 'ACPI\\RPI0011 was not found. Install only with the matching direct-SDIO UEFI.'
+    throw 'ACPI\\RPI0011 was not found. This firmware does not expose the direct-SDIO target required by the driver.'
 }
 
 try {
