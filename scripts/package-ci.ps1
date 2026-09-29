@@ -74,6 +74,7 @@ Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
 Copy-Item (Join-Path $root 'docs\PORTABLE-0.7.0.md') $stage
+Copy-Item (Join-Path $root 'docs\PORTABLE-0.7.0.1-FW229.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -107,7 +108,7 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - Portable 0.7.0 candidate
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - Portable 0.7.0.1-fw229 candidate
 
 Configuration: $Configuration
 Platform:      $Platform
@@ -158,7 +159,7 @@ For readiness/diagnostics, run:
   Check-RPi5-WiFi-Readiness.cmd
   Run-RPi5-WiFi-Diagnostics.cmd
 
-See PORTABLE-0.7.0.md for authoritative scope and limitations.
+See PORTABLE-0.7.0.1-FW229.md for this A/B candidate and PORTABLE-0.7.0.md for the portable baseline.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
