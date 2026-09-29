@@ -163,14 +163,14 @@ See PORTABLE-0.7.0.md for authoritative scope and limitations.
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.7.0.2
-release_variant=driver-portable0.7.0
+driver_version=0.7.0.3
+release_variant=driver-portable0.7.0.1-fw229
 region_policy=portable firmware-owned domain; explicit ISO SET/readback preserved; no regulatory override
-firmware_version=7.45.265
-firmware_source=RPi-Distro/firmware-nonfree@3bab0f823f5b53150b76aab77093adef6655b920
-performance_branch=feature/perf-alpha3-rpi-firmware
+firmware_version=7.45.229
+firmware_source=ahmedarif193/reactos@929bdd689d1e18d0ef71214741d4e16eec74409c
+performance_branch=feature/portable-fw229-native-ui
 performance_baseline=6e652fb86aef595cf6f6fbf6f05c1769d5673055
-measurement_utility_version=0.6.27.1
+measurement_utility_version=0.6.27.1; compatible_with_fw229_candidate=true
 startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration
 timing_default=worker-only; detailed command and receive-indication clocks disabled
