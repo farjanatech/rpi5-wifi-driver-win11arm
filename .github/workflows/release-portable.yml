@@ -42,12 +42,23 @@ jobs:
           done
           git diff --exit-code "$CONNECTOR_SHA"..HEAD -- connector/
 
-      - name: Download tested driver and WiFi Manager artifacts
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh run download "$DRIVER_RUN" --name rpi5-cyw43455-direct-sdio-ndis-arm64-release --dir package
-          gh run download "$CONNECTOR_RUN" --name rpi5-wifi-connector-arm64 --dir connector
+      - name: Download tested driver artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-release
+          path: package
+          run-id: ${{ env.DRIVER_RUN }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+
+      - name: Download tested WiFi Manager artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rpi5-wifi-connector-arm64
+          path: connector
+          run-id: ${{ env.CONNECTOR_RUN }}
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
 
       - name: Verify driver package and performance tools
         shell: bash
