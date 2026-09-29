@@ -81,7 +81,10 @@ int main(void)
     CHECK(!CywAcceptEthernet(group,mac,4,group,33));
     CHECK(!CywValidConnect(&r));r.Version=1;r.SsidLength=1;r.Country[0]='B';r.Country[1]='D';
     CHECK(CywValidConnect(&r));r.SsidLength=33;CHECK(!CywValidConnect(&r));
-    r.SsidLength=1;r.Reserved[0]=1;CHECK(!CywValidConnect(&r));
+    r.SsidLength=1;r.Reserved[0]=1;CHECK(CywValidConnect(&r));
+    r.Reserved[0]=2;CHECK(CywValidConnect(&r));
+    r.Reserved[0]=3;CHECK(!CywValidConnect(&r));
+    r.Reserved[0]=0;r.Reserved[1]=1;CHECK(!CywValidConnect(&r));
     CywPut32(b,0x12345678);CHECK(CywLe32(b)==0x12345678 && CywBe32(b)==0x78563412);
     if(failures)return 1;puts("PASS: bounded network wire formats, NVRAM, credits and credential ABI");return 0;
 }
