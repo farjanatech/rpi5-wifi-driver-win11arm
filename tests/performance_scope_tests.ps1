@@ -7,18 +7,18 @@ function Read-RepoFile([string]$Path) {
 }
 
 $header=Read-RepoFile 'src/driver/driver.h'
-if($header -notmatch '#define RPI5CYW_TX_LIMIT 64u'){throw 'The proven 64-frame TX admission cap changed.'}
+if($header -notmatch '#define\s+RPI5CYW_TX_LIMIT\s+64u'){throw 'The proven 64-frame TX admission cap changed.'}
 
 $rx=Read-RepoFile 'src/cyw43455/rx_config.h'
 if($rx -notmatch 'CywInt\(A,"bus:txglom",1\)'){throw 'Host RX aggregation is not enabled.'}
 if($rx -notmatch 'CywInt\(A,"bus:rxglom",0\)'){throw 'Host TX aggregation changed without dedicated validation.'}
 
 $sdioHeader=Read-RepoFile 'src/sdio/sdio.h'
-if($sdioHeader -notmatch '#define CYW_SDIO_HIGH_SPEED_CLOCK_KHZ 50000UL'){throw 'Verified 50 MHz SDR ceiling changed.'}
-if($sdioHeader -notmatch '#define CYW_SDIO_OPERATING_CLOCK_KHZ 25000UL'){throw '25 MHz fallback changed.'}
+if($sdioHeader -notmatch '#define\s+CYW_SDIO_HIGH_SPEED_CLOCK_KHZ\s+50000UL'){throw 'Verified 50 MHz SDR ceiling changed.'}
+if($sdioHeader -notmatch '#define\s+CYW_SDIO_OPERATING_CLOCK_KHZ\s+25000UL'){throw '25 MHz fallback changed.'}
 
 $fifo=Read-RepoFile 'src/sdio/fifo_blocks.h'
-if($fifo -notmatch '#define CYW_FIFO_BLOCK_SIZE 512UL'){throw 'Function-2 block size changed.'}
+if($fifo -notmatch '#define\s+CYW_FIFO_BLOCK_SIZE\s+512UL'){throw 'Function-2 block size changed.'}
 if($fifo -match 'SDHCI_TRNS_DMA'){throw 'DMA must remain a separately validated transport change.'}
 
 $inf=Read-RepoFile 'package/rpi5cyw.inf'

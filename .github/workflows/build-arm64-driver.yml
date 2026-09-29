@@ -331,6 +331,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
           Get-ChildItem . -Recurse -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Extension -in '.sys','.pdb','.inf','.cat','.log' -and $_.FullName -notmatch '\\packages\\' } |
             Select-Object FullName,Length,LastWriteTime |
