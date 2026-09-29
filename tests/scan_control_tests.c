@@ -94,15 +94,21 @@ int main(void)
     CHECK(CywScanControl(&Adapter,CYW_IOCTL_SCAN_START,NULL,8,0,&Bytes)==STATUS_INVALID_PARAMETER);
     CHECK(CywScanControl(&Adapter,CYW_IOCTL_SCAN_STATUS,(PUCHAR)&report,0,sizeof(report)-1,&Bytes)==STATUS_INVALID_PARAMETER);
     CHECK(!Signals && !Bytes);
-    /* Reject other countries without scheduling work or changing the region. */
+    /* Admit any syntactically valid two-letter request. Regulatory authority
+     * remains in the worker/firmware path; malformed codes must not queue work. */
     for(i=0;i<65536;++i) {
         Input[4]=(UCHAR)(i>>8);Input[5]=(UCHAR)i;Init();
-        if(Input[4]=='U' && Input[5]=='S')continue;
-        CHECK(Start()==STATUS_INVALID_PARAMETER);
-        CHECK(!Signals && !Network.Request && !Network.ScanReport.Generation &&
-            !Network.ScanCountry[0] && !Network.ScanCountry[1] && !Network.ScanBusy);
+        if(Input[4]>='A' && Input[4]<='Z' && Input[5]>='A' && Input[5]<='Z') {
+            CHECK(Start()==STATUS_SUCCESS);
+            CHECK(Signals==1 && Network.Request==4 && Network.ScanReport.Generation==1 &&
+                Network.ScanCountry[0]==Input[4] && Network.ScanCountry[1]==Input[5] && Network.ScanBusy);
+        } else {
+            CHECK(Start()==STATUS_INVALID_PARAMETER);
+            CHECK(!Signals && !Network.Request && !Network.ScanReport.Generation &&
+                !Network.ScanCountry[0] && !Network.ScanCountry[1] && !Network.ScanBusy);
+        }
     }
-    Input[4]='U';Input[5]='S';
+    Input[4]='Z';Input[5]='Z';
     /* Power reset wipes cached results; generation survives to reject an old
      * cancel on the next operation. Reading status never schedules bus work. */
     Init();Network.ScanReport.Generation=9;Network.ScanReport.Count=1;Network.ScanReport.Entries[0].Ssid[0]='X';
