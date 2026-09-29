@@ -124,6 +124,16 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG ResourceCount;
     ULONG ResourceTypes;
 
+    /* Card interrupt is wake-only. The PASSIVE network worker remains the
+     * sole SDIO/FIFO owner; polling stays available as the recovery fallback. */
+    ULONG InterruptResourceCount, InterruptResourceFlags;
+    ULONG InterruptVector, InterruptLevel;
+    NDIS_HANDLE InterruptHandle;
+    NTSTATUS InterruptRegisterStatus;
+    ULONG InterruptRegistered, InterruptType;
+    volatile LONG InterruptNeedsRearm;
+    ULONG InterruptIsrCount, InterruptDpcCount, InterruptRearmCount, InterruptSpuriousCount;
+
     ULONG HostVersion;
     ULONG Capabilities;
     ULONG Capabilities2;
@@ -249,3 +259,11 @@ Rpi5CywWriteDiagnostics(
 
 /* Only the runtime worker calls this atomic binary snapshot writer. */
 VOID Rpi5CywWriteTimingDiagnostics(PRPI5CYW_ADAPTER Adapter);
+
+#ifndef RPI5CYW_HOST_TEST
+VOID Rpi5CywInterruptRearm(PRPI5CYW_ADAPTER Adapter);
+VOID Rpi5CywInterruptQuiesce(PRPI5CYW_ADAPTER Adapter);
+#else
+static __inline VOID Rpi5CywInterruptRearm(PRPI5CYW_ADAPTER Adapter) {(void)Adapter;}
+static __inline VOID Rpi5CywInterruptQuiesce(PRPI5CYW_ADAPTER Adapter) {(void)Adapter;}
+#endif

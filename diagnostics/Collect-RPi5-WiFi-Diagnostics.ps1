@@ -305,6 +305,9 @@ function Invoke-Rpi5WiFiDiagnostic {
                 $names = @(
                     'Stage','LastStatus','RegPhysHi','RegPhysLo','RegLength','HostVersion',
                     'Capabilities','Capabilities2','PresentState','ClockControl','PowerControl',
+                    'InterruptResourceCount','InterruptResourceFlags','InterruptVector','InterruptLevel',
+                    'InterruptRegisterStatus','InterruptRegistered','InterruptType','InterruptNeedsRearm',
+                    'InterruptIsrCount','InterruptDpcCount','InterruptRearmCount','InterruptSpuriousCount',
                     'HostControl','HostControl2','TimeoutControl','SoftwareReset',
                     'LastCommand','LastArgument','LastInterruptStatus','LastResponse',
                     'LastCommandResetStatus','Cmd5AttemptCount','Cmd5ValidAttempt','Cmd5SuccessAttempt',

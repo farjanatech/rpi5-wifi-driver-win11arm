@@ -22,7 +22,16 @@ if($fifo -notmatch '#define\s+CYW_FIFO_BLOCK_SIZE\s+512UL'){throw 'Function-2 bl
 if($fifo -match 'SDHCI_TRNS_DMA'){throw 'DMA must remain a separately validated transport change.'}
 
 $inf=Read-RepoFile 'package/rpi5cyw.inf'
-if($inf -notmatch '(?m)^DriverVer\s*=\s*09/24/2026,0\.7\.0\.1\s*$'){throw 'Current main driver version is not 0.7.0.1.'}
+if($inf -notmatch '(?m)^DriverVer\s*=\s*09/29/2026,0\.7\.1\.0\s*$'){throw 'Current main driver version is not 0.7.0.1.'}
+
+$driver=Read-RepoFile 'src/driver/driver.c'
+$network=Read-RepoFile 'src/cyw43455/network.c'
+if($sdioHeader -notmatch '#define\s+SDHCI_INT_CARD_INT\s+0x00000100UL'){throw 'SDHCI card-interrupt definition is missing.'}
+if($driver -notmatch 'NdisMRegisterInterruptEx'){throw 'NDIS interrupt registration is missing.'}
+if($driver -notmatch 'NdisMSynchronizeWithInterruptEx'){throw 'Interrupt rearm synchronization is missing.'}
+if($driver -notmatch 'CywNetworkWake\(Adapter\)'){throw 'Interrupt DPC does not wake the single bus worker.'}
+if($network -notmatch 'Rpi5CywInterruptRearm\(A\)'){throw 'Worker does not rearm the card interrupt after service.'}
+if($network -notmatch 'wait\.QuadPart=-100000'){throw 'Bounded 10 ms polling fallback was removed.'}
 
 $workflow=Read-RepoFile '.github/workflows/build-arm64-driver.yml'
 if($workflow -notmatch 'branches:\s*\[main\]'){throw 'Driver CI is not attached to main.'}
@@ -30,4 +39,4 @@ foreach($stale in @('bringup/cyw43455-sdio-arm64','feature/rpi-os-wifi-performan
     if($workflow.Contains($stale)){throw "Stale branch/release dependency remains in active driver CI: $stale"}
 }
 
-Write-Output 'PASS: main is the authoritative build; 64-frame TX cap, RX aggregation, 50/25 MHz SDR policy, PIO transport boundary and driver version are intact.'
+Write-Output 'PASS: main 0.7.1.0 keeps the proven queue/RX/SDR/PIO boundaries and adds synchronized card-interrupt wakeups with polling fallback.'

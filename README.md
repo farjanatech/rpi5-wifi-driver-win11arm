@@ -1,43 +1,13 @@
-> **This branch: performance alpha.2 (driver 0.7.0.1).** A bounded, credit-aware
-> send extension targets queue pressure while preserving alpha.1's SDIO and
-> receive implementation. Read [the alpha.2 guide](./docs/PERFORMANCE-0.7.0-alpha.2.md).
-> The user-reported best **alpha.1** remains unchanged on
-> `feature/rpi-os-wifi-performance` and in its original release. Keep it for
-> rollback; alpha.2 has no measured speed advantage yet.
+> **Current main: performance 0.7.1.0 interrupt-wakeup candidate.** The
+> existing 0.7.0.1 multi-block SDIO PIO, RX read-ahead/aggregation, 64-frame
+> queue and bounded pressure scheduling are preserved. This update registers
+> the UEFI-provided line interrupt only as a wake source; ISR/DPC never perform
+> SDIO commands, and the existing PASSIVE worker remains the sole bus owner.
+> Bounded polling remains active as fallback. See
+> [PERFORMANCE-0.7.1](./docs/PERFORMANCE-0.7.1.md).
 >
-> **Preserved performance baseline 0.7.0 alpha.1.** Multi-block SDIO PIO, validated
-> receive read-ahead and receive aggregation. Read [the candidate guide](./docs/PERFORMANCE-0.7.0.md)
-> first. Driver exp0.6.29.1, connector exp0.6.29.2 and UEFI are not replaced.
-> No measured speed claim; interrupt/DMA/DDR50 remain follow-up platform work.
-> The notes below describe the preserved baseline and earlier releases.
-
-> Baseline maintenance package: **exp0.6.29.1** — installer support for working
-> UEFI exp.0.5 and the supplied connector EXE/window icon. The signed .29 driver
-> is reused unchanged (Device Manager still shows 0.6.29.0). See
-> [EXP0.6.29.1](./docs/EXP0.6.29.1.md). No speed or startup behaviour changes.
->
-> Driver candidate: **exp0.6.29** — single C# ARM64 connector EXE, protected saved
-> network and opt-in boot-time connection, plus guarded faster firmware startup.
-> See [EXP0.6.29](./docs/EXP0.6.29.md). No instant-startup or speed guarantee: Pi
-> validation is still required. The connected data path is unchanged. Keep .28.
->
-> Previous driver candidate: **exp0.6.28**, adding an on-demand, disconnected-only
-> scanner and separate `RPi5-WiFi-App.cmd` connection window. This is **not the
-> native Windows Wi-Fi menu** and is not a speed update. See
-> [EXP0.6.28](./docs/EXP0.6.28.md). Keep the complete **exp0.6.27** package for rollback.
-> The working traffic path, firmware, 64-frame cap, packet budgets and immediate
-> send completions remain protected. Country must match the Pi's location;
-> WPA2-Personal/AES only. The first app version does not save passwords or enable
-> autoconnect. Existing startup settings and private profiles are unchanged.
-> This remains experimental/test-signed; CI does not prove physical scan support,
-> speed, reboot reliability or long-term stability.
->
-> **Measurement utility 0.6.27.1** is retained, with unchanged requests and timing
-> fields. See [measurement instructions](./docs/PERFORMANCE-0.6.27.1.md).
-> After installing on the Pi and restarting once, open the connection app.
-> `Check-RPi5-WiFi-Readiness.cmd` remains the single combined evidence collector.
-> No router rename, extra device, UEFI change or credential publication is needed.
-> Historical version notes below are retained for traceability.
+> DMA, DDR50 and host-TX aggregation are intentionally unchanged pending
+> separate hardware validation. Driver 0.7.1.0 is experimental/test-signed.
 
 # Raspberry Pi 5 CYW43455 Wi-Fi driver for Windows 11 ARM64
 

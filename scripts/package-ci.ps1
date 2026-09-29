@@ -74,6 +74,7 @@ Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
 Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0-alpha.2.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.1.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -107,54 +108,44 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance alpha.2 (0.7.0.1)
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance 0.7.1.0 interrupt-wakeup candidate
 
 Configuration: $Configuration
 Platform:      $Platform
 Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-Isolated branch: feature/perf-alpha2-queue-pressure
-Baseline: driver-perf0.7.0-alpha.1, user-reported best (preserved exactly)
+Source branch: main
+Rollback source: bdfa6f5b3bbe130e41abd67475411e94afd8a0f1
 Architecture: ACPI\\RPI0011 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
 
-New: bounded credit-aware post-receive queue-pressure relief. Alpha.1's block
-transfers, read-ahead and aggregation are unchanged. No speed guarantee.
-See PERFORMANCE-0.7.0-alpha.2.md for implementation, tests and rollback.
-Interrupt/DMA/DDR50 support is NOT implemented in this candidate.
-Firmware 7.45.229, matching CLM/calibration, country/band policy, queue limits,
-authentication, connector ABI and the working UEFI are unchanged.
+New: NDIS line-interrupt registration using only the SDHCI card interrupt as a
+wake source. ISR/DPC never perform SDIO commands; the existing PASSIVE worker
+remains the sole bus/FIFO owner and synchronized rearm occurs after service.
+The 10 ms idle poll and bounded credit retry remain fallback paths.
+DMA, DDR50, host-TX aggregation, firmware/radio settings, the 64-frame queue,
+multi-block PIO, RX aggregation/read-ahead and authentication are unchanged.
 
-Install only on the Pi: extract the whole ZIP, run Install-RPi5-WiFi-Driver.cmd
-and approve elevation. Save work and restart if requested. Continue using the
-existing connector exp0.6.29.2 EXE/profile; it is not bundled/rebuilt here.
-The installer checks package hashes, signer, ARM64, ACPI device, matching UEFI
-and existing security prerequisites. It does not enable Test Signing, change
-Secure Boot/BCD/UEFI, delete old drivers, or replace private credentials.
-This test-signed driver requires the already configured test environment.
-Its verified test certificate is added to Root/TrustedPublisher on installation.
+Install only on the Pi: extract the whole package, run Install-RPi5-WiFi-Driver.cmd
+and approve elevation. Save work and restart if requested. Use the existing
+connector/profile. The installer checks package hashes, signer, ARM64, ACPI
+device, matching UEFI and existing security prerequisites. It does not enable
+Test Signing, change Secure Boot/BCD/UEFI, delete old drivers, or replace private
+credentials.
 
-Keep working perf0.7.0-alpha.1 for rollback. A lower-version installer may not
-select an older driver: use the exact adapter's Roll Back Driver, or Have Disk
-with the previous INF if necessary. Never remove unrelated network/storage
-drivers. No Windows reinstall, router rename or UEFI change is needed.
+After connecting, Check-RPi5-WiFi-Readiness.cmd collects the bounded workload
+and diagnostics. Compare interrupt counters, queue pressure, SDIO wait sleeps,
+latency and throughput against the rollback source on the same Pi/router/band.
 
-After connecting with the existing app, Check-RPi5-WiFi-Readiness.cmd collects
-the existing bounded workload and diagnostics once. Logs stay local. Keep wired
-Ethernet available for recovery, but unplug it during throughput measurement.
-New counters in driver-before/after.txt distinguish fast-path use from mere
-enablement. Passing CI is not hardware certification; compare on the same Pi,
-router, band/channel and workload before choosing this over the stable branch.
-
-Historical EXP/PERFORMANCE documents in the ZIP describe earlier versions;
-PERFORMANCE-0.7.0-alpha.2.md is authoritative for this candidate.
+Historical EXP/PERFORMANCE documents remain for traceability;
+PERFORMANCE-0.7.1.md is authoritative for this candidate.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.7.0.1
-performance_branch=feature/perf-alpha2-queue-pressure
-performance_baseline=6e652fb86aef595cf6f6fbf6f05c1769d5673055
+driver_version=0.7.1.0
+performance_branch=main
+performance_baseline=bdfa6f5b3bbe130e41abd67475411e94afd8a0f1
 measurement_utility_version=0.6.27.1
 startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration

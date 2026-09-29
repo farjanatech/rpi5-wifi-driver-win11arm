@@ -309,6 +309,7 @@ static VOID CywWorker(PVOID Context)
     if(!NT_SUCCESS(Status))goto Failed;
     if(N->Stop)goto Exit;
     N->Ready=TRUE;A->NetworkStatus=STATUS_SUCCESS;
+    Rpi5CywInterruptRearm(A);
 /* TIMING-BEGIN */
     CywTimingStart(&A->Timing);
 /* TIMING-END */
@@ -387,6 +388,7 @@ static VOID CywWorker(PVOID Context)
         }
         Status=CywTxPostReceivePump(A,&N->Sends,&sentAfter);
         if(!NT_SUCCESS(Status))goto Failed;
+        Rpi5CywInterruptRearm(A);
 /* TIMING-BEGIN */
         CywTimingEnd(&A->Timing,CywTimeWorkerWork,cycleStart);
         previousCycle=cycleStart;haveCycle=TRUE;previousBlocked=A->TxCreditWaits!=creditBefore;
@@ -469,6 +471,7 @@ VOID CywNetworkStop(PRPI5CYW_ADAPTER A)
 {
     CYW_NETWORK *N=A->Network;KIRQL irql;
     if(!N)return;
+    Rpi5CywInterruptQuiesce(A);
     KeAcquireSpinLock(&ControlLock,&irql);if(ControlAdapter==A)ControlAdapter=NULL;
     KeReleaseSpinLock(&ControlLock,irql);
     InterlockedExchange(&N->Stop,1);KeSetEvent(&N->Wake,0,FALSE);
@@ -504,6 +507,7 @@ NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER A,BOOLEAN On)
     HANDLE handle;NTSTATUS status;
     if(!N)return STATUS_DEVICE_NOT_READY;
     if(!On) {
+        Rpi5CywInterruptQuiesce(A);
         N->Ready=FALSE;InterlockedExchange(&N->Stop,1);KeSetEvent(&N->Wake,0,FALSE);
         CywRefreshTxGate(A);
         if(N->Thread) {
@@ -552,6 +556,11 @@ VOID CywNetworkCancelSend(PRPI5CYW_ADAPTER A,PVOID CancelId)
 {
     CYW_NETWORK *N=A->Network;if(!N)return;
     CywTxCancel(&N->Sends,CancelId);KeSetEvent(&N->Wake,0,FALSE);
+}
+VOID CywNetworkWake(PRPI5CYW_ADAPTER A)
+{
+    CYW_NETWORK *N=A?A->Network:NULL;
+    if(N)KeSetEvent(&N->Wake,0,FALSE);
 }
 VOID CywNetworkSetFilter(PRPI5CYW_ADAPTER A,ULONG Filter)
 {

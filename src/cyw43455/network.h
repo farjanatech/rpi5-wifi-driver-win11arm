@@ -11,6 +11,7 @@ NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER Adapter, BOOLEAN On);
 VOID CywNetworkShutdown(PRPI5CYW_ADAPTER Adapter);
 NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER Adapter, PNET_BUFFER_LIST Nbl);
 VOID CywNetworkCancelSend(PRPI5CYW_ADAPTER Adapter, PVOID CancelId);
+VOID CywNetworkWake(PRPI5CYW_ADAPTER Adapter);
 VOID CywNetworkSetFilter(PRPI5CYW_ADAPTER Adapter, ULONG Filter);
 VOID CywNetworkSetMulticast(PRPI5CYW_ADAPTER Adapter, PUCHAR List, ULONG Length);
 NTSTATUS CywControlRegister(NDIS_HANDLE DriverHandle);

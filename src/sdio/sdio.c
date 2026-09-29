@@ -234,6 +234,7 @@ SdioInitializeHost(
                 SDHCI_INT_XFER_COMPLETE |
                 SDHCI_INT_BUFFER_READ_READY |
                 SDHCI_INT_BUFFER_WRITE_READY |
+                SDHCI_INT_CARD_INT |
                 SDHCI_INT_DATA_ERROR_MASK |
                 SDHCI_INT_ERROR |
                 SDHCI_INT_CMD_ERROR_MASK);

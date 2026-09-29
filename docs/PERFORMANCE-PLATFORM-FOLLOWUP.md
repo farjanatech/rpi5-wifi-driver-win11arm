@@ -11,14 +11,13 @@ an established explanation for polling.
 
 ## Interrupt notifications
 
-Use the allocated interrupt resource and NDIS interrupt registration, with a
-short ISR that recognizes/masks only the card-interrupt source. DPC wakes the
-existing passive bus worker; it must not perform SDIO commands or create a
-second FIFO owner. Synchronize all shared interrupt-register/state changes,
-rearm only after service, and close the service/rearm/wait lost-wakeup race.
-Retain bounded polling as a recovery observation, not as a second bus owner.
-Test interrupts during initialize/pause/D3/restart/shutdown/removal and ensure
-deregistration finishes before MMIO or the worker event is freed.
+Implemented in main 0.7.1.0 as a deliberately narrow wake-only path. NDIS
+registers the allocated line interrupt; the ISR recognizes and masks only the
+SDHCI card-interrupt source, and its DPC only wakes the existing passive worker.
+All CMD52/CMD53/FIFO work stays on that one worker. Shared signal-register access
+is synchronized with the ISR, rearm happens after worker service, and bounded
+polling remains the recovery fallback. Hardware validation must still cover
+initialize/pause/D3/restart/shutdown/removal and lost/spurious interrupt counts.
 See [Microsoft's MiniportInterrupt contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nc-ndis-miniport_isr).
 
 ## DMA and scatter/gather
