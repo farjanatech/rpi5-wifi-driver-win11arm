@@ -10,12 +10,14 @@ int main(void)
 {
     unsigned char pref[8],c[12]={0},r[12]={0},m[6]={2,0x10,0x20,0x30,0x40,0x50},other[6];
     unsigned char sta[521];unsigned long out[4];unsigned i,j;
-    const unsigned char band[8]={3,2,0,1,1,2,0,0},rssi[8]={1,2,0,0,0,0,0,0};
+    const unsigned char band5[8]={3,2,0,1,1,2,0,0},band24[8]={3,2,0,2,1,2,0,0},rssi[8]={1,2,0,0,0,0,0,0};
     const unsigned channels[]={1,6,14,32,36,100,149,196};
     const unsigned invalid[]={0,15,31,197,0xffffffffu};
     const unsigned versions[]={3,4,5,7},lengths[]={84,200,252,296};
-    CHECK(CywBuildJoinPreference(1,pref)==8 && !memcmp(pref,band,8));
-    CHECK(CywBuildJoinPreference(0,pref)==4 && !memcmp(pref,rssi,8));
+    CHECK(CywBuildJoinPreference(CYW_BAND_PREF_5,pref)==8 && !memcmp(pref,band5,8));
+    CHECK(CywBuildJoinPreference(CYW_BAND_PREF_24,pref)==8 && !memcmp(pref,band24,8));
+    CHECK(CywBuildJoinPreference(CYW_BAND_PREF_AUTO,pref)==4 && !memcmp(pref,rssi,4));
+    CHECK(CywBuildJoinPreference(3,pref)==0);
     CHECK(!CywBandMacValid(NULL));memset(other,0,6);CHECK(!CywBandMacValid(other));
     memcpy(other,m,6);other[0]|=1;CHECK(!CywBandMacValid(other));
     CywPut32(r,(uint32_t)-55);
@@ -52,9 +54,13 @@ int main(void)
         CywPut32(r,values[i]);CHECK(!CywBandReadback(c,12,r,12,m,6,m,6,out));
     }
     CywPut32(r,(uint32_t)-127);CHECK(CywBandReadback(c,12,r,12,m,6,m,6,out));
-    CHECK(CywBandCandidateUsable(36,(unsigned long)-70));
-    CHECK(!CywBandCandidateUsable(36,(unsigned long)-71));
-    CHECK(CywBandCandidateUsable(6,(unsigned long)-100)); /* never forbid 2.4 */
+    CHECK(CywBandCandidateUsable(CYW_BAND_PREF_AUTO,36,(unsigned long)-70));
+    CHECK(!CywBandCandidateUsable(CYW_BAND_PREF_AUTO,36,(unsigned long)-71));
+    CHECK(CywBandCandidateUsable(CYW_BAND_PREF_AUTO,6,(unsigned long)-100));
+    CHECK(CywBandCandidateUsable(CYW_BAND_PREF_24,6,(unsigned long)-100));
+    CHECK(!CywBandCandidateUsable(CYW_BAND_PREF_24,36,(unsigned long)-40));
+    CHECK(CywBandCandidateUsable(CYW_BAND_PREF_5,36,(unsigned long)-100));
+    CHECK(!CywBandCandidateUsable(CYW_BAND_PREF_5,6,(unsigned long)-40));
     for(i=0;i<4;i++) {
         memset(sta,0,sizeof(sta));CywPut16(sta,(uint16_t)versions[i]);CywPut16(sta+2,(uint16_t)lengths[i]);
         memcpy(sta+16,m,6);CywPut32(sta+8,0x30);
