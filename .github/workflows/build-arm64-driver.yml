@@ -6,6 +6,7 @@ on:
       - bringup/cyw43455-sdio-arm64
       - feature/rpi-os-wifi-performance
       - feature/perf-alpha3-rpi-firmware
+      - feature/global-capability-wifi-manager
   workflow_dispatch:
     inputs:
       release_id:
@@ -41,9 +42,17 @@ jobs:
           fetch-depth: 0
 
       - name: Enforce performance-branch isolation and protected baseline scope
+        if: github.ref != 'refs/heads/feature/global-capability-wifi-manager'
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_scope_tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Enforce portable branch scope
+        if: github.ref == 'refs/heads/feature/global-capability-wifi-manager'
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/portable_scope_tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Add MSBuild to PATH
@@ -67,7 +76,7 @@ jobs:
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\sdio-protocol-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Test and address-sanitize US-only request admission
+      - name: Test and address-sanitize portable country and band admission
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -75,7 +84,7 @@ jobs:
           if (-not $install) { throw 'Visual C++ build tools were not found.' }
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
           $command = 'call "{0}" && cl /nologo /O2 /W4 /WX /TC /std:c17 tests\us_region_tests.c /Fe:ci-logs\us_region_tests.exe && ci-logs\us_region_tests.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\us_region_tests.c /Fe:ci-logs\us_region_asan.exe && ci-logs\us_region_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\scan_control_tests.c /Fe:ci-logs\scan_control_asan.exe && ci-logs\scan_control_asan.exe' -f $vcvars
-          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\us-region-tests.log
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\portable-region-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Simulate actual SDIO and chip startup code
