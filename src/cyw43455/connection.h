@@ -11,7 +11,7 @@ static NTSTATUS CywConnect(PRPI5CYW_ADAPTER A,CYW_CONNECT_REQUEST *R)
     uint32_t countryCount=0,countryListed=0;
     UCHAR rsn[22]={0x30,0x14,1,0,0,0x0f,0xac,4,1,0,0,0x0f,0xac,4,1,0,0,0x0f,0xac,2,0,0};
     NTSTATUS Status;
-    BOOLEAN autoCountry=CywCountryAuto(R->Country);
+    BOOLEAN autoCountry=CywCountryAuto(R->Country)?TRUE:FALSE;
     A->Network->Associated=A->Network->Authorized=FALSE;CywLink(A,FALSE);
     A->NetworkPhase=510;A->NetworkStatus=STATUS_SUCCESS;
     A->JoinPreferenceAccepted=0;A->JoinPreferenceError=0;A->JoinPreferenceStatus=(NTSTATUS)0x103;
@@ -104,7 +104,7 @@ CountryVerified:
         /* Explicit band selection must never silently fall back to another
          * band when firmware does not implement join_pref. */
         if(R->Reserved[0]!=CYW_BAND_PREF_AUTO) {
-            Status=STATUS_NOT_SUPPORTED;goto Exit;
+            Status=A->JoinPreferenceStatus;goto Exit;
         }
         /* Auto may retain the legacy asynchronous join on old firmware. */
         A->BandSelection[1]=7;A->BandSelection[3]=(ULONG)A->JoinPreferenceStatus;
