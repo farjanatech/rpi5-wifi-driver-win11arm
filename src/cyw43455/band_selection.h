@@ -46,12 +46,12 @@ static NTSTATUS CywBandWait(PRPI5CYW_ADAPTER A,ULONG Out[4],ULONGLONG Deadline)
     }
     return CywBandCancelled(A)?STATUS_CANCELLED:STATUS_IO_TIMEOUT;
 }
-static NTSTATUS CywJoinSelectedBand(PRPI5CYW_ADAPTER A,UCHAR Ssid[36])
+static NTSTATUS CywJoinSelectedBand(PRPI5CYW_ADAPTER A,UCHAR Ssid[36],UCHAR Preference)
 {
     ULONG *r=A->BandSelection;UCHAR disassoc[12]={0};
     ULONGLONG started=KeQueryInterruptTime();NTSTATUS status=STATUS_SUCCESS,initial=STATUS_SUCCESS,restore;
     ULONGLONG deadline=started+CYW_BAND_JOIN_WAIT_100NS;
-    BOOLEAN fallback=FALSE;
+    BOOLEAN fallback=FALSE,strictFailure=FALSE;
     A->Network->SelectingBand=TRUE;r[1]=1;r[2]=1;
     if(CywBandCancelled(A)) {status=initial=STATUS_CANCELLED;goto Exit;}
     r[13]=1;A->Network->Associated=A->Network->Authorized=FALSE;
@@ -61,9 +61,14 @@ static NTSTATUS CywJoinSelectedBand(PRPI5CYW_ADAPTER A,UCHAR Ssid[36])
     if(CywBandCancelled(A) || status==STATUS_CANCELLED) {status=STATUS_CANCELLED;goto Exit;}
     if(NT_SUCCESS(status)) {
         r[2]|=2;
-        if(!CywBandCandidateUsable(r[5],r[6])) {fallback=TRUE;r[15]=2;}
+        if(!CywBandCandidateUsable(Preference,r[5],r[6])) {
+            if(Preference==CYW_BAND_PREF_AUTO) {fallback=TRUE;r[15]=2;}
+            else {status=initial=STATUS_DEVICE_DATA_ERROR;strictFailure=TRUE;r[15]=5;}
+        }
     } else if(status==STATUS_IO_TIMEOUT || status==STATUS_DEVICE_DATA_ERROR || status==STATUS_UNSUCCESSFUL) {
-        fallback=TRUE;r[15]=A->ConnectStep==13?4u:(status==STATUS_IO_TIMEOUT?1u:3u);
+        if(Preference==CYW_BAND_PREF_AUTO) {
+            fallback=TRUE;r[15]=A->ConnectStep==13?4u:(status==STATUS_IO_TIMEOUT?1u:3u);
+        } else {strictFailure=TRUE;}
     } else goto Exit; /* Do not hide a transport/allocation failure by retrying. */
 
     A->ConnectStep=20;restore=CywSetJoinPreference(A,FALSE);
@@ -75,6 +80,7 @@ static NTSTATUS CywJoinSelectedBand(PRPI5CYW_ADAPTER A,UCHAR Ssid[36])
     }
     r[2]|=8;
     if(CywBandCancelled(A)) {status=STATUS_CANCELLED;goto Exit;}
+    if(strictFailure) {status=initial;goto Exit;}
     if(!fallback) {
         /* Restoring preference itself processes asynchronous events. Observe
          * the final current association again after that command; never copy
@@ -82,9 +88,14 @@ static NTSTATUS CywJoinSelectedBand(PRPI5CYW_ADAPTER A,UCHAR Ssid[36])
          * This uses the SAME initial deadline, not a fresh unbounded window. */
         A->ConnectStep=24;status=CywBandVerify(A,r+9,deadline);
         if(NT_SUCCESS(status)) {
-            if(!CywBandCandidateUsable(r[9],r[10])) {fallback=TRUE;r[15]=2;}
+            if(!CywBandCandidateUsable(Preference,r[9],r[10])) {
+                if(Preference==CYW_BAND_PREF_AUTO) {fallback=TRUE;r[15]=2;}
+                else {status=STATUS_DEVICE_DATA_ERROR;goto Exit;}
+            }
         } else if(status==STATUS_IO_TIMEOUT || status==STATUS_DEVICE_DATA_ERROR || status==STATUS_UNSUCCESSFUL) {
-            fallback=TRUE;r[15]=status==STATUS_IO_TIMEOUT?1u:3u;
+            if(Preference==CYW_BAND_PREF_AUTO) {
+                fallback=TRUE;r[15]=status==STATUS_IO_TIMEOUT?1u:3u;
+            } else goto Exit;
         } else goto Exit;
     }
     if(fallback) {
