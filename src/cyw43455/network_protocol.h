@@ -114,10 +114,25 @@ static __inline int CywPackNvram(const uint8_t *raw, size_t size,
 }
 /* Fixed ABI with no pointers. PMK is derived in user mode; passwords are
  * never stored in the registry, command line, diagnostics or driver logs. */
+#define CYW_BAND_PREF_AUTO 0u
+#define CYW_BAND_PREF_24   1u
+#define CYW_BAND_PREF_5    2u
 typedef struct CYW_CONNECT_REQUEST {
     uint32_t Version, SsidLength;
+    /* Country == "ZZ" means keep the firmware's current regulatory domain.
+     * Reserved[0] is a connection-time band preference, not a radio override. */
     uint8_t Country[2], Reserved[2], Ssid[32], Pmk[32];
 } CYW_CONNECT_REQUEST;
+static __inline int CywCountryAuto(const uint8_t *alpha2)
+{ return alpha2 && alpha2[0]=='Z' && alpha2[1]=='Z'; }
+static __inline int CywCountryValueUsable(const uint8_t *value,size_t length)
+{
+    return value && length==12 &&
+        value[0]>='A' && value[0]<='Z' && value[1]>='A' && value[1]<='Z' &&
+        value[0]==value[8] && value[1]==value[9] &&
+        !value[2] && !value[3] && !value[10] && !value[11] &&
+        !(CywLe32(value+4)&0x80000000u);
+}
 /* brcmfmac cfg80211.c: ISO3166 fallback for 4345 uses revision zero.
  * Never substitute a different country or ignore a firmware rejection. */
 static __inline int CywCountryRequest(const uint8_t *alpha2,uint8_t *out)
@@ -155,6 +170,6 @@ static __inline int CywValidConnect(const CYW_CONNECT_REQUEST *r)
     if(!r || r->Version!=1 || !r->SsidLength || r->SsidLength>32 ||
         r->Country[0]<'A' || r->Country[0]>'Z' ||
         r->Country[1]<'A' || r->Country[1]>'Z' ||
-        r->Reserved[0] || r->Reserved[1]) return 0;
+        r->Reserved[0]>CYW_BAND_PREF_5 || r->Reserved[1]) return 0;
     return 1;
 }
