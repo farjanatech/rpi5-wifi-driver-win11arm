@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $baseline='46ddbfd2de6ed2c2be42765d45b050f708721815'
 $allowed=@(
-  '.github/workflows/build-arm64-driver.yml','.github/workflows/connector.yml',
+  'README.md','.github/workflows/build-arm64-driver.yml','.github/workflows/connector.yml',
   'connector/MainForm.cs','connector/Operations.cs','connector/Protocol.cs','connector/RPi5.WiFi.Connector.csproj',
   'connector/SavedNetwork.cs','connector/SelfTests.cs','connector/StartupSettings.cs','connector/UiTests.cs',
   'docs/PORTABLE-0.7.0.md','scripts/fetch-firmware.ps1','scripts/package-ci.ps1',
