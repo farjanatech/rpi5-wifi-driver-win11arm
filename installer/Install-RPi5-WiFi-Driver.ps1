@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.7.0.2-uefi1'
+$script:InstallerVersion = '0.7.0.3-fw229'
 
 function Get-Rpi5UefiNotice {
     # Firmware revisions are diagnostic information, never an admission gate.
