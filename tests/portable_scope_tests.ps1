@@ -8,7 +8,7 @@ $allowed=@(
   'connector/SavedNetwork.cs','connector/SelfTests.cs','connector/StartupSettings.cs','connector/UiTests.cs',
   'docs/PORTABLE-0.7.0.md','scripts/fetch-firmware.ps1','scripts/package-ci.ps1',
   'src/cyw43455/band_policy.h','src/cyw43455/band_selection.h','src/cyw43455/connection.h',
-  'src/cyw43455/join_preference.h','src/cyw43455/network.c','src/cyw43455/network_protocol.h',
+  'src/cyw43455/join_preference.h','src/cyw43455/network.c','src/cyw43455/network_protocol.h','src/cyw43455/us_region.h',
   'src/cyw43455/scan_control.h','src/cyw43455/scan_sequence.h',
   'tests/band_policy_tests.c','tests/firmware_package_tests.ps1','tests/us_region_tests.c','tests/portable_scope_tests.ps1'
 )
