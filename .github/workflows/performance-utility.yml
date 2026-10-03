@@ -1,8 +1,9 @@
 name: Validate and package standalone performance utility
 on:
   push:
-    branches: [main]
+    branches: [main, experimental/tx-credit-pump-v0.7.1.4]
     paths:
+      - 'rpi5-cyw43455.vcxproj'
       - 'utility/**'
       - 'tests/performance_utility_tests.ps1'
       - 'tests/radio_utility_tests.ps1'

@@ -50,6 +50,9 @@ struct _CYW_NETWORK {
     ULONG RxNextLength;
     CYW_RX_GLOM RxGlom;
 };
+/* TX-CREDIT-DIAG-BEGIN */
+#include "tx_credit_runtime.h"
+/* TX-CREDIT-DIAG-END */
 static KSPIN_LOCK ControlLock;
 static PRPI5CYW_ADAPTER ControlAdapter;
 static NDIS_HANDLE ControlHandle;
@@ -207,6 +210,9 @@ static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER A)
 {
     CYW_NETWORK *N=A->Network;
     A->TxCreditSequence=N->TxSeq;A->TxCreditMaximum=N->TxMax;A->TxFlowMask=N->TxFlow;
+/* TX-CREDIT-DIAG-BEGIN */
+    CywTxDiagGate(A);
+/* TX-CREDIT-DIAG-END */
     return !A->IoStopped && !N->Stop && !N->Paused && !N->SelectingBand && N->Ready &&
         N->Authorized && N->Associated && CywTxCredit(N->TxSeq,N->TxMax,0) &&
         CywTransportPriorityAllowed(&A->Transport,N->TxFlow);
@@ -289,19 +295,33 @@ static VOID CywMeasuredDiagnostics(PRPI5CYW_ADAPTER A,ULONG Stage,NTSTATUS Statu
     CYW_TIMING_U64 Start=CywTimingBegin(&A->Timing);
     Rpi5CywWriteDiagnostics(A,Stage,Status);
     Rpi5CywWriteTimingDiagnostics(A);
+/* TX-CREDIT-DIAG-BEGIN */
+    CywTxDiagWrite(A);
+/* TX-CREDIT-DIAG-END */
     CywTimingEnd(&A->Timing,CywTimeDiagnostics,Start);
 }
 static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *S,ULONG Budget,PULONG Sent)
 {
     CYW_TIMING_U64 Start=CywTimingBegin(&A->Timing);
+/* TX-CREDIT-DIAG-BEGIN */
+    CywTxDiagPumpBegin(A,S,Budget);
+/* TX-CREDIT-DIAG-END */
     NTSTATUS Status=CywTxPump(A,S,Budget,Sent);
     CywTimingEnd(&A->Timing,CywTimeTxPump,Start);
+/* TX-CREDIT-DIAG-BEGIN */
+    CywTxDiagPumpEnd(A,S,Budget,*Sent,Start);
+/* TX-CREDIT-DIAG-END */
     return Status;
 }
 /* TIMING-END */
 
 #include "tx_pressure_gate.h"
 #include "tx_pressure_pump.h"
+/* TX-CREDIT-SCHED-BEGIN */
+#if RPI5CYW_TX_CREDIT_SCHEDULING
+#include "tx_credit_pump.h"
+#endif
+/* TX-CREDIT-SCHED-END */
 
 static VOID CywRadioRequest(PRPI5CYW_ADAPTER A)
 {
@@ -327,6 +347,9 @@ static VOID CywWorker(PVOID Context)
     BOOLEAN interruptWake,interruptUseful;
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
+/* TX-CREDIT-DIAG-BEGIN */
+    unsigned rxCreditBefore;CYW_TXD_U64 rxDiagEnd;CYW_TX_POST_OBSERVATION postObservation;
+/* TX-CREDIT-DIAG-END */
 /* TX-RETRY-BEGIN */
     ULONG retryMs;ULONG64 retryStart;NTSTATUS waitStatus;
     RtlZeroMemory(&A->TxRetry,sizeof(A->TxRetry));
@@ -355,6 +378,9 @@ static VOID CywWorker(PVOID Context)
     Rpi5CywInterruptRearm(A,FALSE,FALSE);
 /* TIMING-BEGIN */
     CywTimingStart(&A->Timing);
+/* TX-CREDIT-DIAG-BEGIN */
+    CywTxDiagStart(A);
+/* TX-CREDIT-DIAG-END */
 /* TIMING-END */
 
     CywRefreshTxGate(A);
@@ -421,6 +447,9 @@ static VOID CywWorker(PVOID Context)
         partStart=CywTimingBegin(&A->Timing);
 /* TIMING-END */
         rxStart=KeQueryInterruptTime();
+/* TX-CREDIT-DIAG-BEGIN */
+        rxCreditBefore=CywTxDiagWindow(N->TxSeq,N->TxMax);
+/* TX-CREDIT-DIAG-END */
         N->RxBatch=TRUE;N->RxBatchServiced=FALSE;
         for(i=0;CywReceiveBudget(i,KeQueryInterruptTime()-rxStart) && !N->Stop && !N->Paused;++i) {
             Status=CywPoll(A,&channel,&off,&len);
@@ -432,13 +461,39 @@ static VOID CywWorker(PVOID Context)
         CywTimingEnd(&A->Timing,CywTimeRxBatch,partStart);
 /* TIMING-END */
         if(i && !CywReceiveBudget(i,KeQueryInterruptTime()-rxStart))A->RxBatchYields++;
+/* TX-CREDIT-DIAG-BEGIN */
+        rxDiagEnd=CywTimingBegin(&A->Timing);
+        CywTxDiagRx(&A->TxCreditDiag,rxCreditBefore,CywTxDiagWindow(N->TxSeq,N->TxMax));
+/* TX-CREDIT-DIAG-END */
+/* TX-CREDIT-SCHED-BEGIN */
+#if RPI5CYW_TX_CREDIT_SCHEDULING
+        /* Spend confirmed RX-updated credits before slow periodic exporters.
+         * Receive processing and interrupt consume/rearm remain unchanged. */
+        CywTxDiagPostBegin(A,rxDiagEnd,&postObservation);
+        Status=CywTxCreditPostReceivePump(A,&N->Sends,&sentAfter);
+        CywTxDiagPostEnd(A,sentAfter,&postObservation);
+        if(!NT_SUCCESS(Status))goto Failed;
+#endif
+/* TX-CREDIT-SCHED-END */
         CywTransportSample(A);
         if(A->NetworkPhase!=lastPhase || KeQueryInterruptTime()>=nextSnapshot) {
             CywMeasuredDiagnostics(A,120,A->NetworkStatus);
             lastPhase=A->NetworkPhase;nextSnapshot=KeQueryInterruptTime()+300000000ULL;
         }
+/* TX-CREDIT-SCHED-BEGIN */
+#if !RPI5CYW_TX_CREDIT_SCHEDULING
+/* TX-CREDIT-SCHED-END */
+/* TX-CREDIT-DIAG-BEGIN */
+        CywTxDiagPostBegin(A,rxDiagEnd,&postObservation);
+/* TX-CREDIT-DIAG-END */
         Status=CywTxPostReceivePump(A,&N->Sends,&sentAfter);
+/* TX-CREDIT-DIAG-BEGIN */
+        CywTxDiagPostEnd(A,sentAfter,&postObservation);
+/* TX-CREDIT-DIAG-END */
         if(!NT_SUCCESS(Status))goto Failed;
+/* TX-CREDIT-SCHED-BEGIN */
+#endif
+/* TX-CREDIT-SCHED-END */
         interruptWake=Rpi5CywInterruptConsumeWake(A);
         interruptUseful=(BOOLEAN)(i!=0 ||
             A->Transport.StatusAcks!=irqStatusAcksBefore ||

@@ -1,8 +1,8 @@
 name: Build C# Wi-Fi connector
 on:
   push:
-    branches: [main]
-    paths: ['connector/**', '.github/workflows/connector.yml']
+    branches: [main, experimental/tx-credit-pump-v0.7.1.4]
+    paths: ['connector/**', 'rpi5-cyw43455.vcxproj', '.github/workflows/connector.yml']
   workflow_dispatch:
 permissions:
   contents: read

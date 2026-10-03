@@ -2,7 +2,7 @@ name: Build CYW43455 direct-SDIO NDIS ARM64 driver
 
 on:
   push:
-    branches: [main, better-improvement]
+    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4]
   workflow_dispatch:
 
 permissions:
@@ -19,6 +19,7 @@ jobs:
     env:
       Configuration: Release
       Platform: ARM64
+      TxCreditScheduling: 0
 
     steps:
       - name: Checkout source
@@ -29,6 +30,12 @@ jobs:
       - name: Validate performance branch invariants
         shell: pwsh
         run: |
+          git worktree add --detach ..\tx-stable-baseline c0b032543f945707c82ffc1b05a8ca7012821560
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ..\tx-stable-baseline\tests\performance_scope_tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git worktree remove ..\tx-stable-baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_scope_tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -41,6 +48,31 @@ jobs:
       - name: Create log directory
         shell: pwsh
         run: New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+
+      - name: Test TX credit observations and both scheduling modes with ASAN
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $install) { throw 'Visual C++ build tools were not found.' }
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $tests = @(
+            @('tx_credit_diag_tests',''),
+            @('tx_credit_pump_tests','/DRPI5CYW_TX_CREDIT_SCHEDULING=0'),
+            @('tx_credit_pump_tests','/DRPI5CYW_TX_CREDIT_SCHEDULING=1'),
+            @('tx_credit_sender_tests','/DRPI5CYW_DETAILED_TIMING=0'),
+            @('tx_credit_sender_tests','/DRPI5CYW_DETAILED_TIMING=1')
+          )
+          $index=0
+          foreach ($test in $tests) {
+            $name=$test[0];$define=$test[1];$index++
+            $command = 'call "{0}" && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 {1} tests\{2}.c /Fe:ci-logs\tx-credit-{3}.exe && ci-logs\tx-credit-{3}.exe' -f $vcvars,$define,$name,$index
+            cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath "ci-logs\tx-credit-$index.log"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\tx_credit_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\tx-credit-utility.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile and run SDIO protocol tests
         shell: pwsh
@@ -188,6 +220,8 @@ jobs:
         run: |
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
           $analysisPaths = @(
+            '.\utility\Get-RPi5-WiFi-TxCredit.ps1',
+            '.\tests\tx_credit_utility_tests.ps1',
             '.\diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1',
             '.\installer\Install-RPi5-WiFi-Driver.ps1',
             '.\scripts\package-diagnostics.ps1',
@@ -312,6 +346,7 @@ jobs:
           msbuild .\rpi5-cyw43455.sln /m /t:Rebuild `
             /p:Configuration=$env:Configuration `
             /p:Platform=$env:Platform `
+            /p:Rpi5TxCreditScheduling=$env:TxCreditScheduling `
             /bl:ci-logs\build.binlog `
             /fl "/flp:logfile=ci-logs\build.log;verbosity=diagnostic"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -325,7 +360,12 @@ jobs:
               throw 'Effective compiler flags do not match the optimized, low-overhead release policy.'
             }
           }
-          Write-Host 'Verified effective /O2 /Ot Release flags and detailed timing disabled.'
+          foreach ($command in $commands) {
+            if ($command -notmatch ('RPI5CYW_TX_CREDIT_SCHEDULING='+$env:TxCreditScheduling+'\s')) {
+              throw 'Effective TX scheduling mode differs from the recorded experiment mode.'
+            }
+          }
+          Write-Host 'Verified effective /O2 /Ot Release flags and detailed timing disabled.' 
 
       - name: Inventory build outputs
         if: always()
@@ -343,7 +383,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          .\scripts\package-ci.ps1 -Configuration $env:Configuration -Platform $env:Platform 2>&1 |
+          .\scripts\package-tx-credit.ps1 -Configuration $env:Configuration -Platform $env:Platform -TxCreditScheduling $env:TxCreditScheduling 2>&1 |
             Tee-Object -FilePath ci-logs/package.log
           exit $LASTEXITCODE
 
