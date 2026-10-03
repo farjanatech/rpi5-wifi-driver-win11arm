@@ -14,12 +14,17 @@ concurrency:
 
 jobs:
   build-arm64:
+    name: ARM64 (TX mode ${{ matrix.tx_mode }})
+    strategy:
+      fail-fast: false
+      matrix:
+        tx_mode: [0, 1]
     runs-on: windows-2025
     timeout-minutes: 30
     env:
       Configuration: Release
       Platform: ARM64
-      TxCreditScheduling: 1
+      TxCreditScheduling: ${{ matrix.tx_mode }}
 
     steps:
       - name: Checkout source
@@ -401,7 +406,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ndis-arm64-release
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-release-tx${{ matrix.tx_mode }}
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
@@ -410,7 +415,7 @@ jobs:
         if: steps.diagnostics.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-one-click-diagnostics-v0.6.27
+          name: rpi5-wifi-one-click-diagnostics-v0.6.27-tx${{ matrix.tx_mode }}
           path: artifacts/rpi5-wifi-one-click-diagnostics/
           if-no-files-found: error
           retention-days: 90
@@ -419,7 +424,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ci-logs
+          name: rpi5-cyw43455-direct-sdio-ci-logs-tx${{ matrix.tx_mode }}
           path: ci-logs/
           if-no-files-found: warn
           retention-days: 30
