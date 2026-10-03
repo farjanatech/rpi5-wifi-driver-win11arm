@@ -39,7 +39,11 @@ Set-Word $b.TxCreditV1 30 2;Set-Word $b.TxCreditV1 36 6
 Set-Word $b.TxCreditV1 38 4;Set-Word $b.TxCreditV1 43 8
 $v=Get-CywTxCreditReport -After $b -Before $a
 Assert-Tx ($v.F1MeanUs -eq 3000 -and $v.F2MeanUs -eq 2000 -and $null -eq $v.FramesPerPump) 'Detailed time and zero denominator.'
-# JSON roundtrip must preserve UInt64 diagnostic bytes (never JSON numeric counters).
-$round=$b | ConvertTo-Json -Depth 4 | ConvertFrom-Json
+# JSON roundtrip uses explicit base64, never ETS-decorated PS 5.1 byte arrays.
+$round=ConvertTo-CywTxCreditArchive $b | ConvertTo-Json -Depth 4 | ConvertFrom-Json
 Assert-Tx ((ConvertFrom-CywTxCreditSnapshot $round).SnapshotQpc -eq 2100) 'Snapshot JSON roundtrip.'
+$again=ConvertTo-CywTxCreditArchive $round
+Assert-Tx ($again.TxCreditV1 -ceq $round.TxCreditV1 -and $again.TimingV2 -ceq $round.TimingV2) 'Archived snapshot can be saved again.'
+$x=ConvertTo-CywTxCreditArchive $b;$x.TxCreditV1='not base64!'
+Assert-Throws {ConvertFrom-CywTxCreditSnapshot $x}
 Write-Host 'PASS: TX snapshot ABI, deltas, unavailable timing, stale/restart rejection, saturation, maxima and JSON roundtrip.'

@@ -27,8 +27,8 @@ function ConvertFrom-CywTxCreditSnapshot {
     foreach($name in @('TxCreditV1','TimingV2','WorkerStartCount')) {
         if($null -eq $Registry.PSObject.Properties[$name]){throw "Missing $name; this is not a current experimental snapshot."}
     }
-    [byte[]]$bytes=$Registry.TxCreditV1
-    [byte[]]$timing=$Registry.TimingV2
+    [byte[]]$bytes=if($Registry.TxCreditV1 -is [string]){[Convert]::FromBase64String($Registry.TxCreditV1)}else{$Registry.TxCreditV1}
+    [byte[]]$timing=if($Registry.TimingV2 -is [string]){[Convert]::FromBase64String($Registry.TimingV2)}else{$Registry.TimingV2}
     if($bytes.Length -ne 464 -or $timing.Length -ne 568){throw 'Invalid or inactive snapshot sizes.'}
     $values=[ordered]@{}
     for($i=0;$i -lt $script:CywTxCreditFields.Count;$i++) {
@@ -46,6 +46,16 @@ function ConvertFrom-CywTxCreditSnapshot {
         throw 'Stale/mixed snapshots (restart, rollback or exporter race). Collect again; do not compare these values.'
     }
     return $v
+}
+function ConvertTo-CywTxCreditArchive {
+    param([Parameter(Mandatory=$true)][object]$Registry)
+    $validated=ConvertFrom-CywTxCreditSnapshot $Registry
+    # PowerShell 5.1 may serialize decorated byte arrays as {value,Count}.
+    # Persist explicit base64 strings instead of relying on ETS array metadata.
+    $tx=if($Registry.TxCreditV1 -is [string]){$Registry.TxCreditV1}else{[Convert]::ToBase64String([byte[]]$Registry.TxCreditV1)}
+    $timing=if($Registry.TimingV2 -is [string]){$Registry.TimingV2}else{[Convert]::ToBase64String([byte[]]$Registry.TimingV2)}
+    return [pscustomobject]@{Encoding='base64';TxCreditV1=$tx;TimingV2=$timing;
+        WorkerStartCount=$validated.WorkerStart;CapturedUtc=[DateTime]::UtcNow.ToString('o')}
 }
 function Get-CywTxCreditReport {
     param([Parameter(Mandatory=$true)][object]$After,[object]$Before)
@@ -92,8 +102,7 @@ if(-not $LibraryOnly) {
     $report=Get-CywTxCreditReport -After $raw -Before $before
     if($SaveSnapshot) {
         # Explicit allowlist: never export credentials or arbitrary registry values.
-        [pscustomobject]@{TxCreditV1=$raw.TxCreditV1;TimingV2=$raw.TimingV2;
-            WorkerStartCount=$raw.WorkerStartCount;CapturedUtc=[DateTime]::UtcNow.ToString('o')} |
+        ConvertTo-CywTxCreditArchive $raw |
             ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $SaveSnapshot -Encoding UTF8
     }
     $report | ConvertTo-Json -Depth 5
