@@ -34,7 +34,7 @@ function Assert-LanRoute([object[]]$Route,[string]$Source,[int]$Index) {
         throw 'Target must use the selected source/interface and an on-link LAN route. No gateway/VPN fallback is allowed.'
     }
 }
-function Get-LanArguments([string]$Server,[string]$Source,[int]$TestPort,[int]$Duration,[int]$Parallel,[bool]$Reverse) {
+function Get-LanArgumentList([string]$Server,[string]$Source,[int]$TestPort,[int]$Duration,[int]$Parallel,[bool]$Reverse) {
     Assert-LanAddress $Server;Assert-LanAddress $Source
     if($Server -eq $Source -or $TestPort -lt 1024 -or $TestPort -gt 65535 -or
        $Duration -lt 30 -or $Duration -gt 300 -or $Parallel -notin @(1,4)){throw 'Invalid LAN test parameters.'}
@@ -138,7 +138,7 @@ if(-not $LibraryOnly) {
                 Assert-LanRoute @(Find-NetRoute -RemoteIPAddress $ServerAddress) $LocalAddress $InterfaceIndex
                 $prefix=Join-Path $folder ("trial-{0}-{1}" -f $trial,$direction)
                 $before=Save-LanSnapshot "$prefix.before.json"
-                $arguments=Get-LanArguments $ServerAddress $LocalAddress $Port $Seconds $Streams ($direction -eq 'download')
+                $arguments=Get-LanArgumentList $ServerAddress $LocalAddress $Port $Seconds $Streams ($direction -eq 'download')
                 $arguments -join ' ' | Set-Content "$prefix.command.txt" -Encoding ASCII
                 try {
                     $raw=Invoke-LanProcess $exe $arguments $ServerAddress ($Seconds+35) $prefix

@@ -7,13 +7,13 @@ foreach($address in @('10.1.2.3','172.16.1.1','172.31.255.1','192.168.1.2')){Ass
 foreach($address in @('example.com','127.0.0.1','8.8.8.8','172.32.0.1','10.1.2.999','192.168.01.2','10.1.2.3 -R','::1','')) {
     Assert-LanRejection {Assert-LanAddress $address}
 }
-$arguments=Get-LanArguments '192.168.1.10' '192.168.1.20' 5201 60 1 $false
+$arguments=Get-LanArgumentList '192.168.1.10' '192.168.1.20' 5201 60 1 $false
 Assert-LanTest (($arguments -join ' ') -ceq '-4 -c 192.168.1.10 -B 192.168.1.20 -p 5201 -t 60 -O 5 -P 1 -J') 'Bound IPv4 single-stream command.'
-$reverse=Get-LanArguments '192.168.1.10' '192.168.1.20' 5201 60 4 $true
+$reverse=Get-LanArgumentList '192.168.1.10' '192.168.1.20' 5201 60 4 $true
 Assert-LanTest ($reverse[-1] -ceq '-R' -and ($reverse -join ' ') -match '-P 4') 'Reverse command.'
-Assert-LanRejection {Get-LanArguments '192.168.1.20' '192.168.1.20' 5201 60 1 $false}
-Assert-LanRejection {Get-LanArguments '192.168.1.10' '192.168.1.20' 5201 0 1 $false}
-Assert-LanRejection {Get-LanArguments '192.168.1.10' '192.168.1.20' 5201 60 2 $false}
+Assert-LanRejection {Get-LanArgumentList '192.168.1.20' '192.168.1.20' 5201 60 1 $false}
+Assert-LanRejection {Get-LanArgumentList '192.168.1.10' '192.168.1.20' 5201 0 1 $false}
+Assert-LanRejection {Get-LanArgumentList '192.168.1.10' '192.168.1.20' 5201 60 2 $false}
 $route=@([pscustomobject]@{IPAddress='192.168.1.20';InterfaceIndex=7},[pscustomobject]@{NextHop='0.0.0.0';InterfaceIndex=7})
 Assert-LanRoute $route '192.168.1.20' 7
 Assert-LanRejection {Assert-LanRoute $route '192.168.1.21' 7}
