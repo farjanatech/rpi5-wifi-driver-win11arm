@@ -2,21 +2,6 @@ name: Validate and package standalone performance utility
 on:
   push:
     branches: [main, experimental/tx-credit-pump-v0.7.1.4]
-    paths:
-      - 'rpi5-cyw43455.vcxproj'
-      - 'utility/**'
-      - 'tests/performance_utility_tests.ps1'
-      - 'tests/radio_utility_tests.ps1'
-      - 'tests/timing_utility_tests.ps1'
-      - 'scripts/package-performance.ps1'
-      - 'docs/PERFORMANCE-0.6.27.1.md'
-      - 'tests/download_timing_tests.ps1'
-      - 'tests/measurement_clock_tests.ps1'
-      - 'tests/focused_scope_tests.ps1'
-      - 'tests/readiness_utility_tests.ps1'
-      - 'tests/scan_utility_tests.ps1'
-      - 'tests/transport_utility_tests.ps1'
-      - '.github/workflows/performance-utility.yml'
   workflow_dispatch:
 permissions:
   contents: read
