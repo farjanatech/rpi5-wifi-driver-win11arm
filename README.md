@@ -1,18 +1,9 @@
-> **Current main: performance 0.7.1.1.** The
-> existing 0.7.0.1 multi-block SDIO PIO, RX read-ahead/aggregation, 64-frame
-> queue and bounded pressure scheduling are preserved. This update registers
-> the UEFI-provided line interrupt only as a wake source; ISR/DPC never perform
-> SDIO commands, and the existing PASSIVE worker remains the sole bus owner.
-> Bounded polling remains active as fallback. See
-> [PERFORMANCE-0.7.1](./docs/PERFORMANCE-0.7.1.md).
+> **Branch `better-improvement`: stability 0.7.1.4.** This candidate returns
+> to the hardware-proven 0.7.1.2 data path and adds persistent disconnect,
+> NDIS power, Pause/Restart and worker-failure diagnostics only. No TX-glom,
+> queue, SDIO, RX, interrupt, firmware, authentication or radio tuning is changed.
+> See [STABILITY-0.7.1.4](./docs/STABILITY-0.7.1.4.md).
 >
-> The installer no longer pins exp.0.3/exp.0.5 or any other UEFI git revision.
-> It accepts any Raspberry Pi 5 firmware that exposes the required
-> `ACPI\\RPI0011` device; the kernel then validates the expected SDHCI MMIO
-> resource layout, while interrupt wakeup may fall back to bounded polling.
-> DMA, DDR50 and host-TX aggregation are intentionally unchanged pending
-> separate hardware validation. Driver 0.7.1.1 is experimental/test-signed.
-
 # Raspberry Pi 5 CYW43455 Wi-Fi driver for Windows 11 ARM64
 
 Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineon/Cypress CYW43455 Wi-Fi controller.

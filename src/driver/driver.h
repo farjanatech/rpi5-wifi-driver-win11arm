@@ -132,7 +132,15 @@ typedef struct _RPI5CYW_ADAPTER
     NTSTATUS InterruptRegisterStatus;
     ULONG InterruptRegistered, InterruptType;
     volatile long InterruptNeedsRearm;
+    volatile long InterruptWakePending;
     ULONG InterruptIsrCount, InterruptDpcCount, InterruptRearmCount, InterruptSpuriousCount;
+    ULONG InterruptNdisEnableCalls, InterruptNdisDisableCalls;
+    ULONG InterruptPendingReads, InterruptPendingReadFailures;
+    ULONG InterruptPendingF1, InterruptPendingF2, InterruptPendingEmpty;
+    ULONG InterruptRearmDeferred;
+    ULONG InterruptUsefulWakeCount, InterruptEmptyWakeCount, InterruptEmptyWakeStreak;
+    ULONG InterruptStormFallback, InterruptStormFallbackCount;
+    ULONG InterruptStatusEnable, InterruptSignalEnable;
 
     ULONG HostVersion;
     ULONG Capabilities;
@@ -239,6 +247,39 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG RamSize;
     ULONG LinkEvent;
     ULONG LinkReason;
+
+    /* Persistent connection-stability evidence. Never clear these on reconnect. */
+    ULONG DisconnectCount;
+    ULONG LastDisconnectSource;
+    ULONG LastDisconnectEvent;
+    ULONG LastDisconnectStatus;
+    ULONG LastDisconnectReason;
+    ULONG LastDisconnectNetworkPhase;
+    ULONG LastDisconnectPowerState;
+    ULONG64 LastDisconnect100ns;
+    ULONG FirmwareDisconnectCount;
+    ULONG FirmwareDeauthCount;
+    ULONG FirmwareDisassocCount;
+    ULONG FirmwareLinkDownCount;
+    ULONG FirmwareAuthLossCount;
+    ULONG FirmwareOtherDisconnectCount;
+    ULONG ExplicitDisconnectCount;
+    ULONG WorkerStartCount;
+    ULONG WorkerRestartCount;
+    ULONG WorkerFailureCount;
+    ULONG WorkerExitCount;
+    NTSTATUS LastWorkerFailureStatus;
+    ULONG64 LastWorkerFailure100ns;
+    ULONG PowerTransitionCount;
+    ULONG PowerD0Count, PowerD1Count, PowerD2Count, PowerD3Count;
+    ULONG LastPowerState;
+    ULONG64 LastPowerTransition100ns;
+    ULONG NdisPauseCount;
+    ULONG NdisRestartCount;
+    ULONG64 LastPause100ns;
+    ULONG64 LastRestart100ns;
+    ULONG SurpriseRemoveCount;
+    ULONG ShutdownCount;
 } RPI5CYW_ADAPTER, *PRPI5CYW_ADAPTER;
 
 DRIVER_INITIALIZE DriverEntry;
@@ -261,9 +302,14 @@ Rpi5CywWriteDiagnostics(
 VOID Rpi5CywWriteTimingDiagnostics(PRPI5CYW_ADAPTER Adapter);
 
 #ifndef RPI5CYW_HOST_TEST
-VOID Rpi5CywInterruptRearm(PRPI5CYW_ADAPTER Adapter);
+BOOLEAN Rpi5CywInterruptConsumeWake(PRPI5CYW_ADAPTER Adapter);
+VOID Rpi5CywInterruptRearm(PRPI5CYW_ADAPTER Adapter, BOOLEAN InterruptWake, BOOLEAN UsefulWork);
 VOID Rpi5CywInterruptQuiesce(PRPI5CYW_ADAPTER Adapter);
+VOID Rpi5CywInterruptResetRuntime(PRPI5CYW_ADAPTER Adapter);
 #else
-static __inline VOID Rpi5CywInterruptRearm(PRPI5CYW_ADAPTER Adapter) {(void)Adapter;}
+static __inline BOOLEAN Rpi5CywInterruptConsumeWake(PRPI5CYW_ADAPTER Adapter) {(void)Adapter;return FALSE;}
+static __inline VOID Rpi5CywInterruptRearm(PRPI5CYW_ADAPTER Adapter,BOOLEAN InterruptWake,BOOLEAN UsefulWork)
+{(void)Adapter;(void)InterruptWake;(void)UsefulWork;}
 static __inline VOID Rpi5CywInterruptQuiesce(PRPI5CYW_ADAPTER Adapter) {(void)Adapter;}
+static __inline VOID Rpi5CywInterruptResetRuntime(PRPI5CYW_ADAPTER Adapter) {(void)Adapter;}
 #endif

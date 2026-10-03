@@ -11,13 +11,13 @@ an established explanation for polling.
 
 ## Interrupt notifications
 
-Implemented in main 0.7.1.0 as a deliberately narrow wake-only path. NDIS
-registers the allocated line interrupt; the ISR recognizes and masks only the
-SDHCI card-interrupt source, and its DPC only wakes the existing passive worker.
-All CMD52/CMD53/FIFO work stays on that one worker. Shared signal-register access
-is synchronized with the ISR, rearm happens after worker service, and bounded
-polling remains the recovery fallback. Hardware validation must still cover
-initialize/pause/D3/restart/shutdown/removal and lost/spurious interrupt counts.
+Main 0.7.1.1 proved that the allocated interrupt can register and wake the
+worker, but the September 29 Pi run exposed millions of empty card interrupts.
+The better-improvement 0.7.1.2 candidate therefore masks CARD_INT in both SDHCI
+enable registers, leaves the level-like status bit to the SDIO source lifecycle,
+checks CCCR INTx from the PASSIVE bus owner before rearm, and falls back to
+bounded polling after 32 consecutive empty IRQ wakes. All CMD52/CMD53/FIFO work
+still stays on the one passive worker.
 See [Microsoft's MiniportInterrupt contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ndis/nc-ndis-miniport_isr).
 
 ## DMA and scatter/gather

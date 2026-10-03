@@ -75,6 +75,8 @@ Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0-alpha.2.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.1.md') $stage
+Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.1.2.md') $stage
+Copy-Item (Join-Path $root 'docs\STABILITY-0.7.1.4.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
@@ -108,45 +110,37 @@ if (-not $cat) { throw 'Inf2Cat succeeded but no catalog was produced.' }
 if ($LASTEXITCODE -ne 0) { throw "SignTool failed for CAT with exit code $LASTEXITCODE" }
 
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - performance 0.7.1.1 interrupt-wakeup + UEFI-agnostic installer
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - stability 0.7.1.4
 
 Configuration: $Configuration
 Platform:      $Platform
 Commit:        $env:GITHUB_SHA
 Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-Source branch: main
-Rollback source: bdfa6f5b3bbe130e41abd67475411e94afd8a0f1
+Source branch: better-improvement
+Protected hardware baseline: 16533ac0e7e477f5c604882d8cc82081119e3f90
 Architecture: ACPI\\RPI0011 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
 
-New: NDIS line-interrupt registration using only the SDHCI card interrupt as a
-wake source. ISR/DPC never perform SDIO commands; the existing PASSIVE worker
-remains the sole bus/FIFO owner and synchronized rearm occurs after service.
-The 10 ms idle poll and bounded credit retry remain fallback paths.
-DMA, DDR50, host-TX aggregation, firmware/radio settings, the 64-frame queue,
-multi-block PIO, RX aggregation/read-ahead and authentication are unchanged.
+New: persistent disconnect/power/lifecycle diagnostics only. Firmware DEAUTH,
+DISASSOC and LINK-down events, NDIS D0-D3, Pause/Restart, explicit disconnect,
+worker failure/restart, surprise removal and shutdown evidence is retained
+across reconnects with 64-bit timestamps.
 
-Install only on the Pi: extract the whole package, run Install-RPi5-WiFi-Driver.cmd
-and approve elevation. Save work and restart if requested. Use the existing
-connector/profile. The installer checks package hashes, signer, ARM64, ACPI
-device and existing security prerequisites. UEFI git/version strings are not
-allowlisted; compatibility is decided by the exact ACPI target and the kernel's
-SDHCI resource validation. It does not enable Test Signing, change Secure
-Boot/BCD/UEFI, delete old drivers, or replace private credentials.
+Unchanged from 0.7.1.2: single-frame TX, 64-frame queue, SDIO/FIFO PIO,
+50/25 MHz clocks, RX read-ahead/glom, transport service/polling, firmware,
+authentication/country/radio, TX pressure/retry and the complete interrupt fix.
+No TX glom, DMA, DDR50 or UEFI-policy change is included.
 
-After connecting, Check-RPi5-WiFi-Readiness.cmd collects the bounded workload
-and diagnostics. Compare interrupt counters, queue pressure, SDIO wait sleeps,
-latency and throughput against the rollback source on the same Pi/router/band.
-
-Historical EXP/PERFORMANCE documents remain for traceability;
-PERFORMANCE-0.7.1.md is authoritative for this candidate.
+For the auto-disconnect investigation, connect normally and leave the Pi idle.
+If it disconnects, collect diagnostics before manually reconnecting if possible.
+STABILITY-0.7.1.4.md explains the decisive counters.
 "@ | Set-Content (Join-Path $stage 'README-TESTING.txt') -Encoding UTF8
 
 @"
 driver_repository=$env:GITHUB_REPOSITORY
-driver_version=0.7.1.1
-performance_branch=main
-performance_baseline=bdfa6f5b3bbe130e41abd67475411e94afd8a0f1
+driver_version=0.7.1.4
+performance_branch=better-improvement
+performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90
 measurement_utility_version=0.6.27.1
 startup_receipt_compatibility=0.6.27
 build_configuration=$Configuration

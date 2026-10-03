@@ -11,6 +11,7 @@
 #include "tx_types.h"
 #include "scan_protocol.h"
 #include "rx_performance.h"
+#include "stability_diag.h"
 /* TIMING-BEGIN */
 #include "../driver/timing_clock.h"
 /* TIMING-END */
@@ -59,6 +60,38 @@ static VOID CywScanEvent(PRPI5CYW_ADAPTER A,ULONG Status,PUCHAR Payload,ULONG Le
 BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A)
 {return A->IoStopped || (A->Network && A->Network->Stop);}
 
+static BOOLEAN CywConnectionWasUp(PRPI5CYW_ADAPTER A,CYW_NETWORK *N)
+{
+    return (BOOLEAN)(A && N &&
+        (A->MediaConnectState==MediaConnectStateConnected ||
+         (N->Associated && N->Authorized)));
+}
+static VOID CywRecordDisconnect(
+    PRPI5CYW_ADAPTER A,ULONG Source,ULONG Event,ULONG Status,ULONG Reason)
+{
+    if(!A)return;
+    A->DisconnectCount++;
+    A->LastDisconnectSource=Source;
+    A->LastDisconnectEvent=Event;
+    A->LastDisconnectStatus=Status;
+    A->LastDisconnectReason=Reason;
+    A->LastDisconnectNetworkPhase=A->NetworkPhase;
+    A->LastDisconnectPowerState=A->LastPowerState;
+    A->LastDisconnect100ns=KeQueryInterruptTime();
+}
+static VOID CywRecordFirmwareDisconnect(
+    PRPI5CYW_ADAPTER A,ULONG Class,ULONG Event,ULONG Status,ULONG Reason)
+{
+    if(!A || Class==CYW_FW_DISCONNECT_NONE)return;
+    A->FirmwareDisconnectCount++;
+    if(Class==CYW_FW_DISCONNECT_DEAUTH)A->FirmwareDeauthCount++;
+    else if(Class==CYW_FW_DISCONNECT_DISASSOC)A->FirmwareDisassocCount++;
+    else if(Class==CYW_FW_DISCONNECT_LINK_DOWN)A->FirmwareLinkDownCount++;
+    else if(Class==CYW_FW_DISCONNECT_AUTH_LOSS)A->FirmwareAuthLossCount++;
+    else A->FirmwareOtherDisconnectCount++;
+    CywRecordDisconnect(A,CYW_DISCONNECT_SOURCE_FIRMWARE,Event,Status,Reason);
+}
+
 static VOID CywLink(PRPI5CYW_ADAPTER A, BOOLEAN Up)
 {
     NDIS_LINK_STATE Link;
@@ -88,7 +121,8 @@ static VOID CywLink(PRPI5CYW_ADAPTER A, BOOLEAN Up)
 static VOID CywEvent(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
 {
     CYW_NETWORK *N=A->Network;
-    ULONG skip,type,status,reason;
+    ULONG skip,type,status,reason,disconnectClass;
+    BOOLEAN wasConnected;
     PUCHAR eth,msg;
     if(n<4 || p[0]>>4!=2 || (p[2]&15)!=0)return;
     skip=4+(ULONG)p[3]*4;
@@ -103,6 +137,8 @@ static VOID CywEvent(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
      * a link transition or overwrite the existing connection diagnostics. */
     if(type==69) {CywScanEvent(A,status,eth+72,CywBe32(msg+20));return;}
     if(N->ScanBusy)return;
+    wasConnected=CywConnectionWasUp(A,N);
+    disconnectClass=CywFirmwareDisconnectClass(type,status,msg[3]);
     A->LinkEvent=type;A->LinkReason=reason;
     if(type==16) {
         N->Associated=(msg[3]&1)!=0 && status==0;
@@ -112,6 +148,9 @@ static VOID CywEvent(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     } else if(type==5 || type==6 || type==11 || type==12 || (type==0 && status!=0)) {
         N->Associated=N->Authorized=FALSE;
     }
+    if(wasConnected && !(N->Associated && N->Authorized) &&
+       disconnectClass!=CYW_FW_DISCONNECT_NONE)
+        CywRecordFirmwareDisconnect(A,disconnectClass,type,status,reason);
     CywLink(A,N->Associated && N->Authorized);
     A->NetworkPhase=N->SelectingBand?
         ((A->BandSelection[1]==6 || A->BandSelection[1]==8)?510:520):
@@ -284,6 +323,8 @@ static VOID CywWorker(PVOID Context)
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
     CYW_CONNECT_REQUEST request;
     KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0,sentBefore,sentAfter;
+    ULONG irqStatusAcksBefore,irqMailReadsBefore,irqFrameNotificationsBefore;
+    BOOLEAN interruptWake,interruptUseful;
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
 /* TX-RETRY-BEGIN */
@@ -297,6 +338,8 @@ static VOID CywWorker(PVOID Context)
     RtlZeroMemory(&A->Timing,sizeof(A->Timing));
 /* TIMING-END */
 
+    if(A->WorkerStartCount)A->WorkerRestartCount++;
+    A->WorkerStartCount++;
     N->Thread=PsGetCurrentThread();ObReferenceObject(N->Thread);
     KeSetEvent(&N->ThreadStarted,0,FALSE);
     wait.QuadPart=-100000; /* 10 ms polling, no DISPATCH_LEVEL busy wait */
@@ -309,7 +352,7 @@ static VOID CywWorker(PVOID Context)
     if(!NT_SUCCESS(Status))goto Failed;
     if(N->Stop)goto Exit;
     N->Ready=TRUE;A->NetworkStatus=STATUS_SUCCESS;
-    Rpi5CywInterruptRearm(A);
+    Rpi5CywInterruptRearm(A,FALSE,FALSE);
 /* TIMING-BEGIN */
     CywTimingStart(&A->Timing);
 /* TIMING-END */
@@ -335,6 +378,9 @@ static VOID CywWorker(PVOID Context)
         creditBefore=A->TxCreditWaits;
 /* TIMING-END */
         KeClearEvent(&N->PauseAck);
+        irqStatusAcksBefore=A->Transport.StatusAcks;
+        irqMailReadsBefore=A->Transport.MailReads;
+        irqFrameNotificationsBefore=A->Transport.FrameNotifications;
         KeAcquireSpinLock(&N->Lock,&irql);op=N->Request;N->Request=0;
         N->ControlBusy=op!=0;
         RtlCopyMemory(&request,&N->Connect,sizeof(request));RtlSecureZeroMemory(&N->Connect,sizeof(request));
@@ -350,6 +396,11 @@ static VOID CywWorker(PVOID Context)
         else if(op==4)CywScanRequest(A);
         else if(op) {
             CywTxFlush(A,&N->Sends,NDIS_STATUS_MEDIA_DISCONNECTED);
+            if(op==2) {
+                A->ExplicitDisconnectCount++;
+                if(CywConnectionWasUp(A,N))
+                    CywRecordDisconnect(A,CYW_DISCONNECT_SOURCE_EXPLICIT,0,0,0);
+            }
             Status=op==1?CywConnect(A,&request):CywCmdInt(A,3,0);
             RtlSecureZeroMemory(&request,sizeof(request));
             if(op==2 || !NT_SUCCESS(Status)) {
@@ -388,7 +439,12 @@ static VOID CywWorker(PVOID Context)
         }
         Status=CywTxPostReceivePump(A,&N->Sends,&sentAfter);
         if(!NT_SUCCESS(Status))goto Failed;
-        Rpi5CywInterruptRearm(A);
+        interruptWake=Rpi5CywInterruptConsumeWake(A);
+        interruptUseful=(BOOLEAN)(i!=0 ||
+            A->Transport.StatusAcks!=irqStatusAcksBefore ||
+            A->Transport.MailReads!=irqMailReadsBefore ||
+            A->Transport.FrameNotifications!=irqFrameNotificationsBefore);
+        Rpi5CywInterruptRearm(A,interruptWake,interruptUseful);
 /* TIMING-BEGIN */
         CywTimingEnd(&A->Timing,CywTimeWorkerWork,cycleStart);
         previousCycle=cycleStart;haveCycle=TRUE;previousBlocked=A->TxCreditWaits!=creditBefore;
@@ -419,11 +475,19 @@ static VOID CywWorker(PVOID Context)
     goto Exit;
 Failed:
     N->RxBatch=FALSE;N->RxBatchServiced=FALSE;
+    if(!N->Stop && !N->Paused) {
+        A->WorkerFailureCount++;
+        A->LastWorkerFailureStatus=Status;
+        A->LastWorkerFailure100ns=KeQueryInterruptTime();
+        if(CywConnectionWasUp(A,N))
+            CywRecordDisconnect(A,CYW_DISCONNECT_SOURCE_WORKER,0,(ULONG)Status,0);
+    }
     A->NetworkStatus=Status;N->Ready=FALSE;
     N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
     CywMeasuredDiagnostics(A,120,Status);
     CywFirmwareStop(A);
 Exit:
+    A->WorkerExitCount++;
 /* TIMING-BEGIN */
     A->Timing.Enabled=0;
 /* TIMING-END */
@@ -493,6 +557,7 @@ VOID CywNetworkPause(PRPI5CYW_ADAPTER A,BOOLEAN Paused)
     A->NdisPaused=Paused;
     if(!N)return;
     if(Paused)KeClearEvent(&N->PauseAck);
+    if(Paused)Rpi5CywInterruptQuiesce(A);
     InterlockedExchange(&N->Paused,Paused);N->Published=TRUE;KeSetEvent(&N->Wake,0,FALSE);
     if(Paused)CywScanQuiesce(A);
     CywRefreshTxGate(A);
@@ -507,6 +572,8 @@ NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER A,BOOLEAN On)
     HANDLE handle;NTSTATUS status;
     if(!N)return STATUS_DEVICE_NOT_READY;
     if(!On) {
+        if(CywConnectionWasUp(A,N))
+            CywRecordDisconnect(A,CYW_DISCONNECT_SOURCE_POWER,0,0,0);
         Rpi5CywInterruptQuiesce(A);
         N->Ready=FALSE;InterlockedExchange(&N->Stop,1);KeSetEvent(&N->Wake,0,FALSE);
         CywRefreshTxGate(A);
@@ -529,6 +596,7 @@ NTSTATUS CywNetworkPower(PRPI5CYW_ADAPTER A,BOOLEAN On)
     N->Paused=(LONG)A->NdisPaused;N->TxSeq=0;N->TxMax=1;N->TxFlow=0;N->RxPending=FALSE;
     status=Rpi5CywDirectSdioProbe(A);
     if(!NT_SUCCESS(status))return status;
+    Rpi5CywInterruptResetRuntime(A);
     KeClearEvent(&N->ThreadStarted);
     InitializeObjectAttributes(&attr,NULL,OBJ_KERNEL_HANDLE,NULL,NULL);
     status=PsCreateSystemThread(&handle,THREAD_ALL_ACCESS,&attr,NULL,NULL,CywWorker,A);

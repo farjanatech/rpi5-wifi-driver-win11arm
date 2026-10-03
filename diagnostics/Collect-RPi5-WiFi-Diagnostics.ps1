@@ -307,7 +307,11 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'Capabilities','Capabilities2','PresentState','ClockControl','PowerControl',
                     'InterruptResourceCount','InterruptResourceFlags','InterruptVector','InterruptLevel',
                     'InterruptRegisterStatus','InterruptRegistered','InterruptType','InterruptNeedsRearm',
-                    'InterruptIsrCount','InterruptDpcCount','InterruptRearmCount','InterruptSpuriousCount',
+                    'InterruptWakePending','InterruptIsrCount','InterruptDpcCount','InterruptRearmCount','InterruptSpuriousCount',
+                    'InterruptNdisEnableCalls','InterruptNdisDisableCalls',
+                    'InterruptPendingReads','InterruptPendingReadFailures','InterruptPendingF1','InterruptPendingF2','InterruptPendingEmpty',
+                    'InterruptRearmDeferred','InterruptUsefulWakeCount','InterruptEmptyWakeCount','InterruptEmptyWakeStreak',
+                    'InterruptStormFallback','InterruptStormFallbackCount','InterruptStatusEnable','InterruptSignalEnable',
                     'HostControl','HostControl2','TimeoutControl','SoftwareReset',
                     'LastCommand','LastArgument','LastInterruptStatus','LastResponse',
                     'LastCommandResetStatus','Cmd5AttemptCount','Cmd5ValidAttempt','Cmd5SuccessAttempt',
@@ -333,6 +337,15 @@ function Invoke-Rpi5WiFiDiagnostic {
                     'CountryListMembership','CountryListReplyLength',
                     'RamTransferAddress','RamTransferLength','RamTransferWrite',
                     'RamSize','LinkEvent','LinkReason','TxPackets','RxPackets',
+                    'DisconnectCount','LastDisconnectSource','LastDisconnectEvent','LastDisconnectStatus',
+                    'LastDisconnectReason','LastDisconnectNetworkPhase','LastDisconnectPowerState','LastDisconnect100ns',
+                    'FirmwareDisconnectCount','FirmwareDeauthCount','FirmwareDisassocCount','FirmwareLinkDownCount',
+                    'FirmwareAuthLossCount','FirmwareOtherDisconnectCount','ExplicitDisconnectCount',
+                    'WorkerStartCount','WorkerRestartCount','WorkerFailureCount','WorkerExitCount',
+                    'LastWorkerFailureStatus','LastWorkerFailure100ns',
+                    'PowerTransitionCount','PowerD0Count','PowerD1Count','PowerD2Count','PowerD3Count',
+                    'LastPowerState','LastPowerTransition100ns','NdisPauseCount','NdisRestartCount',
+                    'LastPause100ns','LastRestart100ns','SurpriseRemoveCount','ShutdownCount',
                     'TxCompletionBatchCalls','TxCompletionBatchNbls','TxCompletionBatchMax'
                 )
                 foreach ($name in $names) {

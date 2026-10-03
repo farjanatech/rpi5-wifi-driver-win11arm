@@ -1,48 +1,30 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
-
-function Read-RepoFile([string]$Path) {
-    return (Get-Content -LiteralPath (Join-Path $root $Path) -Raw).Replace("`r`n","`n")
+$baseline='16533ac0e7e477f5c604882d8cc82081119e3f90'
+function Read-RepoFile([string]$Path){(Get-Content -LiteralPath (Join-Path $root $Path) -Raw).Replace("`r`n","`n")}
+function Get-RevisionFile([string]$Path){(@(& git -C $root show ($baseline+':'+$Path)) -join "`n")+"`n"}
+$protected=@(
+'src/sdio/sdio.c','src/sdio/sdio.h','src/sdio/fifo_blocks.h','src/sdio/bus_mode.h',
+'src/cyw43455/transport_send.h','src/cyw43455/tx_queue.h','src/cyw43455/tx_types.h',
+'src/cyw43455/rx_config.h','src/cyw43455/rx_performance.h','src/cyw43455/network_protocol.h',
+'src/cyw43455/transport_service.h','src/cyw43455/transport_poll.h','src/cyw43455/firmware.c',
+'src/cyw43455/connection.h','src/cyw43455/radio.h','src/cyw43455/tx_dispatch.h',
+'src/cyw43455/tx_pressure_gate.h','src/cyw43455/tx_pressure_pump.h','src/cyw43455/tx_retry.h',
+'src/cyw43455/tx_retry_gate.h','src/driver/interrupt_policy.h'
+)
+foreach($p in $protected){& git -C $root diff --quiet $baseline -- $p;if($LASTEXITCODE -ne 0){throw "0.7.1.2 protected surface changed: $p"}}
+$h=Read-RepoFile 'src/driver/driver.h'
+if($h -notmatch '#define\s+RPI5CYW_TX_LIMIT\s+64u'){throw '64-frame cap changed.'}
+$d=Read-RepoFile 'src/driver/driver.c';$bd=Get-RevisionFile 'src/driver/driver.c'
+$a=$d.IndexOf('MINIPORT_ISR Rpi5CywInterrupt;');$b=$d.IndexOf('static const NDIS_OID gRpi5CywSupportedOids[]',$a)
+$ba=$bd.IndexOf('MINIPORT_ISR Rpi5CywInterrupt;');$bb=$bd.IndexOf('static const NDIS_OID gRpi5CywSupportedOids[]',$ba)
+if($d.Substring($a,$b-$a) -cne $bd.Substring($ba,$bb-$ba)){throw '0.7.1.2 interrupt implementation changed.'}
+$n=Read-RepoFile 'src/cyw43455/network.c'
+foreach($needle in @('CywRecordDisconnect','FirmwareDeauthCount','PowerD3Count','WorkerFailureCount')){if(($n+$h+$d) -notmatch $needle){throw "Missing stability evidence: $needle"}}
+foreach($old in @('tx_glom_protocol.h','tx_glom_queue.h','tx_status_burst.h','tx_status_service.h')){
+ if(Test-Path -LiteralPath (Join-Path $root "src/cyw43455/$old")){throw "Rejected performance experiment remains: $old"}
 }
-
-$header=Read-RepoFile 'src/driver/driver.h'
-if($header -notmatch '#define\s+RPI5CYW_TX_LIMIT\s+64u'){throw 'The proven 64-frame TX admission cap changed.'}
-
-$rx=Read-RepoFile 'src/cyw43455/rx_config.h'
-if($rx -notmatch 'CywInt\(A,"bus:txglom",1\)'){throw 'Host RX aggregation is not enabled.'}
-if($rx -notmatch 'CywInt\(A,"bus:rxglom",0\)'){throw 'Host TX aggregation changed without dedicated validation.'}
-
-$sdioHeader=Read-RepoFile 'src/sdio/sdio.h'
-if($sdioHeader -notmatch '#define\s+CYW_SDIO_HIGH_SPEED_CLOCK_KHZ\s+50000UL'){throw 'Verified 50 MHz SDR ceiling changed.'}
-if($sdioHeader -notmatch '#define\s+CYW_SDIO_OPERATING_CLOCK_KHZ\s+25000UL'){throw '25 MHz fallback changed.'}
-
-$fifo=Read-RepoFile 'src/sdio/fifo_blocks.h'
-if($fifo -notmatch '#define\s+CYW_FIFO_BLOCK_SIZE\s+512UL'){throw 'Function-2 block size changed.'}
-if($fifo -match 'SDHCI_TRNS_DMA'){throw 'DMA must remain a separately validated transport change.'}
-
 $inf=Read-RepoFile 'package/rpi5cyw.inf'
-if($inf -notmatch '(?m)^DriverVer\s*=\s*09/29/2026,0\.7\.1\.1\s*$'){throw 'Current main driver version is not 0.7.1.1.'}
-
-$driver=Read-RepoFile 'src/driver/driver.c'
-$network=Read-RepoFile 'src/cyw43455/network.c'
-if($sdioHeader -notmatch '#define\s+SDHCI_INT_CARD_INT\s+0x00000100UL'){throw 'SDHCI card-interrupt definition is missing.'}
-if($driver -notmatch 'NdisMRegisterInterruptEx'){throw 'NDIS interrupt registration is missing.'}
-if($driver -notmatch 'NdisMSynchronizeWithInterruptEx'){throw 'Interrupt rearm synchronization is missing.'}
-if($driver -notmatch 'CywNetworkWake\(Adapter\)'){throw 'Interrupt DPC does not wake the single bus worker.'}
-if($network -notmatch 'Rpi5CywInterruptRearm\(A\)'){throw 'Worker does not rearm the card interrupt after service.'}
-if($network -notmatch 'wait\.QuadPart=-100000'){throw 'Bounded 10 ms polling fallback was removed.'}
-
-$installer=Read-RepoFile 'installer/Install-RPi5-WiFi-Driver.ps1'
-foreach($pin in @('SupportedUefiRevisions','Get-Rpi5CompatibleUefiRevision','bda4c47','838d87d')) {
-    if($installer.Contains($pin)){throw "Fixed UEFI revision dependency remains: $pin"}
-}
-if($installer -notmatch 'ACPI\\\\RPI0011'){throw 'Installer no longer requires the exact ACPI target.'}
-
-$workflow=Read-RepoFile '.github/workflows/build-arm64-driver.yml'
-if($workflow -notmatch 'branches:\s*\[main\]'){throw 'Driver CI is not attached to main.'}
-foreach($stale in @('bringup/cyw43455-sdio-arm64','feature/rpi-os-wifi-performance','feature/perf-alpha2-queue-pressure','driver-perf0.7.0-alpha.2')) {
-    if($workflow.Contains($stale)){throw "Stale branch/release dependency remains in active driver CI: $stale"}
-}
-
-Write-Output 'PASS: main 0.7.1.1 keeps the proven queue/RX/SDR/PIO boundaries and adds synchronized card-interrupt wakeups with polling fallback.'
+if($inf -notmatch '(?m)^DriverVer\s*=\s*10/03/2026,0\.7\.1\.4\s*$'){throw 'Version is not 0.7.1.4.'}
+Write-Output 'PASS: 0.7.1.4 is 0.7.1.2 data path plus persistent disconnect/power/lifecycle diagnostics only.'
