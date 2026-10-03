@@ -6,7 +6,7 @@
  * RX credit observations are per completed batch, not per firmware header.
  */
 #ifndef RPI5CYW_TX_CREDIT_SCHEDULING
-#define RPI5CYW_TX_CREDIT_SCHEDULING 0
+#define RPI5CYW_TX_CREDIT_SCHEDULING 1
 #endif
 #if RPI5CYW_TX_CREDIT_SCHEDULING != 0 && RPI5CYW_TX_CREDIT_SCHEDULING != 1
 #error RPI5CYW_TX_CREDIT_SCHEDULING must be 0 or 1

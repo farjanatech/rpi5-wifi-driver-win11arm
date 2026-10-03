@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$Configuration,
     [Parameter(Mandatory=$true)][string]$Platform,
-    [ValidateSet('0','1')][string]$TxCreditScheduling='0'
+    [ValidateSet('0','1')][string]$TxCreditScheduling='1'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'

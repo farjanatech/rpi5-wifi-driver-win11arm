@@ -40,7 +40,7 @@
 
   <PropertyGroup>
     <TargetName>rpi5cyw</TargetName>
-    <Rpi5TxCreditScheduling Condition="'$(Rpi5TxCreditScheduling)'==''">0</Rpi5TxCreditScheduling>
+    <Rpi5TxCreditScheduling Condition="'$(Rpi5TxCreditScheduling)'==''">1</Rpi5TxCreditScheduling>
     <Rpi5DetailedTiming Condition="'$(Rpi5DetailedTiming)'==''">0</Rpi5DetailedTiming>
   </PropertyGroup>
 

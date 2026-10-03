@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cyw43455-direct-sdio-${{ github.ref }}
+  group: cyw43455-direct-sdio-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     env:
       Configuration: Release
       Platform: ARM64
-      TxCreditScheduling: 0
+      TxCreditScheduling: 1
 
     steps:
       - name: Checkout source
