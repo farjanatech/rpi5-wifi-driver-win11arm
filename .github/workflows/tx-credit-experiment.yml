@@ -2,7 +2,7 @@ name: TX credit experiment source and rollback
 
 on:
   push:
-    branches: [experimental/tx-credit-pump-v0.7.1.4]
+    branches: [experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,11 @@ jobs:
           printf '%s\n' "$baseline" > experiment-source/BASELINE_SHA.txt
           git diff --stat "$baseline" HEAD > experiment-source/DIFF_STAT.txt
           sha256sum experiment-source/*.tar.gz > experiment-source/SHA256SUMS.txt
+      - name: Test actual post-RX dispatch order in both modes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/tx_dispatch_order_tests.py --cc clang --out experiment-source/order-tests
       - uses: actions/upload-artifact@v4
         with:
           name: tx-credit-experiment-source-${{ github.sha }}

@@ -32,7 +32,7 @@ def main():
     assert current - set(files) == NEW, "Unexpected new production surface: " + str(current - set(files))
     assert "#define RPI5CYW_TX_LIMIT 64u" in (ROOT / "src/driver/driver.h").read_text()
     inf = (ROOT / "package/rpi5cyw.inf").read_text()
-    assert re.search(r"(?m)^DriverVer\s*=\s*10/03/2026,0\.7\.1\.5\s*$", inf), "Candidate version must be distinct from stable"
+    assert re.search(r"(?m)^DriverVer\s*=\s*10/03/2026,0\.7\.1\.6\s*$", inf), "Candidate version must be distinct from stable"
     # Every original TX queue/ownership, transport, RX, interrupt, retry, radio,
     # firmware and power implementation is covered above, not just file names.
     network = (ROOT / "src/cyw43455/network.c").read_text()
@@ -40,6 +40,11 @@ def main():
     assert network.index("CywTxDiagRx(&A->TxCreditDiag") < early < network.index("CywTransportSample(A);")
     assert network.count("Status=CywTxCreditPostReceivePump(") == 1
     assert "#if !RPI5CYW_TX_CREDIT_SCHEDULING" in network
+    pump = (ROOT / "src/cyw43455/tx_credit_pump.h").read_text()
+    assert pump.count("CywTxPostReceivePump(A,Q,Sent)") == 1
+    assert "CywMeasuredTxPump(" not in pump and "CywTxPressureEligible(" not in pump
+    assert "for(" not in pump and "while(" not in pump, "No experimental extension loop"
+    assert "#define RPI5CYW_TX_CREDIT_SCHEDULING 0" in (ROOT / "src/cyw43455/tx_credit_diag.h").read_text()
     print("PASS: immutable v0.7.1.4 protected source, exact removable TX observation/scheduling splices, 64-frame cap, rollback path.")
 
 if __name__ == "__main__":

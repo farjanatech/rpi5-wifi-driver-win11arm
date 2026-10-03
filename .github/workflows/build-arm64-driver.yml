@@ -2,7 +2,7 @@ name: Build CYW43455 direct-SDIO NDIS ARM64 driver
 
 on:
   push:
-    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4]
+    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix]
   workflow_dispatch:
 
 permissions:
@@ -75,8 +75,18 @@ jobs:
             cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath "ci-logs\tx-credit-$index.log"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+          $command = 'call "{0}" && python tests\tx_dispatch_order_tests.py --cc cl --out ci-logs\dispatch-order' -f $vcvars
+          cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\dispatch-order.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\tx_credit_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\tx-credit-utility.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test LAN measurement validation and bounded process handling
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\lan_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\lan-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile and run SDIO protocol tests
@@ -226,6 +236,8 @@ jobs:
           Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force -Repository PSGallery
           $analysisPaths = @(
             '.\utility\Get-RPi5-WiFi-TxCredit.ps1',
+            '.\utility\Test-RPi5-WiFi-Lan.ps1',
+            '.\tests\lan_utility_tests.ps1',
             '.\tests\tx_credit_utility_tests.ps1',
             '.\diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1',
             '.\installer\Install-RPi5-WiFi-Driver.ps1',
