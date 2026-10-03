@@ -1,0 +1,37 @@
+name: TX credit experiment source and rollback
+
+on:
+  push:
+    branches: [experimental/tx-credit-pump-v0.7.1.4]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-and-rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify immutable baseline ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=c0b032543f945707c82ffc1b05a8ca7012821560
+          git merge-base --is-ancestor "$baseline" HEAD
+          mkdir -p experiment-source
+          git archive --format=tar.gz --output=experiment-source/candidate-source.tar.gz HEAD
+          git archive --format=tar.gz --output=experiment-source/v0.7.1.4-source.tar.gz "$baseline"
+          git rev-parse HEAD > experiment-source/CANDIDATE_SHA.txt
+          printf '%s\n' "$baseline" > experiment-source/BASELINE_SHA.txt
+          git diff --stat "$baseline" HEAD > experiment-source/DIFF_STAT.txt
+          sha256sum experiment-source/*.tar.gz > experiment-source/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tx-credit-experiment-source-${{ github.sha }}
+          path: experiment-source/
+          retention-days: 30
+          if-no-files-found: error
