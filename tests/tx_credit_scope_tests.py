@@ -32,7 +32,7 @@ def main():
     assert current - set(files) == NEW, "Unexpected new production surface: " + str(current - set(files))
     assert "#define RPI5CYW_TX_LIMIT 64u" in (ROOT / "src/driver/driver.h").read_text()
     inf = (ROOT / "package/rpi5cyw.inf").read_text()
-    assert re.search(r"(?m)^DriverVer\s*=\s*10/03/2026,0\.7\.1\.6\s*$", inf), "Candidate version must be distinct from stable"
+    assert re.search(r"(?m)^DriverVer\s*=\s*10/04/2026,0\.7\.1\.7\s*$", inf), "Candidate version must be distinct from stable"
     # Every original TX queue/ownership, transport, RX, interrupt, retry, radio,
     # firmware and power implementation is covered above, not just file names.
     network = (ROOT / "src/cyw43455/network.c").read_text()
@@ -40,12 +40,22 @@ def main():
     assert network.index("CywTxDiagRx(&A->TxCreditDiag") < early < network.index("CywTransportSample(A);")
     assert network.count("Status=CywTxCreditPostReceivePump(") == 1
     assert "#if !RPI5CYW_TX_CREDIT_SCHEDULING" in network
+    # 0.7.1.7 mode 1 must not spend worker cycles on a known-exhausted queue.
+    # Exact equality is supplied by the already-tested read-only eligibility gate.
+    skip = "if(CywTxRetryEligible(A))sentBefore=0;"
+    assert skip in network, "Known exhausted TX queue must skip the initial pump"
+    assert network.index(skip) < network.index("Status=CywMeasuredTxPump(A,&N->Sends,4,&sentBefore);")
+    # Exhausted mode-1 waits must be event-first with the original 10 ms poll
+    # safety timeout, rather than entering the legacy 1 ms retry episode.
+    wait_guard = "if(CywTxRetryEligible(A)) {CywTxRetryReset(&A->TxRetry);retryMs=10;}"
+    assert wait_guard in network, "Exhausted TX wait must use event wake plus 10 ms fallback"
+    assert network.index(wait_guard) < network.index("if(!i && !sentBefore && !sentAfter)")
     pump = (ROOT / "src/cyw43455/tx_credit_pump.h").read_text()
     assert pump.count("CywTxPostReceivePump(A,Q,Sent)") == 1
     assert "CywMeasuredTxPump(" not in pump and "CywTxPressureEligible(" not in pump
     assert "for(" not in pump and "while(" not in pump, "No experimental extension loop"
     assert "#define RPI5CYW_TX_CREDIT_SCHEDULING 0" in (ROOT / "src/cyw43455/tx_credit_diag.h").read_text()
-    print("PASS: immutable v0.7.1.4 protected source, exact removable TX observation/scheduling splices, 64-frame cap, rollback path.")
+    print("PASS: immutable v0.7.1.4 source, bounded 64-frame queue, event-first exhausted-credit wait, exact rollback path.")
 
 if __name__ == "__main__":
     main()
