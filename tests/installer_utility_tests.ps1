@@ -27,14 +27,18 @@ foreach ($pattern in $forbidden) {
 
 foreach ($required in @(
     'ACPI\\RPI0011','Win32_PnPSignedDriver','Test-Rpi5PackageManifest','Get-AuthenticodeSignature',
-    'certutil.exe -addstore','pnputil.exe /add-driver','Collect-RPi5-WiFi-Diagnostics.ps1'
+    'certutil.exe -addstore','pnputil.exe /add-driver','RPi5-WiFi-AllInOne.ps1'
 )) {
     if ($source -notmatch [regex]::Escape($required)) { throw "Required safety/install behavior is missing: $required" }
 }
 if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) { throw 'One-click installer launcher is missing.' }
-if ($source -notmatch [regex]::Escape('-File $startupUpdater -RefreshExisting') -or
-    $source.IndexOf('$startupUpdater =') -lt $source.IndexOf('$verifiedFiles = Test-Rpi5PackageManifest')) {
-    throw 'Existing startup code must be refreshed only after package verification.'
+if ($source -match [regex]::Escape('Set-RPi5-WiFi-Autoconnect.ps1') -or
+    $source -match [regex]::Escape('Connect-RPi5-WiFi.ps1') -or
+    $source -match [regex]::Escape('Collect-RPi5-WiFi-Diagnostics.ps1')) {
+    throw 'Installer must expose only the consolidated all-in-one utility.'
+}
+if ($source.IndexOf('$allInOne =') -lt $source.IndexOf('$verifiedFiles = Test-Rpi5PackageManifest')) {
+    throw 'All-in-one utility may only be invoked after package verification.'
 }
 if ($source -match 'Copy-Item[^\r\n]*WiFi\.private\.json') { throw 'Installer must not replace a private profile.' }
 if ($source -notmatch [regex]::Escape('Target was unbound before installation; a manual reboot is required before validating the newly staged driver.')) {
@@ -76,17 +80,17 @@ foreach ($good in @('rpi5cyw.sys','rpi5cyw.inf','README-TESTING.txt')) {
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('rpi5-manifest-' + [guid]::NewGuid().ToString('N'))
 [void](New-Item -ItemType Directory -Path $fixture)
 $manifest = @()
-foreach ($name in @('a.txt','b.txt','c.txt','d.txt','e.txt','RPi5-WiFi-Operations.ps1')) {
+foreach ($name in @('a.txt','b.txt','c.txt','d.txt','e.txt','RPi5-WiFi-AllInOne.ps1')) {
     $path = Join-Path $fixture $name
     'synthetic test content; not executable' | Set-Content -LiteralPath $path -Encoding UTF8
     $manifest += ('{0}  {1}' -f (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash,$name)
 }
 $manifestPath = Join-Path $fixture 'SHA256SUMS.txt'
 $manifest | Set-Content -LiteralPath $manifestPath -Encoding ASCII
-if ((Test-Rpi5PackageManifest $fixture -RequiredNames @('RPi5-WiFi-Operations.ps1')) -ne 6) { throw 'Complete manifest was rejected.' }
+if ((Test-Rpi5PackageManifest $fixture -RequiredNames @('RPi5-WiFi-AllInOne.ps1')) -ne 6) { throw 'Complete manifest was rejected.' }
 $manifest[0..4] | Set-Content -LiteralPath $manifestPath -Encoding ASCII
 $rejected=$false
-try { [void](Test-Rpi5PackageManifest $fixture -RequiredNames @('RPi5-WiFi-Operations.ps1')) } catch { $rejected=$true }
+try { [void](Test-Rpi5PackageManifest $fixture -RequiredNames @('RPi5-WiFi-AllInOne.ps1')) } catch { $rejected=$true }
 if (-not $rejected) { throw 'Unmanifested startup dependency was accepted.' }
 @($manifest + $manifest[0]) | Set-Content -LiteralPath $manifestPath -Encoding ASCII
 $rejected=$false
