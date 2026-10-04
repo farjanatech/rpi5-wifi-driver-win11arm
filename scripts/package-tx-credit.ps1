@@ -27,9 +27,9 @@ Keep the ORIGINAL 0.7.1.9 new-improvement package for rollback. Reconnect with
 the existing connection utility after installation. Do not change country,
 firmware, UEFI, router settings or backlog limits for the comparison.
 Read TX-GLOM2-0.7.1.11.md before testing. This build fixes the global
-post-negotiation extended SDPCM framing found by the v0.7.1.10 Pi logs and
-still negotiates bus:rxglom with
-uses at most two one-frame NBLs per aggregate under TX pressure. Explicit
+post-negotiation extended SDPCM framing found by the v0.7.1.10 Pi logs, still
+negotiates bus:rxglom, and uses at most two one-frame NBLs per aggregate under
+TX pressure. Explicit
 firmware UNSUPPORTED falls back to the v0.7.1.9 path; ambiguous setup failures
 fail closed. Get-RPi5-WiFi-TxCredit.ps1 remains passive diagnostics.
 Detailed per-F1/F2 timing is disabled in this low-overhead package.
