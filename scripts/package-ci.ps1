@@ -41,24 +41,6 @@ Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.md') (Join-Path $stage 'THIRD_PA
 # User-facing utilities are intentionally consolidated. The generated PS1
 # embeds the separately tested source helpers; only one tool/launcher is staged.
 & (Join-Path $PSScriptRoot 'build-all-in-one-utility.ps1') -OutputDirectory $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.14.1.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.24.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.25.md') $stage
-Copy-Item (Join-Path $root 'docs\INTEGRATED-TESTING.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.24.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.25.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.26.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.26.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.27.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.28.md') $stage
-Copy-Item (Join-Path $root 'docs\EXP0.6.29.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.0-alpha.2.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.1.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.7.1.2.md') $stage
-Copy-Item (Join-Path $root 'docs\STABILITY-0.7.1.4.md') $stage
-Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.27.1.md') $stage
 
 $pdb = Get-ChildItem $root -Filter 'rpi5cyw.pdb' -File -Recurse -ErrorAction SilentlyContinue |
     Where-Object { $_.FullName -notmatch '\\artifacts\\|\\packages\\' } |
