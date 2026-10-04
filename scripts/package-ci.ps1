@@ -36,30 +36,11 @@ Copy-Item $sys.FullName (Join-Path $stage 'rpi5cyw.sys') -Force
 Copy-Item $inf (Join-Path $stage 'rpi5cyw.inf') -Force
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE') -Force
 Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.md') (Join-Path $stage 'THIRD_PARTY_NOTICES.md') -Force
-Copy-Item (Join-Path $root 'diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1') (Join-Path $stage 'Collect-RPi5-WiFi-Diagnostics.ps1') -Force
-Copy-Item (Join-Path $root 'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd') (Join-Path $stage 'Run-RPi5-WiFi-Diagnostics.cmd') -Force
 & (Join-Path $PSScriptRoot 'fetch-firmware.ps1') -Destination $stage
 & (Join-Path $root 'tests\firmware_package_tests.ps1') -Directory $stage
-Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.ps1') $stage
-Copy-Item (Join-Path $root 'utility\Connect-RPi5-WiFi.cmd') $stage
-foreach ($name in @('Set-RPi5-WiFi-Autoconnect.ps1', 'Enable-RPi5-WiFi-Autoconnect.cmd',
-    'Disable-RPi5-WiFi-Autoconnect.cmd', 'WiFi.config.example.json',
-    'RPi5-WiFi-Operations.ps1','Check-RPi5-WiFi-Readiness.ps1','Check-RPi5-WiFi-Readiness.cmd')) {
-    Copy-Item (Join-Path $root "utility\$name") $stage
-}
-foreach ($name in @('RPi5-WiFi-App.cmd','RPi5-WiFi-App.ps1','RPi5-WiFi-Scan.ps1')) {
-    Copy-Item (Join-Path $root "utility\$name") $stage
-}
-Copy-Item (Join-Path $root 'docs\AUTO-CONNECT.md') $stage
-Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') $stage
-Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.cmd') $stage
-Copy-Item (Join-Path $root 'utility\Measure-RPi5-WiFi-Load.ps1') $stage
-Copy-Item (Join-Path $root 'utility\RPi5-WiFi-DownloadTiming.ps1') $stage
-Copy-Item (Join-Path $root 'utility\RPi5-WiFi-MeasurementClock.ps1') $stage
-Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.ps1') $stage
-Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Radio.cmd') $stage
-Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Timing.ps1') $stage
-Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-Transport.ps1') $stage
+# User-facing utilities are intentionally consolidated. The generated PS1
+# embeds the separately tested source helpers; only one tool/launcher is staged.
+& (Join-Path $PSScriptRoot 'build-all-in-one-utility.ps1') -OutputDirectory $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.14.1.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.24.md') $stage
 Copy-Item (Join-Path $root 'docs\PERFORMANCE-0.6.25.md') $stage
@@ -279,11 +260,9 @@ Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zip -Force
 Write-Host "Diagnostics: $zip"
 '@ | Set-Content (Join-Path $stage 'collect-direct-sdio-diagnostics.ps1') -Encoding UTF8
 
-# Keep the original command name, but route it to the audited one-click collector.
-@'
-& (Join-Path $PSScriptRoot 'Collect-RPi5-WiFi-Diagnostics.ps1') @args
-exit $LASTEXITCODE
-'@ | Set-Content (Join-Path $stage 'collect-direct-sdio-diagnostics.ps1') -Encoding UTF8
+# Remove the historical standalone collector generated above. Diagnostics are
+# now available through RPi5-WiFi-AllInOne only.
+Remove-Item -LiteralPath (Join-Path $stage 'collect-direct-sdio-diagnostics.ps1') -Force -ErrorAction SilentlyContinue
 
 Get-ChildItem $stage -File | Sort-Object Name | ForEach-Object {
     $hash = Get-FileHash $_.FullName -Algorithm SHA256
