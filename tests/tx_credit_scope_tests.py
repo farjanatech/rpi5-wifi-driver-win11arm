@@ -1,4 +1,4 @@
-"""v0.7.1.13 package-only consolidation guard."""
+"""v0.7.1.14 measurement-only scaling guard."""
 from pathlib import Path
 import re
 import subprocess
@@ -17,12 +17,12 @@ def main():
     for name in files:
         actual = (ROOT / name).read_text(encoding="utf-8")
         before = git("show", BASELINE + ":" + name)
-        assert actual == before, "v0.7.1.13 must not change proven v0.7.1.11 driver source: " + name
+        assert actual == before, "v0.7.1.14 must not change proven v0.7.1.11 driver source: " + name
 
     inf = (ROOT / "package/rpi5cyw.inf").read_text()
-    assert re.search(r"(?m)^DriverVer\s*=\s*10/04/2026,0\.7\.1\.13\s*$", inf)
+    assert re.search(r"(?m)^DriverVer\s*=\s*10/04/2026,0\.7\.1\.14\s*$", inf)
     installer = (ROOT / "installer/Install-RPi5-WiFi-Driver.ps1").read_text()
-    assert "$script:InstallerVersion = '0.7.1.13'" in installer
+    assert "$script:InstallerVersion = '0.7.1.14'" in installer
     assert "RPi5-WiFi-AllInOne.ps1" in installer
     assert "Collect-RPi5-WiFi-Diagnostics.ps1" not in installer
     assert "Set-RPi5-WiFi-Autoconnect.ps1" not in installer
@@ -37,17 +37,36 @@ def main():
     ):
         assert old not in package, "Legacy user-facing utility still staged: " + old
 
+    builder = (ROOT / "scripts/build-all-in-one-utility.ps1").read_text()
+    for helper in (
+        "RPi5-WiFi-Operations.ps1",
+        "Connect-RPi5-WiFi.ps1",
+        "Get-RPi5-WiFi-Radio.ps1",
+        "Get-RPi5-WiFi-Transport.ps1",
+        "Collect-RPi5-WiFi-Diagnostics.ps1",
+    ):
+        assert helper in builder, "Required embedded helper missing: " + helper
+    for retired in (
+        "Test-RPi5-WiFi-Performance.ps1",
+        "Measure-RPi5-WiFi-Load.ps1",
+        "RPi5-WiFi-DownloadTiming.ps1",
+        "RPi5-WiFi-MeasurementClock.ps1",
+        "Get-RPi5-WiFi-Timing.ps1",
+    ):
+        assert retired not in builder, "Retired measurement helper still embedded: " + retired
+
     wrapper = (ROOT / "utility/RPi5-WiFi-AllInOne.Template.ps1").read_text()
+    assert "$script:ToolVersion='0.7.1.14'" in wrapper
     assert "https://speed.cloudflare.com/__up" in wrapper
-    assert "4 x 4 MiB" in wrapper
-    assert "UploadQueueRejectsDelta" in wrapper
-    assert "Driver baseline=v0.7.1.11 runtime; no new TX tuning in this package." in wrapper
+    assert "https://speed.cloudflare.com/__down?bytes=" in wrapper
+    assert "foreach($streams in @(1,2,4))" in wrapper
+    assert "Sustained upload stage: $streams stream(s), 16 MiB per stream." in wrapper
+    assert "Get-Rpi5FreshSnapshot" in wrapper
+    assert "TransportTxStatusChecks" in wrapper
+    assert "Cmd53WriteCount" in wrapper
+    assert "Driver runtime=byte-for-byte v0.7.1.11 source; v0.7.1.14 changes measurement only." in wrapper
 
-    perf = (ROOT / "utility/Test-RPi5-WiFi-Performance.ps1").read_text()
-    assert "[string]$OutputRoot" in perf
-    assert "if ($OutputRoot)" in perf
-
-    print("PASS: v0.7.1.13 is package/measurement consolidation only; every production driver source file is byte-for-byte green v0.7.1.11.")
+    print("PASS: v0.7.1.14 changes measurement/package code only; every production driver source file is byte-for-byte green v0.7.1.11.")
 
 if __name__ == "__main__":
     main()
