@@ -26,6 +26,9 @@ typedef struct _CYW_TX_STATE {
     CYW_PENDING_SEND Entries[CYW_TX_LIMIT];
     ULONG BacklogCount, BacklogFrames, BacklogBytes;
     CYW_PENDING_SEND Backlog[CYW_TX_BACKLOG_LIMIT];
-    /* Nonpaged, worker-only staging buffer, including BCDC header. */
+    /* Nonpaged, worker-only staging buffers, including BCDC header. */
     UCHAR Frame[1518];
+#if RPI5CYW_TX_GLOM2
+    UCHAR Frame2[1518];
+#endif
 } CYW_TX_STATE;
