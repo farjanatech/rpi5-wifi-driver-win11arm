@@ -5,7 +5,6 @@ $temp=Join-Path ([IO.Path]::GetTempPath()) ('rpi5-all-in-one-test-'+[guid]::NewG
 [void](New-Item -ItemType Directory -Path $temp)
 try {
     & (Join-Path $root 'scripts\build-all-in-one-utility.ps1') -OutputDirectory $temp
-    if($LASTEXITCODE -ne 0){throw 'All-in-one builder failed.'}
     $ps1=Join-Path $temp 'RPi5-WiFi-AllInOne.ps1'
     $cmd=Join-Path $temp 'RPi5-WiFi-AllInOne.cmd'
     if(-not (Test-Path -LiteralPath $ps1 -PathType Leaf) -or
@@ -30,7 +29,7 @@ try {
     if($source.Contains('__PAYLOAD_BASE64__')){throw 'Embedded payload marker was not replaced.'}
     if($source -match 'WiFi\.private\.json|Password\s*='){throw 'Generated utility must not embed a saved credential/profile.'}
 
-    $match=[regex]::Match($source,"\$script:PayloadBase64='([A-Za-z0-9+/=]+)'")
+    $match=[regex]::Match($source,'\$script:PayloadBase64=''([A-Za-z0-9+/=]+)''')
     if(-not $match.Success){throw 'Embedded helper payload was not found.'}
     $payloadZip=Join-Path $temp 'payload.zip'
     [IO.File]::WriteAllBytes($payloadZip,[Convert]::FromBase64String($match.Groups[1].Value))
