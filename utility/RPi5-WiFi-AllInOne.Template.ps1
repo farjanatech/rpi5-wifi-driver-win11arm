@@ -80,19 +80,19 @@ function Invoke-Rpi5UploadBenchmark {
     $ips=@(Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction Stop|Where-Object {$_.IPAddress -notlike '169.254.*'})
     if($ips.Count -lt 1){throw 'CYW43455 has no usable IPv4 address.'}
     $ip=[string]$ips[0].IPAddress
-    $otherDefaults=@(Get-NetRoute -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop|Where-Object {$_.InterfaceIndex -ne $adapter.ifIndex -and $_.NextHop -ne '0.0.0.0'})
+    $otherDefaults=@(Get-NetRoute -PolicyStore ActiveStore -AddressFamily IPv4 -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop|Where-Object {$_.InterfaceIndex -ne $adapter.ifIndex -and $_.NextHop -ne '0.0.0.0'})
     if($otherDefaults.Count){throw 'Another IPv4 default route is active. Disconnect Ethernet/VPN before testing.'}
 
     $curl=(Get-Command curl.exe -ErrorAction Stop).Source
-    $payload=Join-Path $OutputDirectory 'upload-payload-8MiB.bin'
+    $payload=Join-Path $OutputDirectory 'upload-payload-4MiB.bin'
     $stream=[IO.File]::Open($payload,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::None)
-    try{$stream.SetLength(8MB)}finally{$stream.Dispose()}
-    $beforeStats=Get-NetAdapterStatistics -InterfaceIndex $adapter.ifIndex
+    try{$stream.SetLength(4MB)}finally{$stream.Dispose()}
+    $beforeStats=Get-NetAdapterStatistics -Name $adapter.Name
     $beforeDiag=Get-Rpi5DiagSnapshot
     $samples=[Collections.Generic.List[object]]::new()
     try {
         1..4|ForEach-Object{
-            $arguments=@('--silent','--show-error','--fail','--max-time','30','--interface',$ip,
+            $arguments=@('--silent','--show-error','--fail','--max-time','45','--interface',$ip,
                 '--request','POST','--header','Content-Type: application/octet-stream',
                 '--data-binary',("@"+$payload),'--output','NUL',
                 '--write-out','%{http_code}|%{time_total}|%{speed_upload}',
@@ -108,10 +108,10 @@ function Invoke-Rpi5UploadBenchmark {
                -not [double]::TryParse($parts[2],[Globalization.NumberStyles]::Float,[Globalization.CultureInfo]::InvariantCulture,[ref]$bytesPerSecond) -or
                $seconds -le 0 -or $bytesPerSecond -le 0){throw "Invalid upload timing: $raw"}
             $mbps=$bytesPerSecond*8/1000000
-            $samples.Add([pscustomobject]@{Sample=$_;Bytes=8MB;Seconds=$seconds;Mbps=$mbps;HttpStatus=200;WallSeconds=$watch.Elapsed.TotalSeconds})
+            $samples.Add([pscustomobject]@{Sample=$_;Bytes=4MB;Seconds=$seconds;Mbps=$mbps;HttpStatus=200;WallSeconds=$watch.Elapsed.TotalSeconds})
         }
     } finally {Remove-Item -LiteralPath $payload -Force -ErrorAction SilentlyContinue}
-    $afterStats=Get-NetAdapterStatistics -InterfaceIndex $adapter.ifIndex
+    $afterStats=Get-NetAdapterStatistics -Name $adapter.Name
     $afterDiag=Get-Rpi5DiagSnapshot
     $rates=[double[]]@($samples|ForEach-Object Mbps)
     $counterNames=@('TxPackets','TxQueueFull','TxBacklogFull','TxBacklogAccepted','TxBacklogPromoted',
@@ -173,7 +173,7 @@ function Invoke-Rpi5FullTest {
         if($SkipUpload){$summary.Add('UploadTest=Skipped by user')}
         else{
             Write-Host ''
-            Write-Host 'Running upload measurement: 4 x 8 MiB synthetic payloads to Cloudflare Speed Test.'
+            Write-Host 'Running upload measurement: 4 x 4 MiB synthetic payloads to Cloudflare Speed Test.'
             $upload=Invoke-Rpi5UploadBenchmark $work
             $summary.Add(('UploadMedianMbps={0:N2}' -f $upload.MedianMbps))
             $summary.Add(('UploadAverageMbps={0:N2}' -f $upload.AverageMbps))
