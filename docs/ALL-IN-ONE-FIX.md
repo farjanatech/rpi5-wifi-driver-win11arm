@@ -1,4 +1,4 @@
-# all-in-one-fix: 0.7.1.7 exhausted-credit scheduling experiment
+# all-in-one-fix: 0.7.1.8 bounded fast-credit-wake experiment
 
 **Experimental, NOT merge-ready. The branch name does not mean every subsystem
 has been changed or every problem has been fixed.**
@@ -10,21 +10,22 @@ Parent experiment: `fe0800a7945d79ce7fc19b1bf326e8ba5cffceb8` (0.7.1.5).
 ## One driver variable
 
 0.7.1.5 mode 1 combined earlier post-RX dispatch with extra low-pressure sends.
-0.7.1.6 removed those extra sends. 0.7.1.7 keeps the exact 0.7.1.4 TX budgets
-and the earlier post-RX dispatch, then changes only the known-exhausted-credit
-worker behavior in mode 1: if a runnable pending queue has TxSeq == TxMax, the
-worker skips the futile initial TX pump and waits on the existing wake event
-with the original 10 ms polling timeout as a safety fallback. SDIO interrupts
-signal that wake immediately; an RX frame that reopens credits is processed and
-then the original post-RX pump runs without any added send budget.
+0.7.1.6 removed those extra sends. 0.7.1.7 then skipped futile pre-RX TX pumps
+during exact credit exhaustion but used a direct 10 ms wait; hardware testing
+reduced queue/credit counters but showed materially worse Internet throughput.
+0.7.1.8 keeps the exact 0.7.1.4 TX budgets and early post-RX dispatch, still
+skips the futile pre-RX pump while TxSeq == TxMax, but restores the already-tested
+bounded retry selector: up to four 1 ms event waits, then its 10 ms fallback.
+These fast waits service RX/interrupt credit updates; they do not grant credits,
+add frames, enlarge the queue, or replay a transfer.
 
 | Package/build flag | Behavior |
 |---|---|
-| 0.7.1.7 / Rpi5TxCreditScheduling=0 | Matched diagnostic control: original dispatch order, original retry policy and original TX budgets. Default for manual builds. |
-| 0.7.1.7 / Rpi5TxCreditScheduling=1 | Earlier post-RX dispatch plus event-first waiting for exact exhausted credits; TX budgets remain identical to mode 0. |
+| 0.7.1.8 / Rpi5TxCreditScheduling=0 | Matched diagnostic control: original dispatch order, original retry policy and original TX budgets. Default for manual builds. |
+| 0.7.1.8 / Rpi5TxCreditScheduling=1 | Earlier post-RX dispatch, skip futile exact-zero-credit pre-RX pump, and bounded 1 ms fast event wakes before 10 ms fallback; TX budgets remain identical to mode 0. |
 | Original 0.7.1.4 | Uninstrumented stable reference and complete rollback target. |
 
-Do not confuse the new 0.7.1.7 mode 1 with 0.7.1.5 mode 1: the latter contains the
+Do not confuse the new 0.7.1.8 mode 1 with 0.7.1.5 mode 1: the latter contains the
 removed lower-pressure extension. Verify INF version, SOURCE_REVISION.txt,
 package hash, installed file hash and the live SchedulingEnabled snapshot flag.
 The installer source still has an old version banner; it is not a driver-version
@@ -33,7 +34,7 @@ on-disk SYS hash alone cannot establish which image is currently loaded.
 
 No changes to packet format, 64-frame admission, SDIO/PIO/DMA/clock modes, RX,
 firmware/CLM/NVRAM, association/authentication, country/radio, UEFI, interrupts,
-power/lifecycle handling or FIFO error/recovery code are included. The original retry helper remains unchanged; mode 1 bypasses its legacy 1 ms fast-retry episode only while exact firmware credit exhaustion is already known.
+power/lifecycle handling or FIFO error/recovery code are included. The original retry helper remains unchanged and active. Mode 1 only skips the futile pre-RX pump while exact firmware credit exhaustion is already known; the retry helper still bounds fast wakes to four 1 ms requests before 10 ms backoff.
 The original pressure pump, ownership queue and all 48 original source files
 remain exact after removing the previously marked additive TX splices. This
 branch only reduces the previous experimental wrapper and defaults it off.
@@ -41,7 +42,7 @@ branch only reduces the previous experimental wrapper and defaults it off.
 ## Diagnostics and tests
 
 The existing 464-byte TxCreditV1 layout is unchanged. SchedulingEnabled 0/1 is
-interpreted with the driver version and commit. In 0.7.1.7 ExtraPasses/Frames
+interpreted with the driver version and commit. In 0.7.1.8 ExtraPasses/Frames
 refer ONLY to the original high-pressure extension, not new low-pressure sends.
 F1/F2 timing is disabled in the normal pair; unavailable is not zero overhead.
 The TX snapshot reader still rejects nonadvancing/mixed sessions, changed modes,
@@ -87,10 +88,10 @@ paths are deliberately rejected rather than silently measuring the wrong path.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-RPi5-WiFi-Lan.ps1 `
   -IperfPath C:\Tools\iperf3.exe `
   -ServerAddress 192.168.1.10 -LocalAddress 192.168.1.20 -InterfaceIndex 7 `
-  -BuildLabel v0717-control -Seconds 60 -Repetitions 3 -Streams 1
+  -BuildLabel v0718-control -Seconds 60 -Repetitions 3 -Streams 1
 ```
 
-For the dispatch-only package, use `-BuildLabel v0717-credit-wait` with
+For the dispatch-only package, use `-BuildLabel v0718-fast-wake` with
 otherwise identical arguments. This label is user input, not identity proof.
 For the original 0.7.1.4 baseline, run this same helper from the new package's
 folder with `-BuildLabel v0714-stable`; the original driver lacks the new TX
