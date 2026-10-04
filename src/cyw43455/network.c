@@ -441,8 +441,21 @@ static VOID CywWorker(PVOID Context)
 /* TIMING-BEGIN */
         if(op)CywTimingEnd(&A->Timing,CywTimeControl,controlStart);
 /* TIMING-END */
+/* TX-CREDIT-SCHED-BEGIN */
+#if RPI5CYW_TX_CREDIT_SCHEDULING
+        /* When the pending queue is otherwise runnable but TxSeq == TxMax,
+         * the existing pump cannot transfer a frame. Skip that known-zero
+         * attempt; RX/interrupt service below is what can supply new credits. */
+        if(!CywTxRetryEligible(A)) {
+#endif
+/* TX-CREDIT-SCHED-END */
         Status=CywMeasuredTxPump(A,&N->Sends,4,&sentBefore);
         if(!NT_SUCCESS(Status))goto Failed;
+/* TX-CREDIT-SCHED-BEGIN */
+#if RPI5CYW_TX_CREDIT_SCHEDULING
+        } else sentBefore=0;
+#endif
+/* TX-CREDIT-SCHED-END */
 /* TIMING-BEGIN */
         partStart=CywTimingBegin(&A->Timing);
 /* TIMING-END */
@@ -508,6 +521,15 @@ static VOID CywWorker(PVOID Context)
         /* Only an exhausted, otherwise runnable queue gets short event waits.
          * The policy never grants credits or adds a TX/RX processing budget.
          * Requested 1 ms is not a promise of Windows timer resolution. */
+/* TX-CREDIT-SCHED-BEGIN */
+#if RPI5CYW_TX_CREDIT_SCHEDULING
+        /* An SDIO interrupt signals N->Wake immediately. For an exact exhausted
+         * credit window, use that event-first wake with the original 10 ms
+         * polling timeout as fallback; do not spin through 1 ms retry episodes. */
+        if(CywTxRetryEligible(A)) {CywTxRetryReset(&A->TxRetry);retryMs=10;}
+        else
+#endif
+/* TX-CREDIT-SCHED-END */
         retryMs=CywTxRetrySelect(&A->TxRetry,KeQueryInterruptTime(),
             sentBefore!=0 || sentAfter!=0,i!=0,CywTxRetryEligible(A));
 /* TX-RETRY-END */
