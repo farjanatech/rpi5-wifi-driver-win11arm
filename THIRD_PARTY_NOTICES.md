@@ -5,8 +5,8 @@
 `src/cyw43455/transport_send.h` and the bounded pair-selection integration
 reference Linux brcmfmac `sdio.c` at commit
 `6addb4f385570ebc11c4eb499a4f1c149f313e84`, specifically
-`brcmf_sdio_hdpack`, `brcmf_sdio_txpkt_prep`,
-`brcmf_sdio_txpkt` and `brcmf_sdio_sendfromq`. These establish the extended
+`brcmf_sdio_hdpack`, `brcmf_sdio_txpkt_prep`, `brcmf_sdio_txpkt`,
+`brcmf_sdio_sendfromq` and `brcmf_sdio_tx_ctrlframe`. These establish the extended
 SDPCM host-TX-glom header, total first hardware length, per-subframe sequence,
 credit-bounded chain length and `bus:rxglom` negotiation semantics.
 
