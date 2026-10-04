@@ -17,14 +17,14 @@ function Test-Rpi5Administrator {
     return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 function Invoke-Rpi5SelfElevated {
-    $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $PSCommandPath),'-Mode',$Mode)
+    $launchArgs=@('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $PSCommandPath),'-Mode',$Mode)
     if($ConfigPath){
         if($ConfigPath.Contains('"')){throw 'Invalid configuration path.'}
-        $args+=@('-ConfigPath',('"{0}"' -f [IO.Path]::GetFullPath($ConfigPath)))
+        $launchArgs+=@('-ConfigPath',('"{0}"' -f [IO.Path]::GetFullPath($ConfigPath)))
     }
-    if($SkipUpload){$args+='-SkipUpload'}
-    if($NoPause){$args+='-NoPause'}
-    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $args
+    if($SkipUpload){$launchArgs+='-SkipUpload'}
+    if($NoPause){$launchArgs+='-NoPause'}
+    Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launchArgs
 }
 function Expand-Rpi5EmbeddedTools {
     $root=Join-Path $env:TEMP ('RPi5WiFi-AllInOne-'+[guid]::NewGuid().ToString('N'))
