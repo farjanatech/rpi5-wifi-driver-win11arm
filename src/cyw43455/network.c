@@ -522,15 +522,11 @@ static VOID CywWorker(PVOID Context)
         /* Only an exhausted, otherwise runnable queue gets short event waits.
          * The policy never grants credits or adds a TX/RX processing budget.
          * Requested 1 ms is not a promise of Windows timer resolution. */
-/* TX-CREDIT-SCHED-BEGIN */
-#if RPI5CYW_TX_CREDIT_SCHEDULING
-        /* An SDIO interrupt signals N->Wake immediately. For an exact exhausted
-         * credit window, use that event-first wake with the original 10 ms
-         * polling timeout as fallback; do not spin through 1 ms retry episodes. */
-        if(CywTxRetryEligible(A)) {CywTxRetryReset(&A->TxRetry);retryMs=10;}
-        else
-#endif
-/* TX-CREDIT-SCHED-END */
+        /* Keep the proven bounded retry selector: an exhausted, runnable
+         * queue gets up to four 1 ms event waits before its 10 ms fallback.
+         * Mode 1 still skips the futile pre-RX pump while credits are exactly
+         * zero, so these fast wakeups service RX/interrupt credit updates
+         * rather than repeatedly attempting an impossible data transfer. */
         retryMs=CywTxRetrySelect(&A->TxRetry,KeQueryInterruptTime(),
             sentBefore!=0 || sentAfter!=0,i!=0,CywTxRetryEligible(A));
 /* TX-RETRY-END */
