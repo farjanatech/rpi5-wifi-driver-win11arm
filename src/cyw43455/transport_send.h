@@ -3,14 +3,16 @@
 static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULONG Length)
 {
     CYW_NETWORK *N=A->Network;
-    ULONG total=Length+12, padded=(total+3)&~3UL;
+    ULONG header=A->TxGlomEnabled?20u:12u;
+    ULONG total=Length+header,padded=(total+3)&~3UL,tailPad,word;
     NTSTATUS Status;
 /* TX-CREDIT-DIAG-BEGIN */
     CYW_TX_CREDIT_DIAG *D=&A->TxCreditDiag;CYW_TXD_U64 detailStart=0;
     unsigned reads=0,acks=0,mails=0,commands=0;
 /* TX-CREDIT-DIAG-END */
-    if(Length>CYW_CONTROL_CAPACITY-12)return STATUS_INVALID_BUFFER_SIZE;
+    if(Length>CYW_CONTROL_CAPACITY-header)return STATUS_INVALID_BUFFER_SIZE;
     if(A->FifoBlockReady && padded>512)padded=(padded+511)&~511UL;
+    if(padded>CYW_CONTROL_CAPACITY || padded<total)return STATUS_INVALID_BUFFER_SIZE;
     if(Channel==2) {
         /* Fresh global state before EVERY data frame, including frames in the
          * same four-frame TX pump. RX batching never makes this gate stale. */
@@ -37,10 +39,25 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULO
     }
     if(A->Transport.Halted)return STATUS_DEVICE_NOT_READY;
     if(!CywTxCredit(N->TxSeq,N->TxMax,0))return STATUS_DEVICE_BUSY;
+
     RtlZeroMemory(N->Tx,padded);
-    CywPut16(N->Tx,(USHORT)total);CywPut16(N->Tx+2,(USHORT)~total);
-    N->Tx[4]=N->TxSeq;N->Tx[5]=Channel;N->Tx[7]=12;
-    RtlCopyMemory(N->Tx+12,Data,Length);
+    if(A->TxGlomEnabled) {
+        /* Once bus:rxglom succeeds, brcmfmac switches the host TX header
+         * length globally, not only for multi-frame chains. Every subsequent
+         * host->firmware control/data frame carries the 8-byte HW extension.
+         * The first/only HW length covers the complete padded transfer. */
+        tailPad=padded-total;
+        if(tailPad>0xffffUL)return STATUS_INVALID_BUFFER_SIZE;
+        CywPut16(N->Tx,(USHORT)padded);CywPut16(N->Tx+2,(USHORT)~padded);
+        word=(total-4)|(1u<<24);CywPut32(N->Tx+4,word);
+        CywPut32(N->Tx+8,tailPad<<16);
+        N->Tx[12]=N->TxSeq;N->Tx[13]=Channel;N->Tx[15]=20;
+        RtlCopyMemory(N->Tx+20,Data,Length);
+    } else {
+        CywPut16(N->Tx,(USHORT)total);CywPut16(N->Tx+2,(USHORT)~total);
+        N->Tx[4]=N->TxSeq;N->Tx[5]=Channel;N->Tx[7]=12;
+        RtlCopyMemory(N->Tx+12,Data,Length);
+    }
 /* TX-CREDIT-DIAG-BEGIN */
     if(Channel==2) {
         CywTxDiagInc(&D->F2Calls);commands=(unsigned)A->Cmd53WriteCount;detailStart=CYW_TXD_CLOCK(A);
@@ -57,11 +74,14 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULO
               D->F2PaddedBytes=CywTxDiagAdd(D->F2PaddedBytes,padded);}
     }
 /* TX-CREDIT-DIAG-END */
+    if(NT_SUCCESS(Status) && A->TxGlomEnabled) {
+        if(Channel==2)A->TxGlomExtendedDataSingles++;
+        else A->TxGlomExtendedControlSingles++;
+    }
     RtlSecureZeroMemory(N->Tx,padded);
     if(NT_SUCCESS(Status))N->TxSeq++;
     return Status;
 }
-
 
 #if RPI5CYW_TX_GLOM2
 /* Linux brcmfmac host TX glom format, deliberately capped at two frames:
