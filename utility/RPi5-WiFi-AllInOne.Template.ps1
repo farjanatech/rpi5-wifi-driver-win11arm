@@ -217,7 +217,7 @@ function Invoke-Rpi5TransferStage {
         foreach($record in $records){
             $process=$record.Process
             if(-not $process.WaitForExit(120000)){
-                try{$process.Kill()}catch{}
+                try{$process.Kill()}catch{Write-Verbose 'Timed-out curl process had already exited.'}
                 throw "$Direction stage $Label stream $($record.Stream) exceeded the 120 second host deadline."
             }
             $stdout=$process.StandardOutput.ReadToEnd()
@@ -229,7 +229,7 @@ function Invoke-Rpi5TransferStage {
         }
     }finally{
         foreach($record in $records){
-            try{$record.Process.Dispose()}catch{}
+            try{$record.Process.Dispose()}catch{Write-Verbose 'Curl process cleanup was already complete.'}
             Remove-Item -LiteralPath $record.ConfigPath -Force -ErrorAction SilentlyContinue
         }
     }
