@@ -284,6 +284,7 @@ static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
 {
     PUCHAR clm=NULL;ULONG size,off,n;UCHAR chunk[460],events[16]={0},mac[6]={0};
     NTSTATUS Status;
+    CywTxGlom2ResetProtocol(A);
     TRY(CywReadFirmwareFile(L"\\SystemRoot\\System32\\drivers\\rpi5cyw\\cyfmac43455-sdio.clm_blob",&clm,&size,65536));
     for(off=0;off<size;off+=n) {
         n=size-off;if(n>448)n=448;
