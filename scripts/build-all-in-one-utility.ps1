@@ -46,7 +46,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0RPi5-WiFi-AllInOne
 set "RC=%ERRORLEVEL%"
 endlocal & exit /b %RC%
 '@ | Set-Content -LiteralPath (Join-Path $OutputDirectory 'RPi5-WiFi-AllInOne.cmd') -Encoding ASCII
-    Write-Host "Built single user utility at $ps1 with $($helpers.Count) embedded helpers."
+    Write-Output "Built single user utility at $ps1 with $($helpers.Count) embedded helpers."
 }finally{
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
