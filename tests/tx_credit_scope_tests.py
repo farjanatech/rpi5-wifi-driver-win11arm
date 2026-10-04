@@ -56,7 +56,7 @@ def main():
         assert retired not in builder, "Retired measurement helper still embedded: " + retired
 
     wrapper = (ROOT / "utility/RPi5-WiFi-AllInOne.Template.ps1").read_text()
-    assert "$script:ToolVersion='0.7.1.14-fix1'" in wrapper
+    assert "$script:ToolVersion='0.7.1.14-fix2'" in wrapper
     assert "https://speed.cloudflare.com/__up" in wrapper
     assert "https://speed.cloudflare.com/__down?bytes=" in wrapper
     assert "foreach($streams in @(1,2,4))" in wrapper
@@ -67,6 +67,8 @@ def main():
     assert "%{size_download}" in wrapper
     assert "%{size_upload}" in wrapper
     assert "ActualBytes" in wrapper
+    assert "[ref]$parsedValue" in wrapper
+    assert "LibraryOnly" in wrapper
     assert "Test failed. Press Enter to close" in wrapper
     assert "Driver runtime=byte-for-byte v0.7.1.11 source; v0.7.1.14 changes measurement only." in wrapper
 
