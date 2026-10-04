@@ -49,9 +49,10 @@ try {
     }
 
     foreach($measurementMarker in @(
-        'download-1stream','download-2stream','download-4stream',
-        'upload-1stream','upload-2stream','upload-4stream',
-        'Get-Rpi5FreshSnapshot','TransportTxStatusChecks','Cmd53WriteCount'
+        'foreach($streams in @(1,2,4))',
+        'download-$($streams)stream','upload-$($streams)stream',
+        'Get-Rpi5FreshSnapshot','TransportTxStatusChecks','Cmd53WriteCount',
+        'sustained-download-result.json','upload-scaling-result.json'
     )){
         if(-not $source.Contains($measurementMarker)){throw "Generated utility missing measurement marker: $measurementMarker"}
     }
