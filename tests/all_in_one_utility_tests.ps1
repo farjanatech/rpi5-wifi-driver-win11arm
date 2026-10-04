@@ -17,7 +17,7 @@ try {
     if($errors.Count){throw "Generated all-in-one parser errors: $($errors|Out-String)"}
     $source=Get-Content -LiteralPath $ps1 -Raw -Encoding UTF8
     foreach($required in @(
-        '$script:ToolVersion=''0.7.1.14''',
+        '$script:ToolVersion=''0.7.1.14-fix1''',
         'https://speed.cloudflare.com/__up',
         'Sustained upload stage: $streams stream(s), 16 MiB per stream.',
         'upload-scaling-result.json',
@@ -52,7 +52,8 @@ try {
         'foreach($streams in @(1,2,4))',
         'download-$($streams)stream','upload-$($streams)stream',
         'Get-Rpi5FreshSnapshot','TransportTxStatusChecks','Cmd53WriteCount',
-        'sustained-download-result.json','upload-scaling-result.json'
+        'sustained-download-result.json','upload-scaling-result.json',
+        '%{size_download}','%{size_upload}','ActualBytes','Test failed. Press Enter to close'
     )){
         if(-not $source.Contains($measurementMarker)){throw "Generated utility missing measurement marker: $measurementMarker"}
     }
