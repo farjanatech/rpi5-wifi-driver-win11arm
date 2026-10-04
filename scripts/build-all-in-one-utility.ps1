@@ -11,12 +11,7 @@ if(-not (Test-Path -LiteralPath $template -PathType Leaf)){throw 'All-in-one tem
 $helpers=@(
     'utility\RPi5-WiFi-Operations.ps1',
     'utility\Connect-RPi5-WiFi.ps1',
-    'utility\Test-RPi5-WiFi-Performance.ps1',
-    'utility\Measure-RPi5-WiFi-Load.ps1',
-    'utility\RPi5-WiFi-DownloadTiming.ps1',
-    'utility\RPi5-WiFi-MeasurementClock.ps1',
     'utility\Get-RPi5-WiFi-Radio.ps1',
-    'utility\Get-RPi5-WiFi-Timing.ps1',
     'utility\Get-RPi5-WiFi-Transport.ps1',
     'diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1'
 )
