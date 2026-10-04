@@ -25,6 +25,10 @@ static void Init(PRPI5CYW_ADAPTER A)
 int main(void)
 {
     RPI5CYW_ADAPTER a;
+    Init(&a);a.TxGlomEnabled=1;a.TxGlomConfigStatus=STATUS_IO_DEVICE_ERROR;
+    CywTxGlom2ResetProtocol(&a);
+    CHECK(!a.TxGlomEnabled && a.TxGlomConfigStatus==STATUS_SUCCESS && !Calls);
+
     Init(&a);CHECK(CywConfigureTxGlom2(&a)==STATUS_SUCCESS);
     CHECK(Calls==1 && a.TxGlomRequested==1 && a.TxGlomEnabled==1 &&
           a.TxGlomConfigStatus==STATUS_SUCCESS);
