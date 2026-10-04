@@ -1,4 +1,9 @@
-> **`new-improvement` candidate: v0.7.1.9.** This branch keeps the proven
+> **`new-improvement-tx-glom` candidate: v0.7.1.10.** This branch preserves
+> the v0.7.1.9 64-frame active queue + 128-frame backlog and tests only
+> negotiated, pressure-only **two-frame host TX glom**. Keep v0.7.1.9 as the
+> hardware rollback. See [TX glom 0.7.1.10](docs/TX-GLOM2-0.7.1.10.md).
+>
+> **`new-improvement` rollback candidate: v0.7.1.9.** This branch keeps the proven
 > 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame
 > pending-NBL backlog so temporary active-queue pressure can be retained instead
 > of immediately rejected. It is a CI/hardware-validation candidate, not yet the
@@ -25,7 +30,7 @@ keeping the long historical milestone log in the main README.
 | **Current release** | **v0.7.1.8 is the default on `main`**, with mode 1 promoted after the best recent hardware result and a full green CI run. | Continue validating the promoted build over longer real-world use and keep v0.7.1.4 available as a rollback reference. |
 | **Hardware bring-up** | Direct Raspberry Pi 5 SDIO2 access to the onboard CYW43455 is working through the `ACPI\\RPI0011` device, including chip/core discovery, firmware startup and runtime transport. | Broader UEFI/platform compatibility is still limited; the driver remains targeted at the tested Raspberry Pi 5 setup. |
 | **Connection & Internet** | WPA2-Personal/AES connection, DHCP/IP traffic, gateway access, DNS and HTTPS/Internet traffic have been demonstrated on real hardware. | WPA3, enterprise authentication and native Windows Wi-Fi/WLAN UX are not the current focus; Windows still sees an Ethernet-style NDIS adapter. |
-| **TX path** | `main` has the proven **64-frame** active queue, correct pending-NBL ownership, firmware-credit checks, early post-RX dispatch and bounded fast wakes. The `new-improvement` candidate adds a separate bounded **128-frame deferred backlog** without enlarging that active window. | Hardware-test whether deferred ownership removes ordinary queue-pressure send rejection without increasing latency or destabilizing lifecycle handling. |
+| **TX path** | `main` has the proven **64-frame** active queue and mode-1 credit scheduling. `new-improvement` adds the bounded **128-frame deferred backlog**. `new-improvement-tx-glom` keeps both limits unchanged and may combine exactly **2** one-frame NBLs into one F2 transfer under pressure. | Hardware-validate whether two-frame glom drains backlog pressure faster without latency, throughput, lifecycle, or stability regression. |
 | **RX path** | Bounded RX batching, validated SDPCM parsing, read-ahead handling and glom validation are implemented with malformed/fault paths covered by tests. | Further RX changes should only be made if measurements identify RX as a real bottleneck; current evidence points more strongly to TX queue/credit pressure. |
 | **SDIO transport** | Direct CMD52/CMD53 PIO transport, runtime flow control, bounded polling, error propagation and tested high-speed/4-bit operation are in place. | DMA/block-mode or more aggressive transfer batching could improve efficiency, but should be pursued only after timing data proves SDIO transaction overhead is the limiting factor. |
 | **Stability** | Recent v0.7.1.8 hardware testing completed the full download workload with no observed disconnect, worker failure, FIFO failure, RX glom error, CMD53 timeout or interrupt-storm fallback. | Longer soak tests, sleep/resume, D0/D3, Pause/Restart, adapter restart and AP/router reconnect should continue to be exercised. |
