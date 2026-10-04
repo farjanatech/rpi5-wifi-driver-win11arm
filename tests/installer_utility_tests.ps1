@@ -37,6 +37,12 @@ if ($source -notmatch [regex]::Escape('-File $startupUpdater -RefreshExisting') 
     throw 'Existing startup code must be refreshed only after package verification.'
 }
 if ($source -match 'Copy-Item[^\r\n]*WiFi\.private\.json') { throw 'Installer must not replace a private profile.' }
+if ($source -notmatch [regex]::Escape('Target was unbound before installation; a manual reboot is required before validating the newly staged driver.')) {
+    throw 'Unbound target must require reboot before validating the staged driver.'
+}
+if ($source -notmatch [regex]::Escape('Skipping live post-install diagnostics because the newly staged driver is not yet guaranteed to be the in-memory driver.')) {
+    throw 'Installer must not collect misleading live diagnostics before a required reboot.'
+}
 
 . $scriptPath -LibraryOnly
 foreach ($forbiddenFirmwarePin in @('SupportedUefiRevisions','Get-Rpi5CompatibleUefiRevision',
