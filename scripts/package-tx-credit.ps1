@@ -10,10 +10,6 @@ $ErrorActionPreference='Stop'
 & (Join-Path $PSScriptRoot 'package-ci.ps1') -Configuration $Configuration -Platform $Platform
 $root=Split-Path -Parent $PSScriptRoot
 $stage=Join-Path $root 'artifacts\rpi5cyw-test-driver'
-Copy-Item (Join-Path $root 'docs\TX-CREDIT-EXPERIMENT.md') $stage
-Copy-Item (Join-Path $root 'docs\ALL-IN-ONE-FIX.md') $stage
-Copy-Item (Join-Path $root 'docs\TX-GLOM2-0.7.1.10.md') $stage
-Copy-Item (Join-Path $root 'docs\TX-GLOM2-0.7.1.11.md') $stage
 @"
 Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.13 CONSOLIDATED BASELINE
 Hardware rollback baseline: 0.7.1.9 / 0bc5ed12e9438cd82555d7bc8ae77211aa6f236b
@@ -21,8 +17,9 @@ Failed framing predecessor: 0.7.1.10 / a8eb3a6ff480821be885faf398e25857a248dc8f
 Earlier post-RX dispatch + bounded fast credit wake mode: $TxCreditScheduling
 Two-frame host TX glom compiled candidate: $TxGlom2
 
-Keep the ORIGINAL 0.7.1.9 new-improvement package for rollback. Reconnect with
-the existing connection utility after installation. Do not change country,
+Keep the ORIGINAL v0.7.1.11 package as the immediate performance rollback and
+v0.7.1.9 as the architecture rollback. Open RPi5-WiFi-AllInOne.cmd after installation.
+Do not change country,
 firmware, UEFI, router settings or backlog limits for the comparison.
 Use RPi5-WiFi-AllInOne.cmd for connection, status, download, upload and diagnostics.
 The driver runtime is intentionally the exact green v0.7.1.11 source; this package
