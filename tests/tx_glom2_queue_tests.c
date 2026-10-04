@@ -100,7 +100,7 @@ int main(void)
     TestAdapter.TxGlomEnabled=1;
     CHECK(CywTxPump(&TestAdapter,&TestQueue,2,&sent)==STATUS_SUCCESS && sent==2);
     CHECK(!PairTransferCalls && TransferCalls==2);
-    Finish(32);
+    Finish(33);
 
     CHECK(!Locks);
     if(Failures)return 1;
