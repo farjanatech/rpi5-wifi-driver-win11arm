@@ -172,50 +172,72 @@ function Invoke-Rpi5TransferStage {
     if($Direction -eq 'Upload' -and (-not $PayloadPath -or -not (Test-Path -LiteralPath $PayloadPath -PathType Leaf))){
         throw 'Upload payload is missing.'
     }
+    if($OutputDirectory.Contains('"') -or ($PayloadPath -and $PayloadPath.Contains('"'))){
+        throw 'Measurement paths may not contain quotation marks.'
+    }
     $before=Get-Rpi5FreshSnapshot $Root $OutputDirectory ($Label+'-before')
     $beforeStats=Get-NetAdapterStatistics -Name $network.Adapter.Name
-    $planned=[datetime]::UtcNow.AddSeconds(3)
-    $jobs=[Collections.Generic.List[object]]::new()
+    $records=[Collections.Generic.List[object]]::new()
+    $jobRows=[Collections.Generic.List[object]]::new()
     try{
         for($stream=1;$stream -le $Streams;$stream++){
-            $jobs.Add((Start-Job -ScriptBlock {
-                param($CurlPath,$IpAddress,$TransferDirection,$TransferBytes,$Payload,$StartAt,$StreamNumber)
-                while([datetime]::UtcNow -lt $StartAt){Start-Sleep -Milliseconds 20}
-                $started=[datetime]::UtcNow
-                if($TransferDirection -eq 'Upload'){
-                    $url='https://speed.cloudflare.com/__up'
-                    $curlArgs=@('--silent','--show-error','--fail','--max-time','90','--interface',$IpAddress,
-                        '--request','POST','--header','Content-Type: application/octet-stream',
-                        '--data-binary',('@'+$Payload),'--output','NUL',
-                        '--write-out','%{http_code}|%{time_total}|%{speed_upload}|%{time_connect}|%{time_appconnect}|%{time_pretransfer}',
-                        $url)
-                }else{
-                    $url='https://speed.cloudflare.com/__down?bytes='+$TransferBytes
-                    $curlArgs=@('--silent','--show-error','--fail','--max-time','90','--interface',$IpAddress,
-                        '--output','NUL',
-                        '--write-out','%{http_code}|%{time_total}|%{speed_download}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}',
-                        $url)
-                }
-                $raw=& $CurlPath @curlArgs 2>&1
-                $code=$LASTEXITCODE
-                $ended=[datetime]::UtcNow
-                [pscustomobject]@{Stream=$StreamNumber;ExitCode=$code;Raw=@($raw);
-                    StartedUtc=$started;EndedUtc=$ended}
-            } -ArgumentList $curl,$network.IPv4,$Direction,$BytesPerStream,$PayloadPath,$planned,$stream))
+            $configPath=Join-Path $OutputDirectory ("$Label-stream$stream.curl")
+            $config=[Collections.Generic.List[string]]::new()
+            $config.Add('silent')
+            $config.Add('show-error')
+            $config.Add('fail')
+            $config.Add('max-time = 90')
+            $config.Add(('interface = "{0}"' -f $network.IPv4))
+            $config.Add('output = "NUL"')
+            if($Direction -eq 'Upload'){
+                $url='https://speed.cloudflare.com/__up'
+                $config.Add('request = "POST"')
+                $config.Add('header = "Content-Type: application/octet-stream"')
+                $config.Add(('data-binary = "@{0}"' -f $PayloadPath))
+                $config.Add('write-out = "%{http_code}|%{time_total}|%{speed_upload}|%{time_connect}|%{time_appconnect}|%{time_pretransfer}"')
+            }else{
+                $url='https://speed.cloudflare.com/__down?bytes='+$BytesPerStream
+                $config.Add('write-out = "%{http_code}|%{time_total}|%{speed_download}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}"')
+            }
+            $config.Add(('url = "{0}"' -f $url))
+            $config|Set-Content -LiteralPath $configPath -Encoding ASCII
+
+            $info=[Diagnostics.ProcessStartInfo]::new()
+            $info.FileName=$curl
+            $info.Arguments='--config "'+$configPath+'"'
+            $info.UseShellExecute=$false
+            $info.CreateNoWindow=$true
+            $info.RedirectStandardOutput=$true
+            $info.RedirectStandardError=$true
+            $process=[Diagnostics.Process]::new()
+            $process.StartInfo=$info
+            if(-not $process.Start()){throw "Could not start $Direction stream $stream."}
+            $records.Add([pscustomobject]@{Stream=$stream;Process=$process;ConfigPath=$configPath})
         }
-        [void](Wait-Job -Job @($jobs) -Timeout 120)
-        $unfinished=@($jobs|Where-Object State -ne 'Completed')
-        if($unfinished.Count){throw "$Direction stage $Label did not complete within 120 seconds."}
-        $jobRows=@($jobs|Receive-Job)
+        foreach($record in $records){
+            $process=$record.Process
+            if(-not $process.WaitForExit(120000)){
+                try{$process.Kill()}catch{}
+                throw "$Direction stage $Label stream $($record.Stream) exceeded the 120 second host deadline."
+            }
+            $stdout=$process.StandardOutput.ReadToEnd()
+            $stderr=$process.StandardError.ReadToEnd()
+            $jobRows.Add([pscustomobject]@{
+                Stream=$record.Stream;ExitCode=$process.ExitCode;Raw=$stdout;ErrorText=$stderr;
+                StartedUtc=$process.StartTime.ToUniversalTime();EndedUtc=$process.ExitTime.ToUniversalTime()
+            })
+        }
     }finally{
-        foreach($job in $jobs){
-            if($job.State -eq 'Running'){Stop-Job -Job $job -ErrorAction SilentlyContinue}
-            Remove-Job -Job $job -ErrorAction SilentlyContinue
+        foreach($record in $records){
+            try{$record.Process.Dispose()}catch{}
+            Remove-Item -LiteralPath $record.ConfigPath -Force -ErrorAction SilentlyContinue
         }
     }
     $samples=[Collections.Generic.List[object]]::new()
     foreach($jobRow in $jobRows){
-        if([int]$jobRow.ExitCode -ne 0){throw "$Direction stage $Label stream $($jobRow.Stream) failed: $(@($jobRow.Raw)-join ' ')"}
+        if([int]$jobRow.ExitCode -ne 0){
+            throw "$Direction stage $Label stream $($jobRow.Stream) failed: $($jobRow.ErrorText)"
+        }
         $parsed=ConvertFrom-Rpi5CurlRow $jobRow.Raw $Direction $BytesPerStream ([int]$jobRow.Stream)
         $samples.Add([pscustomobject]@{
             Stream=$parsed.Stream;Bytes=$parsed.Bytes;TotalSeconds=$parsed.TotalSeconds;
@@ -235,7 +257,7 @@ function Invoke-Rpi5TransferStage {
     $payloadRates=[double[]]@($samples|Where-Object {$null -ne $_.PayloadMbps}|ForEach-Object PayloadMbps)
     $result=[pscustomobject]@{
         Label=$Label;Direction=$Direction;Streams=$Streams;BytesPerStream=$BytesPerStream;TotalPayloadBytes=$totalBytes;
-        PlannedStartUtc=$planned.ToString('o');StageStartUtc=$starts[0].ToString('o');StageEndUtc=$ends[-1].ToString('o');
+        StageStartUtc=$starts[0].ToString('o');StageEndUtc=$ends[-1].ToString('o');
         StageWallSeconds=$wall;AggregateMbps=[double]$totalBytes*8/$wall/1000000;
         SumCurlMbps=($curlRates|Measure-Object -Sum).Sum;MedianStreamCurlMbps=(Get-Rpi5Median $curlRates);
         SumPayloadMbps=if($payloadRates.Count){($payloadRates|Measure-Object -Sum).Sum}else{$null};
