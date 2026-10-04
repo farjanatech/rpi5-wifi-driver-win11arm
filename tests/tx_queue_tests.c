@@ -469,6 +469,14 @@ int main(void)
     for(i=0;i<CYW_TX_LIMIT;i++)CHECK(nbl[i].Completions==1 && nbl[i].Status==NDIS_STATUS_SUCCESS);
     CHECK(!CywTxOutstanding(&TestQueue) && !TestAdapter.TxErrors && !TestQueue.Bytes);
 
+    /* Production admission still behaves identically while active capacity is
+     * available; backlog-specific pressure is covered by tx_backlog_tests.c. */
+    Init();Packet(&nbl[0],&nb[0],100,id);
+    CHECK(CywTxSubmitWithBacklog(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);
+    CHECK(TestQueue.Count==1 && !TestQueue.BacklogCount && TestAdapter.TxNblAccepted==1);
+    CywTxFlush(&TestAdapter,&TestQueue,NDIS_STATUS_PAUSED);
+    CHECK(nbl[0].Completions==1 && !CywTxOutstanding(&TestQueue));
+
     Init();Packet(&nbl[0],&nb[0],100,id);Packet(&Reentrant,&ReentrantNb,100,id);
     CHECK(CywTxSubmit(&TestAdapter,&TestQueue,&nbl[0])==NDIS_STATUS_PENDING);Reenter=1;
     /* Critical .27 regression: completion reentry refills an otherwise empty
