@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $InformationPreference='Continue'
 $script:ToolVersion='0.7.1.13'
+$script:SkipUploadRequested=[bool]$SkipUpload
 $script:PayloadBase64='__PAYLOAD_BASE64__'
 
 function Test-Rpi5Administrator {
@@ -22,11 +23,11 @@ function Invoke-Rpi5SelfElevated {
         if($ConfigPath.Contains('"')){throw 'Invalid configuration path.'}
         $launchArgs+=@('-ConfigPath',('"{0}"' -f [IO.Path]::GetFullPath($ConfigPath)))
     }
-    if($SkipUpload){$launchArgs+='-SkipUpload'}
+    if($script:SkipUploadRequested){$launchArgs+='-SkipUpload'}
     if($NoPause){$launchArgs+='-NoPause'}
     Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launchArgs
 }
-function Expand-Rpi5EmbeddedTools {
+function Expand-Rpi5EmbeddedPayload {
     $root=Join-Path $env:TEMP ('RPi5WiFi-AllInOne-'+[guid]::NewGuid().ToString('N'))
     [void](New-Item -ItemType Directory -Path $root)
     $zip=Join-Path $root 'payload.zip'
@@ -170,10 +171,10 @@ function Invoke-Rpi5FullTest {
         Invoke-Rpi5Tool $Root 'Test-RPi5-WiFi-Performance.ps1' @('-NoPause','-SkipConnect','-SkipDiagnostics','-OutputRoot',$work) (Join-Path $work 'download-test-console.txt')
         $summary.Add('DownloadTest=Completed')
 
-        if($SkipUpload){$summary.Add('UploadTest=Skipped by user')}
+        if($script:SkipUploadRequested){$summary.Add('UploadTest=Skipped by user')}
         else{
-            Write-Host ''
-            Write-Host 'Running upload measurement: 4 x 4 MiB synthetic payloads to Cloudflare Speed Test.'
+            Write-Information ''
+            Write-Information 'Running upload measurement: 4 x 4 MiB synthetic payloads to Cloudflare Speed Test.'
             $upload=Invoke-Rpi5UploadBenchmark $work
             $summary.Add(('UploadMedianMbps={0:N2}' -f $upload.MedianMbps))
             $summary.Add(('UploadAverageMbps={0:N2}' -f $upload.AverageMbps))
@@ -190,9 +191,9 @@ function Invoke-Rpi5FullTest {
         $zip="$work.zip"
         Compress-Archive -Path (Join-Path $work '*') -DestinationPath $zip -CompressionLevel Optimal
         Remove-Item -LiteralPath $work -Recurse -Force
-        Write-Host ''
-        Write-Host "DONE. Share only this ZIP: $zip"
-        Write-Host 'It contains local network/device diagnostics but no saved Wi-Fi password.'
+        Write-Information ''
+        Write-Information "DONE. Share only this ZIP: $zip"
+        Write-Information 'It contains local network/device diagnostics but no saved Wi-Fi password.'
     }catch{
         $summary.Add("FAILED=$($_.Exception.Message)")
         $summary|Set-Content -LiteralPath (Join-Path $work 'ALL-IN-ONE-SUMMARY.txt') -Encoding UTF8 -ErrorAction SilentlyContinue
@@ -200,13 +201,13 @@ function Invoke-Rpi5FullTest {
     }
 }
 function Show-Rpi5Menu {
-    Write-Host ''
-    Write-Host "RPi5 Wi-Fi All-In-One v$script:ToolVersion"
-    Write-Host '1. Connect / reconnect Wi-Fi'
-    Write-Host '2. Show connection status'
-    Write-Host '3. Connect + full download/upload test + diagnostics  [RECOMMENDED]'
-    Write-Host '4. Collect diagnostics only'
-    Write-Host '5. Exit'
+    Write-Information ''
+    Write-Information "RPi5 Wi-Fi All-In-One v$script:ToolVersion"
+    Write-Information '1. Connect / reconnect Wi-Fi'
+    Write-Information '2. Show connection status'
+    Write-Information '3. Connect + full download/upload test + diagnostics  [RECOMMENDED]'
+    Write-Information '4. Collect diagnostics only'
+    Write-Information '5. Exit'
     switch(Read-Host 'Choose 1-5'){
         '1'{return 'Connect'}
         '2'{return 'Status'}
@@ -222,7 +223,7 @@ if([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.Int
 }
 $root=$null
 try{
-    $root=Expand-Rpi5EmbeddedTools
+    $root=Expand-Rpi5EmbeddedPayload
     $selected=$Mode
     if($selected -eq 'Menu'){$selected=Show-Rpi5Menu}
     switch($selected){
