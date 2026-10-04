@@ -27,6 +27,7 @@
 #define RPI5CYW_MTU 1500
 #define RPI5CYW_FRAME_SIZE 1514
 #define RPI5CYW_TX_LIMIT 64u
+#define RPI5CYW_TX_BACKLOG_LIMIT 128u
 #define RPI5CYW_DRIVER_VERSION 0x0100
 #define RPI5CYW_MAX_MULTICAST 32
 #define RPI5CYW_MAX_LINK_SPEED 433000000ULL
@@ -97,6 +98,9 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG FifoTransportFailed;
     ULONG TxPressurePasses, TxPressureFrames, TxPressureDeadlineYields;
     ULONG TxQueueHighWater, TxQueueFull, RxBatchYields;
+    ULONG TxBacklogCurrent, TxBacklogNblCurrent, TxBacklogHighWater;
+    ULONG TxBacklogAccepted, TxBacklogPromoted, TxBacklogFull;
+    ULONG TxBacklogExpired, TxBacklogCancelled, TxBacklogMaxDelayMs;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */
     CYW_TX_RETRY TxRetry; /* Worker-owned bounded idle-credit retry evidence. */
