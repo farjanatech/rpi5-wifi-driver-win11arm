@@ -466,6 +466,20 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"RuntimeCmd52FastPolls", 0);
     SET_DWORD(L"RuntimeCmd52WaitSleeps", 0);
     SET_DWORD(L"RuntimeCmd52Timeouts", 0);
+    /* Retire stale pre-v0.7.1.11 experimental glom registry names so old
+     * persistent values cannot be mistaken for counters owned by this build. */
+    SET_DWORD(L"TxGlomConfigAttempts", 0);
+    SET_DWORD(L"TxGlomConfigFallbacks", 0);
+    SET_DWORD(L"TxGlomConfigFirmwareError", 0);
+    SET_DWORD(L"TxGlomTransfers", 0);
+    SET_DWORD(L"TxGlomBytes", 0);
+    SET_DWORD(L"TxGlomTransferFailures", 0);
+    SET_DWORD(L"TxGlomPairAttempts", 0);
+    SET_DWORD(L"TxGlomQueueFallbacks", 0);
+    SET_DWORD(L"TxGlomMapFallbacks", 0);
+    SET_DWORD(L"TxGlomCreditStops", 0);
+    SET_DWORD(L"TxGlomBusyStops", 0);
+    SET_DWORD(L"TxGlomSingleDataFrames", 0);
     SET_DWORD(L"NetworkPhase", Adapter->NetworkPhase);
     SET_DWORD(L"NetworkStatus", Adapter->NetworkStatus);
     SET_DWORD(L"FirmwareCommand", Adapter->FirmwareCommand);
