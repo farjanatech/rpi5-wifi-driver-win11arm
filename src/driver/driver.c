@@ -451,7 +451,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 36);
+    SET_DWORD(L"DiagVersion", 37);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -612,6 +612,16 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"TxQueueHighWater", Adapter->TxQueueHighWater);
     SET_DWORD(L"TxQueueFull", Adapter->TxQueueFull);
     SET_DWORD(L"TxQueueLimit", RPI5CYW_TX_LIMIT);
+    SET_DWORD(L"TxBacklogLimit", RPI5CYW_TX_BACKLOG_LIMIT);
+    SET_DWORD(L"TxBacklogCurrent", Adapter->TxBacklogCurrent);
+    SET_DWORD(L"TxBacklogNblCurrent", Adapter->TxBacklogNblCurrent);
+    SET_DWORD(L"TxBacklogHighWater", Adapter->TxBacklogHighWater);
+    SET_DWORD(L"TxBacklogAccepted", Adapter->TxBacklogAccepted);
+    SET_DWORD(L"TxBacklogPromoted", Adapter->TxBacklogPromoted);
+    SET_DWORD(L"TxBacklogFull", Adapter->TxBacklogFull);
+    SET_DWORD(L"TxBacklogExpired", Adapter->TxBacklogExpired);
+    SET_DWORD(L"TxBacklogCancelled", Adapter->TxBacklogCancelled);
+    SET_DWORD(L"TxBacklogMaxDelayMs", Adapter->TxBacklogMaxDelayMs);
     SET_DWORD(L"RadioVersion", Adapter->RadioReport[0]);
     SET_DWORD(L"RadioGeneration", Adapter->RadioReport[1]);
     SET_DWORD(L"RadioValidMask", Adapter->RadioReport[2]);
