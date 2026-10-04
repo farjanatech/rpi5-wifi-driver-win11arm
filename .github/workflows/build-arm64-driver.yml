@@ -2,7 +2,7 @@ name: Build CYW43455 direct-SDIO NDIS ARM64 driver
 
 on:
   push:
-    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix]
+    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix, new-improvement]
   workflow_dispatch:
 
 permissions:
@@ -166,7 +166,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
-          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_tests.exe && ci-logs\tx_queue_tests.exe' -f $vcvars
+          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_tests.exe && ci-logs\tx_queue_tests.exe && cl /nologo /W4 /WX /TC /std:c17 tests\tx_backlog_tests.c /Fe:ci-logs\tx_backlog_tests.exe && ci-logs\tx_backlog_tests.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\tx-queue-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -186,7 +186,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
-          $command = 'call "{0}" && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_asan.exe && ci-logs\tx_queue_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_retry_gate_tests.c /Fe:ci-logs\tx_gate_asan.exe && ci-logs\tx_gate_asan.exe' -f $vcvars
+          $command = 'call "{0}" && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_asan.exe && ci-logs\tx_queue_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_backlog_tests.c /Fe:ci-logs\tx_backlog_asan.exe && ci-logs\tx_backlog_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_retry_gate_tests.c /Fe:ci-logs\tx_gate_asan.exe && ci-logs\tx_gate_asan.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\tx-pressure-asan.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
