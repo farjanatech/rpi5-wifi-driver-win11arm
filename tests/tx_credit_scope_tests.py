@@ -59,7 +59,11 @@ def main():
     assert "CywMeasuredTxPump(" not in pump and "CywTxPressureEligible(" not in pump
     assert "for(" not in pump and "while(" not in pump, "No experimental extension loop"
     assert "#define RPI5CYW_TX_CREDIT_SCHEDULING 0" in (ROOT / "src/cyw43455/tx_credit_diag.h").read_text()
-    print("PASS: immutable v0.7.1.4 source, bounded 64-frame queue, bounded fast credit wake, exact rollback path.")
+    project = (ROOT / "rpi5-cyw43455.vcxproj").read_text()
+    assert '<Rpi5TxCreditScheduling Condition="\'$(Rpi5TxCreditScheduling)\'==\'\'">1</Rpi5TxCreditScheduling>' in project
+    package = (ROOT / "scripts/package-tx-credit.ps1").read_text()
+    assert "[ValidateSet('0','1')][string]$TxCreditScheduling='1'" in package
+    print("PASS: immutable v0.7.1.4 source, bounded 64-frame queue, bounded fast credit wake, promoted mode-1 defaults, exact rollback path.")
 
 if __name__ == "__main__":
     main()
