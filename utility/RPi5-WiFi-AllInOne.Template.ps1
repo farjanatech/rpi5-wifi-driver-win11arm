@@ -150,14 +150,14 @@ function ConvertFrom-Rpi5CurlRow {
             throw ("Invalid {0} timing for stream {1}: {2}" -f $Direction,$Stream,$text)
         }
     }
-    $total=$numbers[0];$reportedBytesPerSecond=$numbers[1];$connect=$numbers[2];$tls=$numbers[3];$pretransfer=$numbers[4]
+    $total=$numbers[0];$reportedBytesPerSecond=$numbers[1];$connect=$numbers[2];$tls=$numbers[3];$bodyStart=$numbers[4]
     if($total -le 0 -or $reportedBytesPerSecond -le 0){throw "Invalid $Direction throughput for stream $Stream."}
-    $bodySeconds=$total-$pretransfer
+    $bodySeconds=$total-$bodyStart
     $payloadMbps=if($bodySeconds -gt 0){[double]$Bytes*8/$bodySeconds/1000000}else{$null}
     return [pscustomobject]@{
         Stream=$Stream;HttpStatus=200;Bytes=$Bytes;TotalSeconds=$total;
         CurlMbps=$reportedBytesPerSecond*8/1000000;ConnectSeconds=$connect;
-        TlsSeconds=$tls;PreTransferSeconds=$pretransfer;BodySeconds=$bodySeconds;
+        TlsSeconds=$tls;BodyStartSeconds=$bodyStart;BodyStartKind=$(if($Direction -eq 'Upload'){'PreTransfer'}else{'FirstByte'});BodySeconds=$bodySeconds;
         PayloadMbps=$payloadMbps
     }
 }
@@ -210,7 +210,7 @@ function Invoke-Rpi5TransferStage {
     }finally{
         foreach($job in $jobs){
             if($job.State -eq 'Running'){Stop-Job -Job $job -ErrorAction SilentlyContinue}
-            Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+            Remove-Job -Job $job -ErrorAction SilentlyContinue
         }
     }
     $samples=[Collections.Generic.List[object]]::new()
@@ -220,7 +220,7 @@ function Invoke-Rpi5TransferStage {
         $samples.Add([pscustomobject]@{
             Stream=$parsed.Stream;Bytes=$parsed.Bytes;TotalSeconds=$parsed.TotalSeconds;
             CurlMbps=$parsed.CurlMbps;ConnectSeconds=$parsed.ConnectSeconds;TlsSeconds=$parsed.TlsSeconds;
-            PreTransferSeconds=$parsed.PreTransferSeconds;BodySeconds=$parsed.BodySeconds;PayloadMbps=$parsed.PayloadMbps;
+            BodyStartSeconds=$parsed.BodyStartSeconds;BodyStartKind=$parsed.BodyStartKind;BodySeconds=$parsed.BodySeconds;PayloadMbps=$parsed.PayloadMbps;
             StartedUtc=([datetime]$jobRow.StartedUtc).ToString('o');EndedUtc=([datetime]$jobRow.EndedUtc).ToString('o')
         })
     }
