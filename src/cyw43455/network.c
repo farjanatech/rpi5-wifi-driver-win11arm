@@ -522,9 +522,6 @@ static VOID CywWorker(PVOID Context)
         /* Only an exhausted, otherwise runnable queue gets short event waits.
          * The policy never grants credits or adds a TX/RX processing budget.
          * Requested 1 ms is not a promise of Windows timer resolution. */
-        /* Only an exhausted, otherwise runnable queue gets short event waits.
-         * The policy never grants credits or adds a TX/RX processing budget.
-         * Requested 1 ms is not a promise of Windows timer resolution. */
         retryMs=CywTxRetrySelect(&A->TxRetry,KeQueryInterruptTime(),
             sentBefore!=0 || sentAfter!=0,i!=0,CywTxRetryEligible(A));
 /* TX-RETRY-END */
