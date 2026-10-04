@@ -36,7 +36,27 @@ $receipt=Get-Content -LiteralPath $receiptPath -Raw
 $receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.13-consolidated`nruntime_baseline=6ae93623c8767eda050b8c408250d3ec3ce19bfb`ntx_credit_scheduling=$TxCreditScheduling`ntx_glom2=$TxGlom2`nall_in_one_utility=1`nupload_measurement=cloudflare-public-speedtest")
 $receipt=$receipt.Replace('performance_branch=better-improvement',"performance_branch=$env:GITHUB_REF_NAME")
 $receipt=$receipt.Replace('performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90','performance_baseline=6ae93623c8767eda050b8c408250d3ec3ce19bfb')
+$receipt=$receipt.Replace('measurement_utility_version=0.6.27.1','measurement_utility_version=0.7.1.13-all-in-one')
+$receipt=$receipt.Replace('startup_receipt_compatibility=0.6.27','startup_receipt_compatibility=not-packaged')
 $receipt | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+
+foreach($required in @('RPi5-WiFi-AllInOne.ps1','RPi5-WiFi-AllInOne.cmd')){
+    if(-not (Test-Path -LiteralPath (Join-Path $stage $required) -PathType Leaf)){
+        throw "Consolidated utility missing from package: $required"
+    }
+}
+foreach($forbidden in @(
+    'Connect-RPi5-WiFi.ps1','Connect-RPi5-WiFi.cmd',
+    'Test-RPi5-WiFi-Performance.ps1','Test-RPi5-WiFi-Performance.cmd',
+    'Check-RPi5-WiFi-Readiness.ps1','Check-RPi5-WiFi-Readiness.cmd',
+    'Collect-RPi5-WiFi-Diagnostics.ps1','Run-RPi5-WiFi-Diagnostics.cmd',
+    'Get-RPi5-WiFi-Radio.ps1','Get-RPi5-WiFi-Timing.ps1','Get-RPi5-WiFi-Transport.ps1',
+    'Get-RPi5-WiFi-TxCredit.ps1','Test-RPi5-WiFi-Lan.ps1','RPi5-WiFi-App.ps1','RPi5-WiFi-App.cmd'
+)){
+    if(Test-Path -LiteralPath (Join-Path $stage $forbidden)){
+        throw "Legacy standalone tester leaked into consolidated package: $forbidden"
+    }
+}
 Get-ChildItem $stage -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name | ForEach-Object {
     $hash=Get-FileHash $_.FullName -Algorithm SHA256
     "$($hash.Hash)  $($_.Name)"
