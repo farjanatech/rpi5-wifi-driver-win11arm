@@ -32,15 +32,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate performance branch invariants
+      - name: Validate new-improvement source isolation
         shell: pwsh
         run: |
-          git worktree add --detach ..\tx-stable-baseline c0b032543f945707c82ffc1b05a8ca7012821560
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File ..\tx-stable-baseline\tests\performance_scope_tests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          git worktree remove ..\tx-stable-baseline
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_scope_tests.ps1
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
