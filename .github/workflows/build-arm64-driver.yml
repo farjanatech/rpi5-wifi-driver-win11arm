@@ -2,7 +2,7 @@ name: Build CYW43455 direct-SDIO NDIS ARM64 driver
 
 on:
   push:
-    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix, new-improvement, new-improvement-tx-glom, new-improvement-tx-glom-fix]
+    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix, new-improvement, new-improvement-tx-glom, new-improvement-tx-glom-fix, new-improvement-all-in-one]
   workflow_dispatch:
 
 permissions:
@@ -33,7 +33,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate v0.7.1.11 framing-fix source isolation
+      - name: Validate v0.7.1.13 package-only source isolation
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_scope_tests.ps1
@@ -239,6 +239,9 @@ jobs:
             '.\scripts\package-diagnostics.ps1',
             '.\tests\diagnostics_utility_tests.ps1',
             '.\tests\installer_utility_tests.ps1',
+            '.\utility\RPi5-WiFi-AllInOne.Template.ps1',
+            '.\scripts\build-all-in-one-utility.ps1',
+            '.\tests\all_in_one_utility_tests.ps1',
             '.\utility\Connect-RPi5-WiFi.ps1',
             '.\tests\connection_utility_tests.ps1',
             '.\utility\Set-RPi5-WiFi-Autoconnect.ps1',
@@ -279,6 +282,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\installer_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\installer-utility-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\all_in_one_utility_tests.ps1 2>&1 |
+            Tee-Object -FilePath ci-logs\all-in-one-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\connection_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\connection-utility-tests.log
@@ -417,7 +423,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.11-glom2-fix-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.13-all-in-one-tx${{ matrix.tx_mode }}
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
@@ -435,7 +441,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.11-glom2-fix-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.13-all-in-one-tx${{ matrix.tx_mode }}
           path: ci-logs/
           if-no-files-found: warn
           retention-days: 30
