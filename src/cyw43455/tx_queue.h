@@ -60,8 +60,10 @@ static VOID CywTxBacklogLocked(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
     if(Q->BacklogFrames>A->TxBacklogHighWater)A->TxBacklogHighWater=Q->BacklogFrames;
     A->TxBacklogAccepted++;A->TxNblAccepted++;
 }
-/* Legacy active-only admission is retained for host ownership/scheduler tests
- * and for rollback reasoning. Production sends use CywTxSubmitWithBacklog. */
+/* Legacy active-only admission is retained only by host ownership/scheduler
+ * tests for exact v0.7.1.8 rollback reasoning. Production uses the backlog
+ * admission below, so do not leave an unreferenced static function in /W4 builds. */
+#ifdef RPI5CYW_HOST_TEST
 static NDIS_STATUS CywTxSubmit(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LIST Nbl)
 {
     KIRQL irql;CYW_PENDING_SEND item;NDIS_STATUS status;
@@ -78,6 +80,7 @@ static NDIS_STATUS CywTxSubmit(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LI
     }
     KeReleaseSpinLock(&Q->Lock,irql);return status;
 }
+#endif
 /* Production admission. The active queue remains exactly 64 frames. Once any
  * NBL is backlogged, later NBLs also backlog until older work is promoted, so
  * concurrent/reentrant sends cannot overtake deferred ownership. */
