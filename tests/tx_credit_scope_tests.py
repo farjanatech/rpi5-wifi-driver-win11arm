@@ -39,7 +39,7 @@ def main():
 
     wrapper = (ROOT / "utility/RPi5-WiFi-AllInOne.Template.ps1").read_text()
     assert "https://speed.cloudflare.com/__up" in wrapper
-    assert "4 x 8 MiB" in wrapper
+    assert "4 x 4 MiB" in wrapper
     assert "UploadQueueRejectsDelta" in wrapper
     assert "Driver baseline=v0.7.1.11 runtime; no new TX tuning in this package." in wrapper
 
