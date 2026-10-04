@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$Configuration,
     [Parameter(Mandatory=$true)][string]$Platform,
-    [ValidateSet('0','1')][string]$TxCreditScheduling='0'
+    [ValidateSet('0','1')][string]$TxCreditScheduling='1'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
@@ -14,10 +14,10 @@ Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Lan.ps1') $stage
 Copy-Item (Join-Path $root 'docs\TX-CREDIT-EXPERIMENT.md') $stage
 Copy-Item (Join-Path $root 'docs\ALL-IN-ONE-FIX.md') $stage
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - EXPERIMENTAL 0.7.1.8
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.8
 Protected stable baseline: 0.7.1.4 / c0b032543f945707c82ffc1b05a8ca7012821560
 Earlier post-RX dispatch + bounded fast credit wake enabled: $TxCreditScheduling
-NOT a validated upgrade. No throughput/stability claim. Do not merge to main.
+Mode 1 is the promoted main/default build after successful hardware and CI testing.
 
 Keep the ORIGINAL 0.7.1.4 package for rollback. Reconnect with the existing
 connection utility after installation. Do not change country, firmware or UEFI.
@@ -40,4 +40,4 @@ Get-ChildItem $stage -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sor
     $hash=Get-FileHash $_.FullName -Algorithm SHA256
     "$($hash.Hash)  $($_.Name)"
 } | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ASCII
-Write-Host "Packaged experimental TX mode $TxCreditScheduling; no hardware validation asserted."
+Write-Host "Packaged TX mode $TxCreditScheduling for v0.7.1.8; mode 1 is the promoted default."
