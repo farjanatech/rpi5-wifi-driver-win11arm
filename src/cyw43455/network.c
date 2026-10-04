@@ -446,14 +446,15 @@ static VOID CywWorker(PVOID Context)
         /* When the pending queue is otherwise runnable but TxSeq == TxMax,
          * the existing pump cannot transfer a frame. Skip that known-zero
          * attempt; RX/interrupt service below is what can supply new credits. */
-        if(!CywTxRetryEligible(A)) {
+        if(CywTxRetryEligible(A))sentBefore=0;
+        else {
 #endif
 /* TX-CREDIT-SCHED-END */
         Status=CywMeasuredTxPump(A,&N->Sends,4,&sentBefore);
         if(!NT_SUCCESS(Status))goto Failed;
 /* TX-CREDIT-SCHED-BEGIN */
 #if RPI5CYW_TX_CREDIT_SCHEDULING
-        } else sentBefore=0;
+        }
 #endif
 /* TX-CREDIT-SCHED-END */
 /* TIMING-BEGIN */
