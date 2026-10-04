@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #define RPI5CYW_HOST_TEST 1
+#define RPI5CYW_TX_GLOM2 1
 #include "../src/driver/driver.h"
 #include "../src/cyw43455/network_protocol.h"
 #include "../src/cyw43455/rx_performance.h"
@@ -30,8 +31,8 @@ static unsigned AckWrites,MailReads,MailAcks,DataWrites,Delivered,Events,Aborts,
 static unsigned StatusAt,FrameAt;
 static ULONG StatusScript[16],Mail;
 static UCHAR Pending,Frames[8][64],Rx[CYW_WIRE_CAPACITY],Tx[CYW_CONTROL_CAPACITY];
-static UCHAR RxScript[8192];
-static ULONG ScriptOn,ScriptAt,ScriptBytes,LastWriteLength;
+static UCHAR RxScript[8192],WriteCapture[CYW_CONTROL_CAPACITY];
+static ULONG ScriptOn,ScriptAt,ScriptBytes,LastWriteLength,WriteCaptureLength;
 static ULONG64 Clock;
 static RPI5CYW_ADAPTER TestAdapter;
 static CYW_NETWORK TestNetwork;
@@ -75,6 +76,8 @@ static NTSTATUS SdioFifoTransfer(PRPI5CYW_ADAPTER Adapter,PUCHAR Buffer,ULONG Le
     if(Write) {
         ULONG i,n=CywLe16(Buffer);
         CHECK(Length>=12 && !(Length&3));DataWrites++;LastWriteLength=Length;
+        CHECK(Length<=sizeof(WriteCapture));WriteCaptureLength=Length;
+        if(Length<=sizeof(WriteCapture))memcpy(WriteCapture,Buffer,Length);
         for(i=n;i<Length;++i)CHECK(Buffer[i]==0);
     }
     else if(ScriptOn) {
@@ -103,7 +106,8 @@ static void Init(void)
     IoCalls=FailIo=FifoCalls=FailFifo=PendingCalls=StatusReads=AckWrites=MailReads=MailAcks=0;
     DataWrites=Delivered=Events=Aborts=Terms=FailCleanup=StatusAt=FrameAt=0;
     Pending=0;Mail=0;Clock=100;
-    ScriptOn=ScriptAt=ScriptBytes=LastWriteLength=0;memset(RxScript,0,sizeof(RxScript));
+    ScriptOn=ScriptAt=ScriptBytes=LastWriteLength=WriteCaptureLength=0;
+    memset(RxScript,0,sizeof(RxScript));memset(WriteCapture,0,sizeof(WriteCapture));
 }
 static void Frame(unsigned Index,unsigned Sequence,unsigned Channel,unsigned Flow)
 {
@@ -116,7 +120,7 @@ static NTSTATUS Poll(void){ULONG channel,off,len;return CywPoll(&TestAdapter,&ch
 #include "rx_transport_tests.h"
 int main(void)
 {
-    unsigned i,flow;UCHAR payload[4]={0x20,0,0,0};NTSTATUS status;
+    unsigned i,flow;UCHAR payload[4]={0x20,0,0,0},payload2[4]={0x21,1,2,3};NTSTATUS status;
     /* No interrupt and no cached RX: no speculative F1/F2 operation. */
     Init();CHECK(Poll()==STATUS_NO_MORE_ENTRIES);CHECK(PendingCalls==1 && !StatusReads && !FifoCalls);
     /* A quiet CCCR starts a grace period, not a speculative FIFO read. At
@@ -215,6 +219,39 @@ int main(void)
     CHECK(CywSendFrame(&TestAdapter,2,payload,4)==STATUS_DEVICE_BUSY);
     CHECK(CywSendFrame(&TestAdapter,2,payload,4)==STATUS_SUCCESS);
     CHECK(DataWrites==2 && TestNetwork.TxSeq==2 && TestAdapter.Transport.TxStatusChecks==3 && StatusReads==3);
+    /* Two-frame host TX glom uses one fresh F1 gate and one F2 transfer.
+     * The first HW length covers the entire chain; each subframe carries the
+     * Linux-compatible 8-byte extension and its own SDPCM sequence. */
+    Init();TestAdapter.TxGlomEnabled=1;
+    CHECK(CywSendDataPair(&TestAdapter,payload,4,payload2,4)==STATUS_SUCCESS);
+    CHECK(DataWrites==1 && StatusReads==1 && TestNetwork.TxSeq==2 && LastWriteLength==48);
+    CHECK(WriteCaptureLength==48 && CywLe16(WriteCapture)==48);
+    CHECK(CywLe16(WriteCapture+2)==(USHORT)~48u);
+    CHECK(CywLe32(WriteCapture+4)==20 && CywLe32(WriteCapture+8)==0);
+    CHECK(WriteCapture[12]==0 && WriteCapture[13]==2 && WriteCapture[15]==20);
+    CHECK(!memcmp(WriteCapture+20,payload,4));
+    CHECK(CywLe16(WriteCapture+24)==24 && CywLe16(WriteCapture+26)==(USHORT)~24u);
+    CHECK(CywLe32(WriteCapture+28)==(20u|(1u<<24)) && CywLe32(WriteCapture+32)==0);
+    CHECK(WriteCapture[36]==1 && WriteCapture[37]==2 && WriteCapture[39]==20);
+    CHECK(!memcmp(WriteCapture+44,payload2,4));
+    CHECK(TestAdapter.TxGlomAttempts==1 && TestAdapter.TxGlomChains==1 &&
+          TestAdapter.TxGlomFrames==2 && !TestAdapter.TxGlomBusyFallbacks &&
+          !TestAdapter.TxGlomErrors);
+    /* A stale/collapsed two-credit window cannot touch F2; caller may safely
+     * fall back to the proven one-frame path. */
+    Init();TestAdapter.TxGlomEnabled=1;TestNetwork.TxMax=1;
+    CHECK(CywSendDataPair(&TestAdapter,payload,4,payload2,4)==STATUS_DEVICE_BUSY);
+    CHECK(!DataWrites && !TestNetwork.TxSeq && TestAdapter.TxGlomBusyFallbacks==1);
+    Init();TestAdapter.TxGlomEnabled=1;StatusScript[0]=CYW_INT_FC_STATE;
+    CHECK(CywSendDataPair(&TestAdapter,payload,4,payload2,4)==STATUS_DEVICE_BUSY);
+    CHECK(!DataWrites && !TestNetwork.TxSeq && TestAdapter.TxGlomBusyFallbacks==1);
+    /* F1 or F2 faults fail the chain without advancing either sequence. */
+    Init();TestAdapter.TxGlomEnabled=1;FailIo=1;
+    CHECK(CywSendDataPair(&TestAdapter,payload,4,payload2,4)==STATUS_IO_DEVICE_ERROR);
+    CHECK(!DataWrites && !TestNetwork.TxSeq && TestAdapter.TxGlomErrors==1);
+    Init();TestAdapter.TxGlomEnabled=1;FailFifo=1;
+    CHECK(CywSendDataPair(&TestAdapter,payload,4,payload2,4)==STATUS_IO_DEVICE_ERROR);
+    CHECK(!TestNetwork.TxSeq && TestAdapter.TxGlomErrors==1);
     /* Header priority update and mailbox priority update both reach the gate.
      * Production mapping is UNKNOWN: no unverified precedence-bit shortcut. */
     for(flow=0;flow<256;flow++) {
