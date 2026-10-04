@@ -685,7 +685,7 @@ NDIS_STATUS CywNetworkSend(PRPI5CYW_ADAPTER A,PNET_BUFFER_LIST Nbl)
     CYW_NETWORK *N=A->Network;NDIS_STATUS status;
     if(A->IoStopped)return NDIS_STATUS_LOW_POWER_STATE;
     if(!N)return NDIS_STATUS_MEDIA_DISCONNECTED;
-    status=CywTxSubmit(A,&N->Sends,Nbl);
+    status=CywTxSubmitWithBacklog(A,&N->Sends,Nbl);
     if(status==NDIS_STATUS_PENDING)KeSetEvent(&N->Wake,0,FALSE);
     return status;
 }
