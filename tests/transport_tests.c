@@ -219,6 +219,38 @@ int main(void)
     CHECK(CywSendFrame(&TestAdapter,2,payload,4)==STATUS_DEVICE_BUSY);
     CHECK(CywSendFrame(&TestAdapter,2,payload,4)==STATUS_SUCCESS);
     CHECK(DataWrites==2 && TestNetwork.TxSeq==2 && TestAdapter.Transport.TxStatusChecks==3 && StatusReads==3);
+    /* Hardware regression from v0.7.1.10: once bus:rxglom succeeds, even a
+     * single control IOVAR must use the global extended 20-byte TX header.
+     * The failed Pi run timed out on the next mpc=0 SET because it still used
+     * the old 12-byte header. */
+    Init();TestAdapter.TxGlomEnabled=1;
+    CHECK(CywSendFrame(&TestAdapter,0,payload,4)==STATUS_SUCCESS);
+    CHECK(DataWrites==1 && !StatusReads && TestNetwork.TxSeq==1 && LastWriteLength==24);
+    CHECK(CywLe16(WriteCapture)==24 && CywLe16(WriteCapture+2)==0xffe7u);
+    CHECK(CywLe32(WriteCapture+4)==(20u|(1u<<24)) && CywLe32(WriteCapture+8)==0);
+    CHECK(WriteCapture[12]==0 && WriteCapture[13]==0 && WriteCapture[15]==20);
+    CHECK(!memcmp(WriteCapture+20,payload,4));
+    CHECK(TestAdapter.TxGlomExtendedControlSingles==1 &&
+          !TestAdapter.TxGlomExtendedDataSingles);
+
+    /* Single data frames also use the extended negotiated header while keeping
+     * the original fresh-F1 flow/credit gate and one-credit semantics. */
+    Init();TestAdapter.TxGlomEnabled=1;
+    CHECK(CywSendFrame(&TestAdapter,2,payload,4)==STATUS_SUCCESS);
+    CHECK(DataWrites==1 && StatusReads==1 && TestNetwork.TxSeq==1 && LastWriteLength==24);
+    CHECK(CywLe16(WriteCapture)==24 && CywLe32(WriteCapture+4)==(20u|(1u<<24)));
+    CHECK(WriteCapture[13]==2 && WriteCapture[15]==20);
+    CHECK(TestAdapter.TxGlomExtendedDataSingles==1 &&
+          !TestAdapter.TxGlomExtendedControlSingles);
+
+    /* Negotiation itself is sent before TxGlomEnabled becomes true, so legacy
+     * 12-byte framing remains byte-for-byte available for that transition. */
+    Init();TestAdapter.TxGlomEnabled=0;
+    CHECK(CywSendFrame(&TestAdapter,0,payload,4)==STATUS_SUCCESS);
+    CHECK(DataWrites==1 && LastWriteLength==16 && CywLe16(WriteCapture)==16);
+    CHECK(WriteCapture[4]==0 && WriteCapture[5]==0 && WriteCapture[7]==12);
+    CHECK(!memcmp(WriteCapture+12,payload,4));
+
     /* Two-frame host TX glom uses one fresh F1 gate and one F2 transfer.
      * The first HW length covers the entire chain; each subframe carries the
      * Linux-compatible 8-byte extension and its own SDPCM sequence. */
