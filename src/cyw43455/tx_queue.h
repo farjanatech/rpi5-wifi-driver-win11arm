@@ -120,6 +120,7 @@ static PNET_BUFFER_LIST CywTxRemove(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Ind
     Q->Count--;RtlZeroMemory(&Q->Entries[Q->Count],sizeof(Q->Entries[0]));
     return nbl;
 }
+static BOOLEAN CywTxPromoteOneLocked(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q);
 static PNET_BUFFER_LIST CywTxBacklogRemove(
     PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Index,NDIS_STATUS Status)
 {
@@ -131,6 +132,11 @@ static PNET_BUFFER_LIST CywTxBacklogRemove(
     for(i=Index+1;i<Q->BacklogCount;++i)Q->Backlog[i-1]=Q->Backlog[i];
     Q->BacklogCount--;RtlZeroMemory(&Q->Backlog[Q->BacklogCount],sizeof(Q->Backlog[0]));
     A->TxBacklogCurrent=Q->BacklogFrames;A->TxBacklogNblCurrent=Q->BacklogCount;
+    /* BacklogCount is part of outstanding ownership. Move that reference to
+     * Completing before dropping Lock so Pause/D3 cannot observe a false zero
+     * between metadata removal and the NDIS completion callback. */
+    Q->Completing++;
+    (VOID)CywTxPromoteOneLocked(A,Q);
     return nbl;
 }
 static BOOLEAN CywTxPromoteOneLocked(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q)
@@ -150,29 +156,36 @@ static BOOLEAN CywTxPromoteOneLocked(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q)
     CywTxActivateLocked(A,Q,&item,FALSE);A->TxBacklogPromoted++;
     return TRUE;
 }
-static VOID CywTxCompleteOwned(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
-    PNET_BUFFER_LIST Nbl,NDIS_STATUS Status,BOOLEAN Active)
+static VOID CywTxComplete(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
+    PNET_BUFFER_LIST Nbl,NDIS_STATUS Status)
 {
     KIRQL irql;
     /* PASSIVE_LEVEL worker only. Do not touch Nbl after completion/reentrancy. */
     NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;NET_BUFFER_LIST_STATUS(Nbl)=Status;
     if(Status!=NDIS_STATUS_SUCCESS)A->TxErrors++;
     if(Status==NDIS_STATUS_SEND_ABORTED)A->TxCancelled++;
-    /* Release the old ownership class before callback, promote at most one
-     * older backlog entry, then protect the callback with Completing. */
-    KeAcquireSpinLock(&Q->Lock,&irql);
-    if(Active)Q->Outstanding--;
-    (VOID)CywTxPromoteOneLocked(A,Q);
-    Q->Completing++;
+    /* Active Outstanding remains charged after removal until this same lock
+     * transfer, so callback lifetime is never invisible to Pause/D3. */
+    KeAcquireSpinLock(&Q->Lock,&irql);Q->Outstanding--;
+    (VOID)CywTxPromoteOneLocked(A,Q);Q->Completing++;
     KeReleaseSpinLock(&Q->Lock,irql);
     NdisMSendNetBufferListsComplete(A->MiniportHandle,Nbl,0);
     KeAcquireSpinLock(&Q->Lock,&irql);Q->Completing--;A->TxNblCompleted++;
     KeReleaseSpinLock(&Q->Lock,irql);
 }
-static VOID CywTxComplete(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LIST Nbl,NDIS_STATUS Status)
-{CywTxCompleteOwned(A,Q,Nbl,Status,TRUE);}
-static VOID CywTxCompleteBacklog(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,PNET_BUFFER_LIST Nbl,NDIS_STATUS Status)
-{CywTxCompleteOwned(A,Q,Nbl,Status,FALSE);}
+static VOID CywTxCompleteBacklog(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
+    PNET_BUFFER_LIST Nbl,NDIS_STATUS Status)
+{
+    KIRQL irql;
+    /* CywTxBacklogRemove already transferred BacklogCount ownership into
+     * Completing while holding Lock; do not create a gap or double-count it. */
+    NET_BUFFER_LIST_NEXT_NBL(Nbl)=NULL;NET_BUFFER_LIST_STATUS(Nbl)=Status;
+    if(Status!=NDIS_STATUS_SUCCESS)A->TxErrors++;
+    if(Status==NDIS_STATUS_SEND_ABORTED)A->TxCancelled++;
+    NdisMSendNetBufferListsComplete(A->MiniportHandle,Nbl,0);
+    KeAcquireSpinLock(&Q->Lock,&irql);Q->Completing--;A->TxNblCompleted++;
+    KeReleaseSpinLock(&Q->Lock,irql);
+}
 static NDIS_STATUS CywTxAbortStatus(CYW_TX_STATE *Q,CYW_PENDING_SEND *Item,ULONG64 Now)
 {
     if(Q->Gate!=NDIS_STATUS_SUCCESS)return Q->Gate;
