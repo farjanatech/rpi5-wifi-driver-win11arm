@@ -17,7 +17,7 @@ try {
     if($errors.Count){throw "Generated all-in-one parser errors: $($errors|Out-String)"}
     $source=Get-Content -LiteralPath $ps1 -Raw -Encoding UTF8
     foreach($required in @(
-        '$script:ToolVersion=''0.7.1.14-fix1''',
+        '$script:ToolVersion=''0.7.1.14-fix2''',
         'https://speed.cloudflare.com/__up',
         'Sustained upload stage: $streams stream(s), 16 MiB per stream.',
         'upload-scaling-result.json',
@@ -53,11 +53,20 @@ try {
         'download-$($streams)stream','upload-$($streams)stream',
         'Get-Rpi5FreshSnapshot','TransportTxStatusChecks','Cmd53WriteCount',
         'sustained-download-result.json','upload-scaling-result.json',
-        '%{size_download}','%{size_upload}','ActualBytes','Test failed. Press Enter to close'
+        '%{size_download}','%{size_upload}','ActualBytes','Test failed. Press Enter to close',
+        '[ref]$parsedValue'
     )){
         if(-not $source.Contains($measurementMarker)){throw "Generated utility missing measurement marker: $measurementMarker"}
     }
-    Write-Output 'PASS: one user utility embeds only required helpers and measures sustained 1/2/4-stream download/upload with fresh per-stage driver snapshots.'
+
+    . $ps1 -LibraryOnly
+    $known='200|10.709573|6266250|67108864|0.021731|0.040705|0.293002'
+    $parsed=ConvertFrom-Rpi5CurlRow -Raw $known -Direction Download -ExpectedBytes 67108864 -Stream 1
+    if($parsed.ActualBytes -ne 67108864){throw "Known curl line parsed wrong byte count: $($parsed.ActualBytes)"}
+    if([Math]::Abs([double]$parsed.CurlMbps-50.13) -gt 0.01){throw "Known curl line parsed wrong curl Mbps: $($parsed.CurlMbps)"}
+    if([Math]::Abs([double]$parsed.PayloadMbps-51.5400808961) -gt 0.01){throw "Known curl line parsed wrong payload Mbps: $($parsed.PayloadMbps)"}
+
+    Write-Output 'PASS: one user utility embeds only required helpers, parses the hardware curl line correctly, and measures sustained 1/2/4-stream download/upload with fresh per-stage driver snapshots.'
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
