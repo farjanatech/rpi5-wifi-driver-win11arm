@@ -5,10 +5,16 @@
  * when firmware explicitly reports UNSUPPORTED. Ambiguous transport/firmware
  * failures remain fatal so we never continue with an unknown packet format.
  */
+static VOID CywTxGlom2ResetProtocol(PRPI5CYW_ADAPTER A)
+{
+    /* Fresh firmware always starts in the legacy 12-byte host TX framing.
+     * Clear negotiated state before CLM/WLC/IOVAR traffic on every worker life. */
+    A->TxGlomEnabled=0;
+    A->TxGlomConfigStatus=STATUS_SUCCESS;
+}
 static NTSTATUS CywConfigureTxGlom2(PRPI5CYW_ADAPTER A)
 {
     A->TxGlomRequested=RPI5CYW_TX_GLOM2?1u:0u;
-    A->TxGlomEnabled=0;
     A->TxGlomConfigStatus=STATUS_SUCCESS;
 #if RPI5CYW_TX_GLOM2
     NTSTATUS status=CywInt(A,"bus:rxglom",1);
