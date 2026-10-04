@@ -28,6 +28,9 @@
 #define RPI5CYW_FRAME_SIZE 1514
 #define RPI5CYW_TX_LIMIT 64u
 #define RPI5CYW_TX_BACKLOG_LIMIT 128u
+#ifndef RPI5CYW_TX_GLOM2
+#define RPI5CYW_TX_GLOM2 0
+#endif
 #define RPI5CYW_DRIVER_VERSION 0x0100
 #define RPI5CYW_MAX_MULTICAST 32
 #define RPI5CYW_MAX_LINK_SPEED 433000000ULL
@@ -101,6 +104,10 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG TxBacklogCurrent, TxBacklogNblCurrent, TxBacklogHighWater;
     ULONG TxBacklogAccepted, TxBacklogPromoted, TxBacklogFull;
     ULONG TxBacklogExpired, TxBacklogCancelled, TxBacklogMaxDelayMs;
+    ULONG TxGlomRequested, TxGlomEnabled;
+    NTSTATUS TxGlomConfigStatus;
+    ULONG TxGlomAttempts, TxGlomChains, TxGlomFrames, TxGlomBusyFallbacks, TxGlomErrors;
+    ULONG TxGlomPayloadBytes, TxGlomPaddedBytes;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */
     CYW_TX_RETRY TxRetry; /* Worker-owned bounded idle-credit retry evidence. */
