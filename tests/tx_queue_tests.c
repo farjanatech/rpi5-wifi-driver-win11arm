@@ -30,6 +30,9 @@ typedef struct TEST_NBL { struct TEST_NBL *Next;PNET_BUFFER First;PVOID CancelId
 #include "../src/cyw43455/tx_types.h"
 static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter,Immediate,Poison,CheckCompleting;
 static ULONG HookAt,BusyAt,FailAt,CompletionCalls,CompletionNbls,LargestCompletion,ProbeCalls;
+#if RPI5CYW_TX_GLOM2
+static ULONG PairTransferCalls,PairBusy,PairFail,PairHook;
+#endif
 static ULONG CheckCallbackFrames,ExpectedCallbackFrames,ExpectedProbeFrames,ExpectedProbeBytes;
 static ULONG CheckImmediateBoundary;
 static ULONG CallbackProbeCalls;
@@ -52,6 +55,12 @@ ULONG64 KeQueryInterruptTime(void) {return Clock;}
 static PUCHAR NdisGetDataBuffer(PNET_BUFFER nb,ULONG length,PUCHAR storage,ULONG align,ULONG offset)
 {(void)align;(void)offset;CHECK(!Locks && length==nb->Length);if(nb->MapFail)return NULL;if(nb->Copy){memcpy(storage,nb->Data,length);return storage;}return nb->Data;}
 static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER adapter) {(void)adapter;CHECK(!Locks);return Credits!=0;}
+#if RPI5CYW_TX_GLOM2
+static BOOLEAN CywTxCanTransferPair(PRPI5CYW_ADAPTER adapter)
+{CHECK(!Locks);return adapter->TxGlomEnabled && Credits>=2;}
+static NTSTATUS CywTxTransferPair(PRPI5CYW_ADAPTER adapter,
+    PUCHAR data1,ULONG length1,PUCHAR data2,ULONG length2);
+#endif
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
 static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags);
 #include "../src/cyw43455/tx_queue.h"
@@ -95,6 +104,20 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
     if(FailTransfer || (FailAt && FailAt==TransferCalls))return STATUS_IO_DEVICE_ERROR;
     CHECK(Credits>0);Credits--;return STATUS_SUCCESS;
 }
+#if RPI5CYW_TX_GLOM2
+static NTSTATUS CywTxTransferPair(PRPI5CYW_ADAPTER adapter,
+    PUCHAR data1,ULONG length1,PUCHAR data2,ULONG length2)
+{
+    (void)adapter;CHECK(!Locks);PairTransferCalls++;
+    CHECK(length1>=18 && length1<=1518 && length2>=18 && length2<=1518);
+    CHECK(data1[0]==0x20 && data2[0]==0x20);
+    if(PairHook==1)CywTxCancel(&TestQueue,TestQueue.Entries[1].CancelId);
+    if(PairHook==2)CywTxSetGate(&TestQueue,NDIS_STATUS_PAUSED);
+    if(PairBusy)return STATUS_DEVICE_BUSY;
+    if(PairFail)return STATUS_IO_DEVICE_ERROR;
+    CHECK(Credits>=2);Credits-=2;return STATUS_SUCCESS;
+}
+#endif
 static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags)
 {
     PNET_BUFFER_LIST next;ULONG count=0;
@@ -136,6 +159,9 @@ static void Init(void)
 {
     memset(&TestAdapter,0,sizeof(TestAdapter));memset(&TestQueue,0,sizeof(TestQueue));Clock=0;Credits=100;
     TransferCalls=Busy=FailTransfer=Hook=Reenter=Immediate=Poison=CheckCompleting=0;CHECK(!Locks);
+#if RPI5CYW_TX_GLOM2
+    PairTransferCalls=PairBusy=PairFail=PairHook=0;
+#endif
     HookAt=BusyAt=FailAt=CompletionCalls=CompletionNbls=LargestCompletion=ProbeCalls=0;
     CheckCallbackFrames=ExpectedCallbackFrames=ExpectedProbeFrames=ExpectedProbeBytes=0;
     CheckImmediateBoundary=0;
