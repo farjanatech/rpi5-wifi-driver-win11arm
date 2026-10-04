@@ -7,12 +7,11 @@
  */
 static NTSTATUS CywConfigureTxGlom2(PRPI5CYW_ADAPTER A)
 {
-    NTSTATUS status=STATUS_SUCCESS;
     A->TxGlomRequested=RPI5CYW_TX_GLOM2?1u:0u;
     A->TxGlomEnabled=0;
     A->TxGlomConfigStatus=STATUS_SUCCESS;
 #if RPI5CYW_TX_GLOM2
-    status=CywInt(A,"bus:rxglom",1);
+    NTSTATUS status=CywInt(A,"bus:rxglom",1);
     A->TxGlomConfigStatus=status;
     if(NT_SUCCESS(status)) {
         A->TxGlomEnabled=1;
@@ -27,7 +26,6 @@ static NTSTATUS CywConfigureTxGlom2(PRPI5CYW_ADAPTER A)
     }
     return status;
 #else
-    UNREFERENCED_PARAMETER(status);
     return STATUS_SUCCESS;
 #endif
 }
