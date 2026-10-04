@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([switch]$LibraryOnly, [switch]$NoPause, [switch]$SkipConnect,
-      [switch]$PassThru, [string]$ConfigPath)
+      [switch]$PassThru, [string]$ConfigPath, [string]$OutputRoot)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'RPi5-WiFi-Operations.ps1')
@@ -133,6 +133,10 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
         if ($ConfigPath.Contains('"')) { throw 'Invalid configuration path.' }
         $launch += @('-ConfigPath',('"{0}"' -f [IO.Path]::GetFullPath($ConfigPath)))
     }
+    if ($OutputRoot) {
+        if ($OutputRoot.Contains('"')) { throw 'Invalid output root.' }
+        $launch += @('-OutputRoot',('"{0}"' -f [IO.Path]::GetFullPath($OutputRoot)))
+    }
     Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $launch
     return
 }
@@ -159,8 +163,9 @@ try {
         }
     }
     catch { Write-Warning "Connection utility: $($_.Exception.Message). Diagnostics will still be saved." }
-    $desktop = [Environment]::GetFolderPath('Desktop')
+    $desktop = if ($OutputRoot) { [IO.Path]::GetFullPath($OutputRoot) } else { [Environment]::GetFolderPath('Desktop') }
     if (-not $desktop) { $desktop = $env:TEMP }
+    if (-not (Test-Path -LiteralPath $desktop -PathType Container)) { [void](New-Item -ItemType Directory -Path $desktop -Force) }
     $resultDirectory = Join-Path $desktop ('RPI5-WIFI-PERFORMANCE-' + (Get-Date -Format yyyyMMdd-HHmmss) + '-' + [guid]::NewGuid().ToString('N').Substring(0,6))
     [void](New-Item -ItemType Directory -Path $resultDirectory)
     $performanceResult.OutputDirectory=$resultDirectory
