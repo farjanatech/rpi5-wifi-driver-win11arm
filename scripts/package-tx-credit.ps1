@@ -14,9 +14,9 @@ Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Lan.ps1') $stage
 Copy-Item (Join-Path $root 'docs\TX-CREDIT-EXPERIMENT.md') $stage
 Copy-Item (Join-Path $root 'docs\ALL-IN-ONE-FIX.md') $stage
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - EXPERIMENTAL 0.7.1.7
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - EXPERIMENTAL 0.7.1.8
 Protected stable baseline: 0.7.1.4 / c0b032543f945707c82ffc1b05a8ca7012821560
-Earlier post-RX dispatch + event-first exhausted-credit wait enabled: $TxCreditScheduling
+Earlier post-RX dispatch + bounded fast credit wake enabled: $TxCreditScheduling
 NOT a validated upgrade. No throughput/stability claim. Do not merge to main.
 
 Keep the ORIGINAL 0.7.1.4 package for rollback. Reconnect with the existing
@@ -32,7 +32,7 @@ The driver is test-signed, not Microsoft production-signed.
 
 $receiptPath=Join-Path $stage 'SOURCE_REVISION.txt'
 $receipt=Get-Content -LiteralPath $receiptPath -Raw
-$receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.7-experimental`ntx_credit_scheduling=$TxCreditScheduling")
+$receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.8-experimental`ntx_credit_scheduling=$TxCreditScheduling")
 $receipt=$receipt.Replace('performance_branch=better-improvement',"performance_branch=$env:GITHUB_REF_NAME")
 $receipt=$receipt.Replace('performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90','performance_baseline=c0b032543f945707c82ffc1b05a8ca7012821560')
 $receipt | Set-Content -LiteralPath $receiptPath -Encoding UTF8
