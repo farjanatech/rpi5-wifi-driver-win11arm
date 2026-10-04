@@ -167,7 +167,7 @@ function Invoke-Rpi5FullTest {
         Invoke-Rpi5Tool $Root 'Connect-RPi5-WiFi.ps1' $connectArgs (Join-Path $work 'connect.txt')
         $summary.Add('Connection=Completed')
 
-        Invoke-Rpi5Tool $Root 'Test-RPi5-WiFi-Performance.ps1' @('-NoPause','-SkipConnect','-OutputRoot',$work) (Join-Path $work 'download-test-console.txt')
+        Invoke-Rpi5Tool $Root 'Test-RPi5-WiFi-Performance.ps1' @('-NoPause','-SkipConnect','-SkipDiagnostics','-OutputRoot',$work) (Join-Path $work 'download-test-console.txt')
         $summary.Add('DownloadTest=Completed')
 
         if($SkipUpload){$summary.Add('UploadTest=Skipped by user')}
