@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.7.1.13'
+$script:InstallerVersion = '0.7.1.14'
 # Compatibility is capability/resource based, not tied to a UEFI git revision.
 # The installer requires the exact ACPI target; the kernel validates the SDHCI
 # MMIO/resource layout before touching the controller. Interrupt wakeup is
