@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([switch]$LibraryOnly, [switch]$NoPause, [switch]$SkipConnect,
-      [switch]$PassThru, [string]$ConfigPath, [string]$OutputRoot)
+      [switch]$SkipDiagnostics, [switch]$PassThru, [string]$ConfigPath, [string]$OutputRoot)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'RPi5-WiFi-Operations.ps1')
@@ -129,6 +129,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     $launch = @('-NoProfile','-ExecutionPolicy','Bypass','-File', ('"{0}"' -f $PSCommandPath))
     if ($NoPause) { $launch += '-NoPause' }
     if ($SkipConnect) { $launch += '-SkipConnect' }
+    if ($SkipDiagnostics) { $launch += '-SkipDiagnostics' }
     if ($ConfigPath) {
         if ($ConfigPath.Contains('"')) { throw 'Invalid configuration path.' }
         $launch += @('-ConfigPath',('"{0}"' -f [IO.Path]::GetFullPath($ConfigPath)))
@@ -396,14 +397,19 @@ try {
         Write-Report $timing.Notice
         Write-Report "Timing snapshots comparable=$($timing.ComparableSnapshots); see timing-report.json."
     } catch { Write-Report "Optional runtime timing unavailable: $($_.Exception.Message)" }
-    try {
-        $collection = Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Collect-RPi5-WiFi-Diagnostics.ps1'),'-NoPause','-OutputDirectory',$resultDirectory) 180
-        Write-Report "Diagnostic collection: ExitCode=$($collection.ExitCode) TimedOut=$($collection.TimedOut)"
-        Write-Report $collection.Output
-        $performanceResult.DiagnosticsCollected= -not $collection.TimedOut -and $collection.ExitCode -eq 0 -and
-            @(Get-ChildItem -LiteralPath $resultDirectory -Filter 'RPI5-CYW43455-DIRECT-SDIO-DIAGNOSTICS-*.zip' -File).Count -gt 0
+    if($SkipDiagnostics){
+        Write-Report 'Final diagnostics intentionally deferred to the all-in-one utility.'
+        $performanceResult.DiagnosticsCollected=$false
+    } else {
+        try {
+            $collection = Invoke-Rpi5BoundedProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $PSScriptRoot 'Collect-RPi5-WiFi-Diagnostics.ps1'),'-NoPause','-OutputDirectory',$resultDirectory) 180
+            Write-Report "Diagnostic collection: ExitCode=$($collection.ExitCode) TimedOut=$($collection.TimedOut)"
+            Write-Report $collection.Output
+            $performanceResult.DiagnosticsCollected= -not $collection.TimedOut -and $collection.ExitCode -eq 0 -and
+                @(Get-ChildItem -LiteralPath $resultDirectory -Filter 'RPI5-CYW43455-DIRECT-SDIO-DIAGNOSTICS-*.zip' -File).Count -gt 0
+        }
+        catch { Write-Report "DIAGNOSTICS ERROR: $($_.Exception.Message)" }
     }
-    catch { Write-Report "DIAGNOSTICS ERROR: $($_.Exception.Message)" }
     $zip = "$resultDirectory.zip"
     $performanceResult.ZipPath=$zip
     $performanceResult | ConvertTo-Json -Depth 6 |
