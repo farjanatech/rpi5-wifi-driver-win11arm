@@ -15,16 +15,20 @@ Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Lan.ps1') $stage
 Copy-Item (Join-Path $root 'docs\TX-CREDIT-EXPERIMENT.md') $stage
 Copy-Item (Join-Path $root 'docs\ALL-IN-ONE-FIX.md') $stage
 Copy-Item (Join-Path $root 'docs\TX-GLOM2-0.7.1.10.md') $stage
+Copy-Item (Join-Path $root 'docs\TX-GLOM2-0.7.1.11.md') $stage
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.10 EXPERIMENTAL
-Protected hardware baseline: 0.7.1.9 / 0bc5ed12e9438cd82555d7bc8ae77211aa6f236b
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.11 EXPERIMENTAL
+Hardware rollback baseline: 0.7.1.9 / 0bc5ed12e9438cd82555d7bc8ae77211aa6f236b
+Failed framing predecessor: 0.7.1.10 / a8eb3a6ff480821be885faf398e25857a248dc8f
 Earlier post-RX dispatch + bounded fast credit wake mode: $TxCreditScheduling
 Two-frame host TX glom compiled candidate: $TxGlom2
 
 Keep the ORIGINAL 0.7.1.9 new-improvement package for rollback. Reconnect with
 the existing connection utility after installation. Do not change country,
 firmware, UEFI, router settings or backlog limits for the comparison.
-Read TX-GLOM2-0.7.1.10.md before testing. This build negotiates bus:rxglom and
+Read TX-GLOM2-0.7.1.11.md before testing. This build fixes the global
+post-negotiation extended SDPCM framing found by the v0.7.1.10 Pi logs and
+still negotiates bus:rxglom with
 uses at most two one-frame NBLs per aggregate under TX pressure. Explicit
 firmware UNSUPPORTED falls back to the v0.7.1.9 path; ambiguous setup failures
 fail closed. Get-RPi5-WiFi-TxCredit.ps1 remains passive diagnostics.
@@ -35,7 +39,7 @@ The driver is test-signed, not Microsoft production-signed.
 
 $receiptPath=Join-Path $stage 'SOURCE_REVISION.txt'
 $receipt=Get-Content -LiteralPath $receiptPath -Raw
-$receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.10-experimental`ntx_credit_scheduling=$TxCreditScheduling`ntx_glom2=$TxGlom2")
+$receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.11-experimental`ntx_credit_scheduling=$TxCreditScheduling`ntx_glom2=$TxGlom2`ntx_glom2_failed_predecessor=a8eb3a6ff480821be885faf398e25857a248dc8f")
 $receipt=$receipt.Replace('performance_branch=better-improvement',"performance_branch=$env:GITHUB_REF_NAME")
 $receipt=$receipt.Replace('performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90','performance_baseline=0bc5ed12e9438cd82555d7bc8ae77211aa6f236b')
 $receipt | Set-Content -LiteralPath $receiptPath -Encoding UTF8
@@ -43,4 +47,4 @@ Get-ChildItem $stage -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sor
     $hash=Get-FileHash $_.FullName -Algorithm SHA256
     "$($hash.Hash)  $($_.Name)"
 } | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ASCII
-Write-Host "Packaged v0.7.1.10 TX mode $TxCreditScheduling with two-frame glom=$TxGlom2; v0.7.1.9 remains rollback."
+Write-Host "Packaged v0.7.1.11 TX mode $TxCreditScheduling with global extended glom framing=$TxGlom2; v0.7.1.9 remains rollback."
