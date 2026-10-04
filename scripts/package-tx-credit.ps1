@@ -10,14 +10,12 @@ $ErrorActionPreference='Stop'
 & (Join-Path $PSScriptRoot 'package-ci.ps1') -Configuration $Configuration -Platform $Platform
 $root=Split-Path -Parent $PSScriptRoot
 $stage=Join-Path $root 'artifacts\rpi5cyw-test-driver'
-Copy-Item (Join-Path $root 'utility\Get-RPi5-WiFi-TxCredit.ps1') $stage
-Copy-Item (Join-Path $root 'utility\Test-RPi5-WiFi-Lan.ps1') $stage
 Copy-Item (Join-Path $root 'docs\TX-CREDIT-EXPERIMENT.md') $stage
 Copy-Item (Join-Path $root 'docs\ALL-IN-ONE-FIX.md') $stage
 Copy-Item (Join-Path $root 'docs\TX-GLOM2-0.7.1.10.md') $stage
 Copy-Item (Join-Path $root 'docs\TX-GLOM2-0.7.1.11.md') $stage
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.11 EXPERIMENTAL
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.13 CONSOLIDATED BASELINE
 Hardware rollback baseline: 0.7.1.9 / 0bc5ed12e9438cd82555d7bc8ae77211aa6f236b
 Failed framing predecessor: 0.7.1.10 / a8eb3a6ff480821be885faf398e25857a248dc8f
 Earlier post-RX dispatch + bounded fast credit wake mode: $TxCreditScheduling
@@ -26,12 +24,11 @@ Two-frame host TX glom compiled candidate: $TxGlom2
 Keep the ORIGINAL 0.7.1.9 new-improvement package for rollback. Reconnect with
 the existing connection utility after installation. Do not change country,
 firmware, UEFI, router settings or backlog limits for the comparison.
-Read TX-GLOM2-0.7.1.11.md before testing. This build fixes the global
-post-negotiation extended SDPCM framing found by the v0.7.1.10 Pi logs, still
-negotiates bus:rxglom, and uses at most two one-frame NBLs per aggregate under
-TX pressure. Explicit
-firmware UNSUPPORTED falls back to the v0.7.1.9 path; ambiguous setup failures
-fail closed. Get-RPi5-WiFi-TxCredit.ps1 remains passive diagnostics.
+Use RPi5-WiFi-AllInOne.cmd for connection, status, download, upload and diagnostics.
+The driver runtime is intentionally the exact green v0.7.1.11 source; this package
+contains no new TX threshold, queue, glom, SDIO, firmware or radio tuning.
+The all-in-one upload measurement uses Cloudflare's public speed-test upload endpoint
+and records upload-specific queue/backlog/glom counter deltas.
 Detailed per-F1/F2 timing is disabled in this low-overhead package.
 
 The driver is test-signed, not Microsoft production-signed.
@@ -39,12 +36,12 @@ The driver is test-signed, not Microsoft production-signed.
 
 $receiptPath=Join-Path $stage 'SOURCE_REVISION.txt'
 $receipt=Get-Content -LiteralPath $receiptPath -Raw
-$receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.11-experimental`ntx_credit_scheduling=$TxCreditScheduling`ntx_glom2=$TxGlom2`ntx_glom2_failed_predecessor=a8eb3a6ff480821be885faf398e25857a248dc8f")
+$receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.13-consolidated`nruntime_baseline=6ae93623c8767eda050b8c408250d3ec3ce19bfb`ntx_credit_scheduling=$TxCreditScheduling`ntx_glom2=$TxGlom2`nall_in_one_utility=1`nupload_measurement=cloudflare-public-speedtest")
 $receipt=$receipt.Replace('performance_branch=better-improvement',"performance_branch=$env:GITHUB_REF_NAME")
-$receipt=$receipt.Replace('performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90','performance_baseline=0bc5ed12e9438cd82555d7bc8ae77211aa6f236b')
+$receipt=$receipt.Replace('performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90','performance_baseline=6ae93623c8767eda050b8c408250d3ec3ce19bfb')
 $receipt | Set-Content -LiteralPath $receiptPath -Encoding UTF8
 Get-ChildItem $stage -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name | ForEach-Object {
     $hash=Get-FileHash $_.FullName -Algorithm SHA256
     "$($hash.Hash)  $($_.Name)"
 } | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ASCII
-Write-Host "Packaged v0.7.1.11 TX mode $TxCreditScheduling with global extended glom framing=$TxGlom2; v0.7.1.9 remains rollback."
+Write-Host "Packaged v0.7.1.13 consolidated utility baseline with exact v0.7.1.11 runtime; no new driver tuning."
