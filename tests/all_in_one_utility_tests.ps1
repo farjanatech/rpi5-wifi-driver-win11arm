@@ -20,7 +20,7 @@ try {
     foreach($required in @(
         '$script:ToolVersion=''0.7.1.13''',
         'https://speed.cloudflare.com/__up',
-        '4 x 8 MiB',
+        '4 x 4 MiB',
         'UploadQueueRejectsDelta',
         'Connect + full download/upload test + diagnostics',
         'Driver baseline=v0.7.1.11 runtime; no new TX tuning in this package.'
