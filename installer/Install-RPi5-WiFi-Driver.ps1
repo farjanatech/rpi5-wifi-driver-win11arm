@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.7.1.11'
+$script:InstallerVersion = '0.7.1.13'
 # Compatibility is capability/resource based, not tied to a UEFI git revision.
 # The installer requires the exact ACPI target; the kernel validates the SDHCI
 # MMIO/resource layout before touching the controller. Interrupt wakeup is
@@ -163,8 +163,7 @@ function Invoke-Rpi5DriverInstall {
 
         $verifiedFiles = Test-Rpi5PackageManifest -Directory $directory -RequiredNames @(
             'rpi5cyw.inf','rpi5cyw.sys','rpi5cyw.cat','rpi5cyw-test.cer',
-            'Set-RPi5-WiFi-Autoconnect.ps1','Connect-RPi5-WiFi.ps1','RPi5-WiFi-Operations.ps1',
-            'Collect-RPi5-WiFi-Diagnostics.ps1')
+            'RPi5-WiFi-AllInOne.ps1','RPi5-WiFi-AllInOne.cmd')
         Write-InstallMessage "Verified $verifiedFiles package files against SHA256SUMS.txt."
 
         $device = Get-Rpi5TargetDevice
@@ -238,20 +237,7 @@ function Invoke-Rpi5DriverInstall {
         & pnputil.exe /scan-devices | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
         if ($LASTEXITCODE -ne 0) { throw "PnP device rescan failed with exit code $LASTEXITCODE." }
         Write-InstallMessage 'Driver package installation and PnP rescan completed.'
-        # The package was hash/signature checked above. Refresh only an existing
-        # opt-in task's connector code; never enable autoconnect or replace its
-        # private profile as a side effect of installing a driver update.
-        $startupUpdater = Join-Path $directory 'Set-RPi5-WiFi-Autoconnect.ps1'
-        if (Test-Path -LiteralPath $startupUpdater -PathType Leaf) {
-            try {
-                & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $startupUpdater -RefreshExisting 2>&1 |
-                    Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
-                if ($LASTEXITCODE -ne 0) { throw 'Startup refresh returned failure.' }
-                Write-InstallMessage 'Startup utility refresh checked; only an already-enabled matching task can be updated. Private profile preserved.'
-            } catch {
-                Write-InstallMessage 'WARNING: Existing startup utility could not be refreshed. Driver installation remains complete. Review the log before relying on autoconnect; no private profile was replaced.'
-            }
-        }
+        Write-InstallMessage 'User utilities are consolidated into RPi5-WiFi-AllInOne; no startup task or saved profile is modified by installation.'
         if ($rebootRequired) {
             Write-InstallMessage 'Windows requires a reboot. Save your work and restart manually, then run diagnostics again.'
         }
@@ -264,17 +250,17 @@ function Invoke-Rpi5DriverInstall {
             Write-InstallMessage 'Driver service was not visible after installation; diagnostics will record the failure.'
         }
 
-        $collector = Join-Path $directory 'Collect-RPi5-WiFi-Diagnostics.ps1'
+        $allInOne = Join-Path $directory 'RPi5-WiFi-AllInOne.ps1'
         if ($rebootRequired) {
-            Write-InstallMessage 'Skipping live post-install diagnostics because the newly staged driver is not yet guaranteed to be the in-memory driver. Reboot first, then run diagnostics.'
-        } elseif (Test-Path -LiteralPath $collector -PathType Leaf) {
-            Write-InstallMessage 'Collecting post-install diagnostics...'
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $collector -NoPause
+            Write-InstallMessage 'Skipping live post-install diagnostics because the newly staged driver is not yet guaranteed to be the in-memory driver. Reboot first, then open RPi5-WiFi-AllInOne.cmd.'
+        } elseif (Test-Path -LiteralPath $allInOne -PathType Leaf) {
+            Write-InstallMessage 'Collecting post-install diagnostics through the all-in-one utility...'
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $allInOne -Mode Diagnostics -NoPause
             if ($LASTEXITCODE -ne 0) {
-                Write-InstallMessage "Diagnostic collector returned exit code $LASTEXITCODE."
+                Write-InstallMessage "All-in-one diagnostics returned exit code $LASTEXITCODE."
             }
         } else {
-            Write-InstallMessage 'Diagnostic collector was not found in the package.'
+            Write-InstallMessage 'All-in-one utility was not found in the package.'
         }
 
         Write-InstallMessage 'Installation attempt completed. If reboot was requested, reboot before collecting driver diagnostics.'
