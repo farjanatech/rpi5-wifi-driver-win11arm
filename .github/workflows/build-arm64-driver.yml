@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cyw43455-direct-sdio-${{ github.ref }}-${{ github.sha }}
+  group: cyw43455-direct-sdio-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
