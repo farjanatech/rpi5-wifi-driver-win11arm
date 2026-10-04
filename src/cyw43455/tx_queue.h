@@ -196,6 +196,32 @@ static NDIS_STATUS CywTxAbortStatus(CYW_TX_STATE *Q,CYW_PENDING_SEND *Item,ULONG
     if(Now-Item->Submitted>=CYW_TX_MAX_AGE)return NDIS_STATUS_FAILURE;
     return NDIS_STATUS_SUCCESS;
 }
+#if RPI5CYW_TX_GLOM2
+/* Glom only under real queue pressure, only for two independent one-frame
+ * NBLs, and only while the cached state already shows two usable credits.
+ * CywTxTransferPair performs the mandatory fresh F1 service again before F2. */
+static BOOLEAN CywTxPairCandidate(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
+    ULONG Remaining,PNET_BUFFER *First,PNET_BUFFER *Second)
+{
+    KIRQL irql;BOOLEAN eligible=FALSE;ULONG64 now;
+    if(Remaining<2 || !A->TxGlomEnabled || !CywTxCanTransferPair(A))return FALSE;
+    now=KeQueryInterruptTime();
+    KeAcquireSpinLock(&Q->Lock,&irql);
+    if(Q->Gate==NDIS_STATUS_SUCCESS && Q->Count>=2 &&
+       (Q->BacklogCount!=0 || Q->Frames>=32) &&
+       Q->Entries[0].Frames==1 && Q->Entries[0].HeldFrames==1 &&
+       Q->Entries[1].Frames==1 && Q->Entries[1].HeldFrames==1 &&
+       Q->Entries[0].Next && Q->Entries[1].Next &&
+       !NET_BUFFER_NEXT_NB(Q->Entries[0].Next) &&
+       !NET_BUFFER_NEXT_NB(Q->Entries[1].Next) &&
+       CywTxAbortStatus(Q,&Q->Entries[0],now)==NDIS_STATUS_SUCCESS &&
+       CywTxAbortStatus(Q,&Q->Entries[1],now)==NDIS_STATUS_SUCCESS) {
+        *First=Q->Entries[0].Next;*Second=Q->Entries[1].Next;eligible=TRUE;
+    }
+    KeReleaseSpinLock(&Q->Lock,irql);
+    return eligible;
+}
+#endif
 static VOID CywTxFlush(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,NDIS_STATUS Status)
 {
     KIRQL irql;PNET_BUFFER_LIST nbl;BOOLEAN active;
@@ -215,6 +241,10 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
     ULONG i,len;ULONG64 now;KIRQL irql;PUCHAR data;PNET_BUFFER nb;
     PNET_BUFFER_LIST nbl;NDIS_STATUS completion=NDIS_STATUS_SUCCESS;NTSTATUS status;
     BOOLEAN active;
+#if RPI5CYW_TX_GLOM2
+    ULONG len2;PUCHAR data2;PNET_BUFFER nb2;PNET_BUFFER_LIST nbl2;
+    NDIS_STATUS completion2;
+#endif
     *Sent=0;
     /* Cancelled/expired entries behind a flow-controlled head must not wait
      * for credits. Backlog ownership gets the same bounded cleanup. */
@@ -256,6 +286,45 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
         now=(KeQueryInterruptTime()-Q->Entries[0].Submitted)/10000ULL;
         if(now>A->TxQueueMaxDelayMs)A->TxQueueMaxDelayMs=now>0xffffffffULL?0xffffffffUL:(ULONG)now;
         KeReleaseSpinLock(&Q->Lock,irql);
+#if RPI5CYW_TX_GLOM2
+        nb2=NULL;
+        if(CywTxPairCandidate(A,Q,Budget-*Sent,&nb,&nb2)) {
+            len=NET_BUFFER_DATA_LENGTH(nb);len2=NET_BUFFER_DATA_LENGTH(nb2);
+            RtlZeroMemory(Q->Frame,4);Q->Frame[0]=0x20;
+            RtlZeroMemory(Q->Frame2,4);Q->Frame2[0]=0x20;
+            data=NdisGetDataBuffer(nb,len,Q->Frame+4,1,0);
+            data2=NdisGetDataBuffer(nb2,len2,Q->Frame2+4,1,0);
+            if(data && data!=Q->Frame+4)RtlCopyMemory(Q->Frame+4,data,len);
+            if(data2 && data2!=Q->Frame2+4)RtlCopyMemory(Q->Frame2+4,data2,len2);
+            if(data && data2) {
+                status=CywTxTransferPair(A,Q->Frame,len+4,Q->Frame2,len2+4);
+                /* BUSY means fresh F1 no longer has two credits/flow room.
+                 * No F2 occurred, so safely fall through to the proven
+                 * one-frame sender rather than wasting an available credit. */
+                if(status!=STATUS_DEVICE_BUSY) {
+                    KeAcquireSpinLock(&Q->Lock,&irql);nbl=nbl2=NULL;
+                    completion=CywTxAbortStatus(Q,&Q->Entries[0],KeQueryInterruptTime());
+                    completion2=CywTxAbortStatus(Q,&Q->Entries[1],KeQueryInterruptTime());
+                    if(NT_SUCCESS(status)) {
+                        A->TxPackets+=2;*Sent+=2;
+                        Q->Entries[0].Next=NET_BUFFER_NEXT_NB(nb);
+                        Q->Entries[1].Next=NET_BUFFER_NEXT_NB(nb2);
+                        Q->Entries[0].Frames--;Q->Entries[1].Frames--;
+                    } else {
+                        if(completion==NDIS_STATUS_SUCCESS)completion=NDIS_STATUS_FAILURE;
+                        if(completion2==NDIS_STATUS_SUCCESS)completion2=NDIS_STATUS_FAILURE;
+                    }
+                    nbl=CywTxRemove(A,Q,0,completion);
+                    nbl2=CywTxRemove(A,Q,0,completion2);
+                    KeReleaseSpinLock(&Q->Lock,irql);
+                    if(nbl)CywTxComplete(A,Q,nbl,completion);
+                    if(nbl2)CywTxComplete(A,Q,nbl2,completion2);
+                    if(!NT_SUCCESS(status))return status;
+                    continue;
+                }
+            }
+        }
+#endif
         if(!CywTxCanTransfer(A)) {A->TxCreditWaits++;break;}
         len=NET_BUFFER_DATA_LENGTH(nb);
         RtlZeroMemory(Q->Frame,4);Q->Frame[0]=0x20;
