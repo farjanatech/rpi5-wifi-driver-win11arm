@@ -2,7 +2,7 @@ name: Build CYW43455 direct-SDIO NDIS ARM64 driver
 
 on:
   push:
-    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix, new-improvement, new-improvement-tx-glom, new-improvement-tx-glom-fix, new-improvement-all-in-one]
+    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix, new-improvement, new-improvement-tx-glom, new-improvement-tx-glom-fix, new-improvement-all-in-one, new-improvement-upload-measurement]
   workflow_dispatch:
 
 permissions:
@@ -33,7 +33,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate v0.7.1.13 package-only source isolation
+      - name: Validate v0.7.1.14 measurement-only source isolation
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_scope_tests.ps1
@@ -423,7 +423,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.13-all-in-one-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.14-measurement-tx${{ matrix.tx_mode }}
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
@@ -441,7 +441,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.13-all-in-one-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.14-measurement-tx${{ matrix.tx_mode }}
           path: ci-logs/
           if-no-files-found: warn
           retention-days: 30
