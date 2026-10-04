@@ -5,7 +5,6 @@
 #define RPI5CYW_TX_GLOM2 1
 #include "../src/driver/driver.h"
 #define STATUS_UNSUCCESSFUL ((NTSTATUS)0xc0000001L)
-#define STATUS_IO_DEVICE_ERROR ((NTSTATUS)0xc0000185L)
 
 static unsigned Failures,Calls;
 static NTSTATUS Result;
