@@ -228,6 +228,37 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
     }
     return Status;
 }
+#if RPI5CYW_TX_GLOM2
+static BOOLEAN CywTxCanTransferPair(PRPI5CYW_ADAPTER A)
+{
+    CYW_NETWORK *N=A->Network;
+    A->TxCreditSequence=N->TxSeq;A->TxCreditMaximum=N->TxMax;A->TxFlowMask=N->TxFlow;
+    return A->TxGlomEnabled && !A->IoStopped && !N->Stop && !N->Paused &&
+        !N->SelectingBand && N->Ready && N->Authorized && N->Associated &&
+        !A->Transport.Halted && !A->Transport.GlobalFlow &&
+        CywTransportPriorityAllowed(&A->Transport,N->TxFlow) &&
+        CywTxCredit(N->TxSeq,N->TxMax,0) &&
+        CywTxCredit((UCHAR)(N->TxSeq+1),N->TxMax,0);
+}
+static NTSTATUS CywTxTransferPair(PRPI5CYW_ADAPTER A,
+    PUCHAR Data1,ULONG Length1,PUCHAR Data2,ULONG Length2)
+{
+    NTSTATUS Status=CywSendDataPair(A,Data1,Length1,Data2,Length2);
+    if(NT_SUCCESS(Status)) {
+        if(Length1>=4) {
+            Rpi5CywTrafficFrame(A,TRUE,Data1+4,Length1-4);
+            A->PacketTx[CywPacketKind(Data1+4,Length1-4)]++;
+            CywProbePacket(&A->PacketProbe,Data1+4,Length1-4,1,KeQueryInterruptTime());
+        }
+        if(Length2>=4) {
+            Rpi5CywTrafficFrame(A,TRUE,Data2+4,Length2-4);
+            A->PacketTx[CywPacketKind(Data2+4,Length2-4)]++;
+            CywProbePacket(&A->PacketProbe,Data2+4,Length2-4,1,KeQueryInterruptTime());
+        }
+    }
+    return Status;
+}
+#endif
 #include "tx_queue.h"
 /* TX-RETRY-BEGIN */
 #include "tx_retry_gate.h"
@@ -246,6 +277,7 @@ static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A)
 static NTSTATUS CywInt(PRPI5CYW_ADAPTER A,const char *Name,ULONG Value)
 {UCHAR b[4];CywPut32(b,Value);return CywIovar(A,Name,TRUE,b,4);}
 #include "rx_config.h"
+#include "tx_glom2_config.h"
 static NTSTATUS CywCmdInt(PRPI5CYW_ADAPTER A,ULONG Command,ULONG Value)
 {UCHAR b[4];CywPut32(b,Value);return CywFirmwareCommand(A,Command,TRUE,b,4);}
 static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
@@ -262,6 +294,7 @@ static NTSTATUS CywConfigure(PRPI5CYW_ADAPTER A)
     }
     TRY(CywCmdInt(A,3,0)); /* radio DOWN until user supplies a country */
     TRY(CywConfigureRxAggregation(A));
+    TRY(CywConfigureTxGlom2(A));
     TRY(CywInt(A,"mpc",0));TRY(CywCmdInt(A,86,0));
     TRY(CywInt(A,"allmulti",1)); /* software applies NDIS multicast filters */
     TRY(CywIovar(A,"cur_etheraddr",TRUE,A->CurrentMacAddress,6));
