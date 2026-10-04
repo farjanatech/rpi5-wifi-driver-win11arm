@@ -226,11 +226,11 @@ int main(void)
     CHECK(CywSendDataPair(&TestAdapter,payload,4,payload2,4)==STATUS_SUCCESS);
     CHECK(DataWrites==1 && StatusReads==1 && TestNetwork.TxSeq==2 && LastWriteLength==48);
     CHECK(WriteCaptureLength==48 && CywLe16(WriteCapture)==48);
-    CHECK(CywLe16(WriteCapture+2)==(USHORT)~48u);
+    CHECK(CywLe16(WriteCapture+2)==0xffcfu);
     CHECK(CywLe32(WriteCapture+4)==20 && CywLe32(WriteCapture+8)==0);
     CHECK(WriteCapture[12]==0 && WriteCapture[13]==2 && WriteCapture[15]==20);
     CHECK(!memcmp(WriteCapture+20,payload,4));
-    CHECK(CywLe16(WriteCapture+24)==24 && CywLe16(WriteCapture+26)==(USHORT)~24u);
+    CHECK(CywLe16(WriteCapture+24)==24 && CywLe16(WriteCapture+26)==0xffe7u);
     CHECK(CywLe32(WriteCapture+28)==(20u|(1u<<24)) && CywLe32(WriteCapture+32)==0);
     CHECK(WriteCapture[36]==1 && WriteCapture[37]==2 && WriteCapture[39]==20);
     CHECK(!memcmp(WriteCapture+44,payload2,4));
