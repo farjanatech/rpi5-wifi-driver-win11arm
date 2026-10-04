@@ -17,12 +17,12 @@ try {
     if($errors.Count){throw "Generated all-in-one parser errors: $($errors|Out-String)"}
     $source=Get-Content -LiteralPath $ps1 -Raw -Encoding UTF8
     foreach($required in @(
-        '$script:ToolVersion=''0.7.1.13''',
+        '$script:ToolVersion=''0.7.1.14''',
         'https://speed.cloudflare.com/__up',
-        '4 x 4 MiB',
-        'UploadQueueRejectsDelta',
-        'Connect + full download/upload test + diagnostics',
-        'Driver baseline=v0.7.1.11 runtime; no new TX tuning in this package.'
+        'Sustained upload stage: $streams stream(s), 16 MiB per stream.',
+        'upload-scaling-result.json',
+        'Connect + sustained 1/2/4-stream download/upload + diagnostics',
+        'Driver runtime=byte-for-byte v0.7.1.11 source; v0.7.1.14 changes measurement only.'
     )){
         if($source -notmatch [regex]::Escape($required)){throw "Generated utility missing: $required"}
     }
@@ -41,23 +41,21 @@ try {
         'Collect-RPi5-WiFi-Diagnostics.ps1',
         'Connect-RPi5-WiFi.ps1',
         'Get-RPi5-WiFi-Radio.ps1',
-        'Get-RPi5-WiFi-Timing.ps1',
         'Get-RPi5-WiFi-Transport.ps1',
-        'Measure-RPi5-WiFi-Load.ps1',
-        'RPi5-WiFi-DownloadTiming.ps1',
-        'RPi5-WiFi-MeasurementClock.ps1',
-        'RPi5-WiFi-Operations.ps1',
-        'Test-RPi5-WiFi-Performance.ps1'
+        'RPi5-WiFi-Operations.ps1'
     )|Sort-Object
     if(($names -join '|') -cne ($expected -join '|')){
         throw "Unexpected embedded helper set: $($names -join ', ')"
     }
 
-    $perf=Get-Content -LiteralPath (Join-Path $root 'utility\Test-RPi5-WiFi-Performance.ps1') -Raw
-    if(-not $perf.Contains('[string]$OutputRoot') -or -not $perf.Contains('if ($OutputRoot)')){
-        throw 'Performance helper cannot be directed into the all-in-one result folder.'
+    foreach($measurementMarker in @(
+        'download-1stream','download-2stream','download-4stream',
+        'upload-1stream','upload-2stream','upload-4stream',
+        'Get-Rpi5FreshSnapshot','TransportTxStatusChecks','Cmd53WriteCount'
+    )){
+        if(-not $source.Contains($measurementMarker)){throw "Generated utility missing measurement marker: $measurementMarker"}
     }
-    Write-Output 'PASS: one user utility embeds the tested helpers, measures download+upload, and exposes no separate tester files.'
+    Write-Output 'PASS: one user utility embeds only required helpers and measures sustained 1/2/4-stream download/upload with fresh per-stage driver snapshots.'
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
