@@ -115,6 +115,7 @@ static void TestMultiFramePromotion(void)
 {
     ULONG sent,i;PVOID id=&TestAdapter;
     Init();Credits=4;FillProduction(60,id);
+    memset(&BacklogNb[60],0,sizeof(BacklogNb[0])*8);
     Packet(&BacklogNbl[60],&BacklogNb[60],100,id);
     for(i=0;i<7;++i) {
         BacklogNb[60+i].Length=100;
