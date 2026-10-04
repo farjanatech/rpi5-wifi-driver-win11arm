@@ -1,3 +1,9 @@
+> **`new-improvement` candidate: v0.7.1.9.** This branch keeps the proven
+> 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame
+> pending-NBL backlog so temporary active-queue pressure can be retained instead
+> of immediately rejected. It is a CI/hardware-validation candidate, not yet the
+> default release. See [TX backlog 0.7.1.9](docs/TX-BACKLOG-0.7.1.9.md).
+>
 > **Current default: v0.7.1.8 on `main`.** The promoted mode-1 path keeps the
 > stable v0.7.1.4 TX budgets, uses earlier post-RX dispatch, skips futile TX
 > attempts when firmware credits are exactly exhausted, and uses bounded fast
@@ -19,7 +25,7 @@ keeping the long historical milestone log in the main README.
 | **Current release** | **v0.7.1.8 is the default on `main`**, with mode 1 promoted after the best recent hardware result and a full green CI run. | Continue validating the promoted build over longer real-world use and keep v0.7.1.4 available as a rollback reference. |
 | **Hardware bring-up** | Direct Raspberry Pi 5 SDIO2 access to the onboard CYW43455 is working through the `ACPI\\RPI0011` device, including chip/core discovery, firmware startup and runtime transport. | Broader UEFI/platform compatibility is still limited; the driver remains targeted at the tested Raspberry Pi 5 setup. |
 | **Connection & Internet** | WPA2-Personal/AES connection, DHCP/IP traffic, gateway access, DNS and HTTPS/Internet traffic have been demonstrated on real hardware. | WPA3, enterprise authentication and native Windows Wi-Fi/WLAN UX are not the current focus; Windows still sees an Ethernet-style NDIS adapter. |
-| **TX path** | Bounded **64-frame** queue, correct pending-NBL ownership, cancellation/lifecycle handling, firmware-credit checks, priority/global flow control, early post-RX dispatch and bounded fast credit wakeups are implemented. | **Queue pressure is still the main performance weakness.** Under sustained load the queue can still reach its 64-frame limit and reject new submissions. |
+| **TX path** | `main` has the proven **64-frame** active queue, correct pending-NBL ownership, firmware-credit checks, early post-RX dispatch and bounded fast wakes. The `new-improvement` candidate adds a separate bounded **128-frame deferred backlog** without enlarging that active window. | Hardware-test whether deferred ownership removes ordinary queue-pressure send rejection without increasing latency or destabilizing lifecycle handling. |
 | **RX path** | Bounded RX batching, validated SDPCM parsing, read-ahead handling and glom validation are implemented with malformed/fault paths covered by tests. | Further RX changes should only be made if measurements identify RX as a real bottleneck; current evidence points more strongly to TX queue/credit pressure. |
 | **SDIO transport** | Direct CMD52/CMD53 PIO transport, runtime flow control, bounded polling, error propagation and tested high-speed/4-bit operation are in place. | DMA/block-mode or more aggressive transfer batching could improve efficiency, but should be pursued only after timing data proves SDIO transaction overhead is the limiting factor. |
 | **Stability** | Recent v0.7.1.8 hardware testing completed the full download workload with no observed disconnect, worker failure, FIFO failure, RX glom error, CMD53 timeout or interrupt-storm fallback. | Longer soak tests, sleep/resume, D0/D3, Pause/Restart, adapter restart and AP/router reconnect should continue to be exercised. |
