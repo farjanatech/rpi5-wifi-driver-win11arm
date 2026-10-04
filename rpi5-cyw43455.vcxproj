@@ -41,6 +41,7 @@
   <PropertyGroup>
     <TargetName>rpi5cyw</TargetName>
     <Rpi5TxCreditScheduling Condition="'$(Rpi5TxCreditScheduling)'==''">1</Rpi5TxCreditScheduling>
+    <Rpi5TxGlom2 Condition="'$(Rpi5TxGlom2)'==''">1</Rpi5TxGlom2>
     <Rpi5DetailedTiming Condition="'$(Rpi5DetailedTiming)'==''">0</Rpi5DetailedTiming>
   </PropertyGroup>
 
@@ -59,7 +60,7 @@
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <TreatWarningAsError>true</TreatWarningAsError>
-      <PreprocessorDefinitions>NDIS630_MINIPORT=1;NDIS_MINIPORT_DRIVER=1;RPI5CYW_DETAILED_TIMING=$(Rpi5DetailedTiming);RPI5CYW_TX_CREDIT_SCHEDULING=$(Rpi5TxCreditScheduling);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDIS630_MINIPORT=1;NDIS_MINIPORT_DRIVER=1;RPI5CYW_DETAILED_TIMING=$(Rpi5DetailedTiming);RPI5CYW_TX_CREDIT_SCHEDULING=$(Rpi5TxCreditScheduling);RPI5CYW_TX_GLOM2=$(Rpi5TxGlom2);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir)src\driver;$(ProjectDir)src\sdio;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
