@@ -1,5 +1,24 @@
 # Third-party notices
 
+## v0.7.1.10 two-frame host TX glom reference
+
+`src/cyw43455/transport_send.h` and the bounded pair-selection integration
+reference Linux brcmfmac `sdio.c` at commit
+`6addb4f385570ebc11c4eb499a4f1c149f313e84`, specifically
+`brcmf_sdio_hdpack`, `brcmf_sdio_txpkt_prep`,
+`brcmf_sdio_txpkt` and `brcmf_sdio_sendfromq`. These establish the extended
+SDPCM host-TX-glom header, total first hardware length, per-subframe sequence,
+credit-bounded chain length and `bus:rxglom` negotiation semantics.
+
+The Windows implementation here is independently bounded to exactly two
+single-frame NBLs under queue pressure, retains the v0.7.1.9 ownership/backlog
+model, performs its own fresh F1 gate, and does not copy Linux skb, MMC, DMA,
+scatter/gather or workqueue infrastructure. The Broadcom ISC notice already
+reproduced below applies to the referenced brcmfmac source.
+
+https://github.com/torvalds/linux/blob/6addb4f385570ebc11c4eb499a4f1c149f313e84/drivers/net/wireless/broadcom/brcm80211/brcmfmac/sdio.c
+
+
 ## Isolated performance branch 0.7.0
 
 `src/sdio/fifo_blocks.h`, `rx_performance.h` and the poll/send integration
