@@ -212,6 +212,10 @@ function Invoke-Rpi5DriverInstall {
         $installCode = $LASTEXITCODE
         if (-not (Test-Rpi5PnpSuccess $installCode)) { throw "PnPUtil rejected the driver package with exit code $installCode." }
         $rebootRequired = $installCode -eq 3010
+        if ("$($device.Status)" -eq 'Unbound') {
+            $rebootRequired = $true
+            Write-InstallMessage 'Target was unbound before installation; a manual reboot is required before validating the newly staged driver.'
+        }
         # Enable only this verified ACPI device; never restart other adapters.
         $problemCode = Get-Rpi5ProblemCode -InstanceId $device.InstanceId
         if (Test-Rpi5DeviceEnabled $problemCode) {
@@ -228,7 +232,8 @@ function Invoke-Rpi5DriverInstall {
         } else {
             # Do not force-enable a device with an unrelated/unknown problem.
             # Preserve the completed installation and collect diagnostic evidence.
-            Write-InstallMessage "Target PnP problem code=$problemCode; enable was not attempted. Check diagnostics after restart."
+            $rebootRequired = $true
+            Write-InstallMessage "Target PnP problem code=$problemCode; enable was not attempted. A manual reboot is required before driver validation."
         }
         & pnputil.exe /scan-devices | Out-String | Add-Content -LiteralPath $logPath -Encoding UTF8
         if ($LASTEXITCODE -ne 0) { throw "PnP device rescan failed with exit code $LASTEXITCODE." }
@@ -260,7 +265,9 @@ function Invoke-Rpi5DriverInstall {
         }
 
         $collector = Join-Path $directory 'Collect-RPi5-WiFi-Diagnostics.ps1'
-        if (Test-Path -LiteralPath $collector -PathType Leaf) {
+        if ($rebootRequired) {
+            Write-InstallMessage 'Skipping live post-install diagnostics because the newly staged driver is not yet guaranteed to be the in-memory driver. Reboot first, then run diagnostics.'
+        } elseif (Test-Path -LiteralPath $collector -PathType Leaf) {
             Write-InstallMessage 'Collecting post-install diagnostics...'
             & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $collector -NoPause
             if ($LASTEXITCODE -ne 0) {
@@ -270,7 +277,7 @@ function Invoke-Rpi5DriverInstall {
             Write-InstallMessage 'Diagnostic collector was not found in the package.'
         }
 
-        Write-InstallMessage 'Installation attempt completed. Send the Desktop diagnostic ZIP for analysis.'
+        Write-InstallMessage 'Installation attempt completed. If reboot was requested, reboot before collecting driver diagnostics.'
         Write-Information "Install log: $logPath"
         return 0
     } catch {
