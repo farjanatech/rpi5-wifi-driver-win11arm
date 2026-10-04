@@ -112,7 +112,7 @@ static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST 
         nbl=next;
     }
     CompletionNbls+=count;if(count>LargestCompletion)LargestCompletion=count;
-    if(CheckCompleting)CHECK(TestQueue.Completing==count && CywTxOutstanding(&TestQueue)==TestQueue.Outstanding+count);
+    if(CheckCompleting)CHECK(TestQueue.Completing==count && CywTxOutstanding(&TestQueue)==TestQueue.Outstanding+TestQueue.BacklogCount+count);
     if(CheckCallbackFrames) {
         CheckCallbackFrames=0;CHECK(TestQueue.Frames==ExpectedCallbackFrames);
         CHECK(TestAdapter.TxQueueFrames==ExpectedCallbackFrames);
