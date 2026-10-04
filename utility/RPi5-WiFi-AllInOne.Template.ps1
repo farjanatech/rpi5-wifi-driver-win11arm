@@ -9,7 +9,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $InformationPreference='Continue'
-$script:ToolVersion='0.7.1.14'
+$script:ToolVersion='0.7.1.14-fix1'
 $script:SkipUploadRequested=[bool]$SkipUpload
 $script:PayloadBase64='__PAYLOAD_BASE64__'
 $script:DiagKey='HKLM:\SOFTWARE\Rpi5CywDirectDiag'
@@ -139,24 +139,28 @@ function Get-Rpi5Median {
     return ([double]$sorted[$middle-1]+[double]$sorted[$middle])/2
 }
 function ConvertFrom-Rpi5CurlRow {
-    param($Raw,[ValidateSet('Upload','Download')][string]$Direction,[long]$Bytes,[int]$Stream)
+    param($Raw,[ValidateSet('Upload','Download')][string]$Direction,[long]$ExpectedBytes,[int]$Stream)
     $text=(@($Raw)-join [Environment]::NewLine).Trim()
     $parts=$text.Split('|')
-    if($parts.Count -ne 6 -or $parts[0] -ne '200'){throw ("Unexpected {0} response for stream {1}: {2}" -f $Direction,$Stream,$text)}
-    $numbers=[double[]]::new(5)
-    for($index=0;$index -lt 5;$index++){
+    if($parts.Count -ne 7 -or $parts[0] -ne '200'){throw ("Unexpected {0} response for stream {1}: {2}" -f $Direction,$Stream,$text)}
+    $numbers=[double[]]::new(6)
+    for($index=0;$index -lt 6;$index++){
         if(-not [double]::TryParse($parts[$index+1],[Globalization.NumberStyles]::Float,
             [Globalization.CultureInfo]::InvariantCulture,[ref]$numbers[$index]) -or $numbers[$index] -lt 0){
             throw ("Invalid {0} timing for stream {1}: {2}" -f $Direction,$Stream,$text)
         }
     }
-    $total=$numbers[0];$reportedBytesPerSecond=$numbers[1];$connect=$numbers[2];$tls=$numbers[3];$bodyStart=$numbers[4]
-    if($total -le 0 -or $reportedBytesPerSecond -le 0){throw "Invalid $Direction throughput for stream $Stream."}
+    $total=$numbers[0];$reportedBytesPerSecond=$numbers[1];$actualBytes=[long][Math]::Round($numbers[2])
+    $connect=$numbers[3];$tls=$numbers[4];$bodyStart=$numbers[5]
+    if($total -le 0 -or $actualBytes -le 0){
+        throw ("{0} stream {1} returned HTTP 200 but transferred no payload. Raw curl metrics: {2}" -f $Direction,$Stream,$text)
+    }
     $bodySeconds=$total-$bodyStart
-    $payloadMbps=if($bodySeconds -gt 0){[double]$Bytes*8/$bodySeconds/1000000}else{$null}
+    $payloadMbps=if($bodySeconds -gt 0){[double]$actualBytes*8/$bodySeconds/1000000}else{$null}
+    $curlMbps=if($reportedBytesPerSecond -gt 0){$reportedBytesPerSecond*8/1000000}else{[double]$actualBytes*8/$total/1000000}
     return [pscustomobject]@{
-        Stream=$Stream;HttpStatus=200;Bytes=$Bytes;TotalSeconds=$total;
-        CurlMbps=$reportedBytesPerSecond*8/1000000;ConnectSeconds=$connect;
+        Stream=$Stream;HttpStatus=200;ExpectedBytes=$ExpectedBytes;ActualBytes=$actualBytes;TotalSeconds=$total;
+        CurlMbps=$curlMbps;ReportedBytesPerSecond=$reportedBytesPerSecond;ConnectSeconds=$connect;
         TlsSeconds=$tls;BodyStartSeconds=$bodyStart;BodyStartKind=$(if($Direction -eq 'Upload'){'PreTransfer'}else{'FirstByte'});BodySeconds=$bodySeconds;
         PayloadMbps=$payloadMbps
     }
@@ -194,10 +198,10 @@ function Invoke-Rpi5TransferStage {
                 $config.Add('request = "POST"')
                 $config.Add('header = "Content-Type: application/octet-stream"')
                 $config.Add(('data-binary = "@{0}"' -f $PayloadPath))
-                $config.Add('write-out = "%{http_code}|%{time_total}|%{speed_upload}|%{time_connect}|%{time_appconnect}|%{time_pretransfer}"')
+                $config.Add('write-out = "%{http_code}|%{time_total}|%{speed_upload}|%{size_upload}|%{time_connect}|%{time_appconnect}|%{time_pretransfer}"')
             }else{
                 $url='https://speed.cloudflare.com/__down?bytes='+$BytesPerStream
-                $config.Add('write-out = "%{http_code}|%{time_total}|%{speed_download}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}"')
+                $config.Add('write-out = "%{http_code}|%{time_total}|%{speed_download}|%{size_download}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}"')
             }
             $config.Add(('url = "{0}"' -f $url))
             $config|Set-Content -LiteralPath $configPath -Encoding ASCII
@@ -235,13 +239,18 @@ function Invoke-Rpi5TransferStage {
     }
     $samples=[Collections.Generic.List[object]]::new()
     foreach($jobRow in $jobRows){
+        $rawPath=Join-Path $OutputDirectory ("$Label-stream$($jobRow.Stream)-curl-stdout.txt")
+        $errorPath=Join-Path $OutputDirectory ("$Label-stream$($jobRow.Stream)-curl-stderr.txt")
+        [string]$jobRow.Raw|Set-Content -LiteralPath $rawPath -Encoding UTF8
+        [string]$jobRow.ErrorText|Set-Content -LiteralPath $errorPath -Encoding UTF8
         if([int]$jobRow.ExitCode -ne 0){
             throw "$Direction stage $Label stream $($jobRow.Stream) failed: $($jobRow.ErrorText)"
         }
         $parsed=ConvertFrom-Rpi5CurlRow $jobRow.Raw $Direction $BytesPerStream ([int]$jobRow.Stream)
         $samples.Add([pscustomobject]@{
-            Stream=$parsed.Stream;Bytes=$parsed.Bytes;TotalSeconds=$parsed.TotalSeconds;
-            CurlMbps=$parsed.CurlMbps;ConnectSeconds=$parsed.ConnectSeconds;TlsSeconds=$parsed.TlsSeconds;
+            Stream=$parsed.Stream;ExpectedBytes=$parsed.ExpectedBytes;ActualBytes=$parsed.ActualBytes;TotalSeconds=$parsed.TotalSeconds;
+            CurlMbps=$parsed.CurlMbps;ReportedBytesPerSecond=$parsed.ReportedBytesPerSecond;
+            ConnectSeconds=$parsed.ConnectSeconds;TlsSeconds=$parsed.TlsSeconds;
             BodyStartSeconds=$parsed.BodyStartSeconds;BodyStartKind=$parsed.BodyStartKind;BodySeconds=$parsed.BodySeconds;PayloadMbps=$parsed.PayloadMbps;
             StartedUtc=([datetime]$jobRow.StartedUtc).ToString('o');EndedUtc=([datetime]$jobRow.EndedUtc).ToString('o')
         })
@@ -252,11 +261,12 @@ function Invoke-Rpi5TransferStage {
     $ends=@($jobRows|ForEach-Object {[datetime]$_.EndedUtc}|Sort-Object)
     $wall=($ends[-1]-$starts[0]).TotalSeconds
     if($wall -le 0){throw "Invalid stage wall time for $Label."}
-    $totalBytes=[long]$BytesPerStream*$Streams
+    $expectedTotalBytes=[long]$BytesPerStream*$Streams
+    $totalBytes=[long]($samples|Measure-Object ActualBytes -Sum).Sum
     $curlRates=[double[]]@($samples|ForEach-Object CurlMbps)
     $payloadRates=[double[]]@($samples|Where-Object {$null -ne $_.PayloadMbps}|ForEach-Object PayloadMbps)
     $result=[pscustomobject]@{
-        Label=$Label;Direction=$Direction;Streams=$Streams;BytesPerStream=$BytesPerStream;TotalPayloadBytes=$totalBytes;
+        Label=$Label;Direction=$Direction;Streams=$Streams;BytesPerStream=$BytesPerStream;ExpectedPayloadBytes=$expectedTotalBytes;TotalPayloadBytes=$totalBytes;
         StageStartUtc=$starts[0].ToString('o');StageEndUtc=$ends[-1].ToString('o');
         StageWallSeconds=$wall;AggregateMbps=[double]$totalBytes*8/$wall/1000000;
         SumCurlMbps=($curlRates|Measure-Object -Sum).Sum;MedianStreamCurlMbps=(Get-Rpi5Median $curlRates);
@@ -403,9 +413,10 @@ if([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.Int
     throw 'This utility is only for Windows ARM64 on Raspberry Pi 5.'
 }
 $root=$null
+$selected=$Mode
+$fatalMessage=$null
 try{
     $root=Expand-Rpi5EmbeddedPayload
-    $selected=$Mode
     if($selected -eq 'Menu'){$selected=Show-Rpi5Menu}
     switch($selected){
         'Connect'{
@@ -420,7 +431,14 @@ try{
         }
         default{}
     }
+}catch{
+    $fatalMessage=$_.Exception.Message
+    Write-Warning "All-in-one operation failed: $fatalMessage"
+    Write-Information 'The Wi-Fi connection is not automatically disconnected by this failure. Partial result files are kept on the Desktop for analysis.'
 }finally{
     if($root -and (Test-Path -LiteralPath $root)){Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue}
-    if(-not $NoPause -and $Mode -ne 'Menu'){[void](Read-Host 'Press Enter to close')}
 }
+if(-not $NoPause -and $selected -ne 'Exit'){
+    [void](Read-Host $(if($fatalMessage){'Test failed. Press Enter to close'}else{'Press Enter to close'}))
+}
+if($fatalMessage){exit 1}
