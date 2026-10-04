@@ -108,6 +108,7 @@ typedef struct _RPI5CYW_ADAPTER
     NTSTATUS TxGlomConfigStatus;
     ULONG TxGlomAttempts, TxGlomChains, TxGlomFrames, TxGlomBusyFallbacks, TxGlomErrors;
     ULONG TxGlomPayloadBytes, TxGlomPaddedBytes;
+    ULONG TxGlomExtendedDataSingles, TxGlomExtendedControlSingles;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */
     CYW_TX_RETRY TxRetry; /* Worker-owned bounded idle-credit retry evidence. */
