@@ -85,7 +85,7 @@ static void TestFifoPromotion(void)
 static void TestCancellationAndExpiry(void)
 {
     ULONG sent,i;PVOID activeId=&TestQueue,backId=&TestAdapter;
-    Init();Credits=0;FillProduction(CYW_TX_LIMIT,activeId);
+    Init();Credits=0;CheckCompleting=1;FillProduction(CYW_TX_LIMIT,activeId);
     for(i=0;i<2;++i) {
         Packet(&BacklogNbl[CYW_TX_LIMIT+i],&BacklogNb[CYW_TX_LIMIT+i],100,backId);
         CHECK(CywTxSubmitWithBacklog(&TestAdapter,&TestQueue,&BacklogNbl[CYW_TX_LIMIT+i])==NDIS_STATUS_PENDING);
@@ -98,7 +98,7 @@ static void TestCancellationAndExpiry(void)
     CHECK(BacklogNbl[CYW_TX_LIMIT+1].Status==NDIS_STATUS_SEND_ABORTED);
     FlushAndCheck(CYW_TX_LIMIT+2);
 
-    Init();Credits=0;FillProduction(CYW_TX_LIMIT,activeId);
+    Init();Credits=0;CheckCompleting=1;FillProduction(CYW_TX_LIMIT,activeId);
     Packet(&BacklogNbl[CYW_TX_LIMIT],&BacklogNb[CYW_TX_LIMIT],100,backId);
     CHECK(CywTxSubmitWithBacklog(&TestAdapter,&TestQueue,&BacklogNbl[CYW_TX_LIMIT])==NDIS_STATUS_PENDING);
     Clock=CYW_TX_MAX_AGE;
