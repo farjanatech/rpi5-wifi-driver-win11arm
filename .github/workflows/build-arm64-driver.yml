@@ -2,7 +2,7 @@ name: Build CYW43455 direct-SDIO NDIS ARM64 driver
 
 on:
   push:
-    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix, new-improvement]
+    branches: [main, better-improvement, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix, new-improvement, new-improvement-tx-glom]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,7 @@ jobs:
       Configuration: Release
       Platform: ARM64
       TxCreditScheduling: ${{ matrix.tx_mode }}
+      TxGlom2: 1
 
     steps:
       - name: Checkout source
@@ -160,7 +161,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
-          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_tests.exe && ci-logs\tx_queue_tests.exe && cl /nologo /W4 /WX /TC /std:c17 tests\tx_backlog_tests.c /Fe:ci-logs\tx_backlog_tests.exe && ci-logs\tx_backlog_tests.exe' -f $vcvars
+          $command = 'call "{0}" && cl /nologo /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_tests.exe && ci-logs\tx_queue_tests.exe && cl /nologo /W4 /WX /TC /std:c17 tests\tx_backlog_tests.c /Fe:ci-logs\tx_backlog_tests.exe && ci-logs\tx_backlog_tests.exe && cl /nologo /W4 /WX /TC /std:c17 tests\tx_glom2_config_tests.c /Fe:ci-logs\tx_glom2_config_tests.exe && ci-logs\tx_glom2_config_tests.exe && cl /nologo /W4 /WX /TC /std:c17 tests\tx_glom2_queue_tests.c /Fe:ci-logs\tx_glom2_queue_tests.exe && ci-logs\tx_glom2_queue_tests.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\tx-queue-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -180,7 +181,7 @@ jobs:
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
           $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
-          $command = 'call "{0}" && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_asan.exe && ci-logs\tx_queue_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_backlog_tests.c /Fe:ci-logs\tx_backlog_asan.exe && ci-logs\tx_backlog_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_retry_gate_tests.c /Fe:ci-logs\tx_gate_asan.exe && ci-logs\tx_gate_asan.exe' -f $vcvars
+          $command = 'call "{0}" && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_queue_tests.c /Fe:ci-logs\tx_queue_asan.exe && ci-logs\tx_queue_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_backlog_tests.c /Fe:ci-logs\tx_backlog_asan.exe && ci-logs\tx_backlog_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_glom2_queue_tests.c /Fe:ci-logs\tx_glom2_asan.exe && ci-logs\tx_glom2_asan.exe && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\tx_retry_gate_tests.c /Fe:ci-logs\tx_gate_asan.exe && ci-logs\tx_gate_asan.exe' -f $vcvars
           cmd.exe /d /s /c $command 2>&1 | Tee-Object -FilePath ci-logs\tx-pressure-asan.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -358,6 +359,7 @@ jobs:
             /p:Configuration=$env:Configuration `
             /p:Platform=$env:Platform `
             /p:Rpi5TxCreditScheduling=$env:TxCreditScheduling `
+            /p:Rpi5TxGlom2=$env:TxGlom2 `
             /bl:ci-logs\build.binlog `
             /fl "/flp:logfile=ci-logs\build.log;verbosity=diagnostic"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -375,8 +377,11 @@ jobs:
             if ($command -notmatch ('RPI5CYW_TX_CREDIT_SCHEDULING='+$env:TxCreditScheduling+'\s')) {
               throw 'Effective TX scheduling mode differs from the recorded experiment mode.'
             }
+            if ($command -notmatch ('RPI5CYW_TX_GLOM2='+$env:TxGlom2+'\s')) {
+              throw 'Effective two-frame TX glom mode differs from the recorded experiment mode.'
+            }
           }
-          Write-Host 'Verified effective /O2 /Ot Release flags and detailed timing disabled.' 
+          Write-Host 'Verified effective /O2 /Ot Release flags, detailed timing disabled and two-frame TX glom enabled.' 
 
       - name: Inventory build outputs
         if: always()
@@ -412,7 +417,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ndis-arm64-release-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.10-glom2-tx${{ matrix.tx_mode }}
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
@@ -430,7 +435,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ci-logs-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.10-glom2-tx${{ matrix.tx_mode }}
           path: ci-logs/
           if-no-files-found: warn
           retention-days: 30
