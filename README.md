@@ -1,10 +1,11 @@
-> **`new-improvement-tx-glom-fix` candidate: v0.7.1.11.** Hardware testing of
-> v0.7.1.10 exposed a global TX-framing transition bug immediately after
-> `bus:rxglom=1`. v0.7.1.11 fixes all post-negotiation single/control frames to
-> use the extended SDPCM header while keeping the two-frame cap and v0.7.1.9
-> queue/backlog limits unchanged. See [TX glom 0.7.1.11](docs/TX-GLOM2-0.7.1.11.md).
+> **`new-improvement-all-in-one` candidate: v0.7.1.13.** This is an
+> evidence-first packaging/measurement release: every production driver source
+> file is byte-for-byte the green v0.7.1.11 runtime. The package exposes one
+> connect/status/download/upload/diagnostics utility instead of a long list of
+> separate tester scripts. See [v0.7.1.13 all-in-one baseline](docs/ALL-IN-ONE-0.7.1.13.md).
 >
-> **v0.7.1.10 is retained as failed hardware evidence; do not use it.**
+> **v0.7.1.11 remains the protected runtime/performance baseline. v0.7.1.12 is
+> rejected for poor performance; no threshold-16 tuning is carried forward.**
 >
 > **`new-improvement` rollback candidate: v0.7.1.9.** This branch keeps the proven
 > 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame
