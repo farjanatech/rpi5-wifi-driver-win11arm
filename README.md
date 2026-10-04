@@ -1,8 +1,8 @@
-> **`new-improvement-all-in-one` candidate: v0.7.1.13.** This is an
-> evidence-first packaging/measurement release: every production driver source
-> file is byte-for-byte the green v0.7.1.11 runtime. The package exposes one
-> connect/status/download/upload/diagnostics utility instead of a long list of
-> separate tester scripts. See [v0.7.1.13 all-in-one baseline](docs/ALL-IN-ONE-0.7.1.13.md).
+> **`new-improvement-upload-measurement` candidate: v0.7.1.14.** Every production
+> driver source file remains byte-for-byte the green v0.7.1.11 runtime. The single
+> all-in-one utility now measures sustained **1/2/4-stream download and upload**
+> with a fresh driver snapshot around every stage. See
+> [v0.7.1.14 measurement plan](docs/MEASUREMENT-0.7.1.14.md).
 >
 > **v0.7.1.11 remains the protected runtime/performance baseline. v0.7.1.12 is
 > rejected for poor performance; no threshold-16 tuning is carried forward.**
