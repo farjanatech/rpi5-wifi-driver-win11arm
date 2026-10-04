@@ -3,13 +3,14 @@ param(
     [ValidateSet('Menu','Connect','Status','FullTest','Diagnostics')][string]$Mode='Menu',
     [string]$ConfigPath,
     [switch]$SkipUpload,
-    [switch]$NoPause
+    [switch]$NoPause,
+    [switch]$LibraryOnly
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $InformationPreference='Continue'
-$script:ToolVersion='0.7.1.14-fix1'
+$script:ToolVersion='0.7.1.14-fix2'
 $script:SkipUploadRequested=[bool]$SkipUpload
 $script:PayloadBase64='__PAYLOAD_BASE64__'
 $script:DiagKey='HKLM:\SOFTWARE\Rpi5CywDirectDiag'
@@ -145,10 +146,12 @@ function ConvertFrom-Rpi5CurlRow {
     if($parts.Count -ne 7 -or $parts[0] -ne '200'){throw ("Unexpected {0} response for stream {1}: {2}" -f $Direction,$Stream,$text)}
     $numbers=[double[]]::new(6)
     for($index=0;$index -lt 6;$index++){
+        [double]$parsedValue=0
         if(-not [double]::TryParse($parts[$index+1],[Globalization.NumberStyles]::Float,
-            [Globalization.CultureInfo]::InvariantCulture,[ref]$numbers[$index]) -or $numbers[$index] -lt 0){
+            [Globalization.CultureInfo]::InvariantCulture,[ref]$parsedValue) -or $parsedValue -lt 0){
             throw ("Invalid {0} timing for stream {1}: {2}" -f $Direction,$Stream,$text)
         }
+        $numbers[$index]=$parsedValue
     }
     $total=$numbers[0];$reportedBytesPerSecond=$numbers[1];$actualBytes=[long][Math]::Round($numbers[2])
     $connect=$numbers[3];$tls=$numbers[4];$bodyStart=$numbers[5]
@@ -408,6 +411,7 @@ function Show-Rpi5Menu {
     }
 }
 
+if($LibraryOnly){return}
 if(-not (Test-Rpi5Administrator)){Invoke-Rpi5SelfElevated;return}
 if([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.InteropServices.Architecture]::Arm64){
     throw 'This utility is only for Windows ARM64 on Raspberry Pi 5.'
