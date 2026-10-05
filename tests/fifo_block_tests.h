@@ -7,8 +7,7 @@ static void InitFifoBlock(PRPI5CYW_ADAPTER a)
 }
 static void TestFifoBlocks(void)
 {
-    static union { ULONG Align; UCHAR Bytes[65540]; } storage;
-    PUCHAR buffer=storage.Bytes;RPI5CYW_ADAPTER a;ULONG n,i,write,mode;
+    static UCHAR buffer[65536];RPI5CYW_ADAPTER a;ULONG n,i,write,mode;
     Init(&a);CHECK(SdioPrepareRuntimeFifo(&a)==STATUS_INVALID_DEVICE_STATE && !a.FifoBlockReady);
     InitFifoBlock(&a);Card[0][CYW_SDIO_CCCR_CAPS]=0;
     CHECK(SdioPrepareRuntimeFifo(&a)==0 && !a.FifoBlockReady);
@@ -19,12 +18,9 @@ static void TestFifoBlocks(void)
         CHECK(SdioPrepareRuntimeFifo(&a)==STATUS_IO_DEVICE_ERROR && !a.FifoBlockReady);
     }
     for(write=0;write<2;++write)for(n=1;n<=32;++n) {
-        InitFifoBlock(&a);memset(buffer,0x5a,sizeof(storage.Bytes));
+        InitFifoBlock(&a);memset(buffer,0x5a,sizeof(buffer));
         CHECK(SdioFifoTransfer(&a,buffer,n*512,(BOOLEAN)write)==0);
         CHECK(Command53Count==1 && a.FifoBlockCommands==1 && a.FifoBlockBytes==n*512);
-        CHECK(a.FifoScalarPioBlocks==0);
-        if(write)CHECK(a.FifoBufferPioWriteBlocks==n && !a.FifoBufferPioReadBlocks);
-        else CHECK(a.FifoBufferPioReadBlocks==n && !a.FifoBufferPioWriteBlocks);
         CHECK((a.LastArgument&0x1fffffffUL)==(0x08000000UL|(0x8000UL<<9)|n));
         CHECK(((a.LastArgument>>28)&7)==2 && (a.LastArgument>>31)==write);
         mode=SdioRead16(&a,SDHCI_TRANSFER_MODE);
@@ -36,7 +32,6 @@ static void TestFifoBlocks(void)
     }
     InitFifoBlock(&a);CHECK(SdioFifoTransfer(&a,buffer,65536,FALSE)==0);
     CHECK(Command53Count==4 && a.FifoBlockBytes==65536 && FifoReads==16384);
-    CHECK(a.FifoBufferPioReadBlocks==128 && !a.FifoScalarPioBlocks);
     for(write=0;write<2;++write) {
         InitFifoBlock(&a);BlockCoalesced=1;
         CHECK(SdioFifoTransfer(&a,buffer,1536,(BOOLEAN)write)==0 && Command53Count==1);
@@ -44,20 +39,11 @@ static void TestFifoBlocks(void)
     }
     InitFifoBlock(&a);CHECK(SdioFifoTransfer(&a,buffer,1540,FALSE)==0);
     CHECK(Command53Count==2 && a.FifoBlockCommands==1 && FifoReads==385);
-    CHECK(a.FifoBufferPioReadBlocks==3 && !a.FifoScalarPioBlocks);
-
-    /* The production bulk register routine requires ULONG alignment. An
-     * unusual unaligned caller must retain the old per-word path exactly. */
-    InitFifoBlock(&a);memset(buffer,0,sizeof(storage.Bytes));
-    CHECK(SdioFifoTransfer(&a,buffer+1,512,FALSE)==0);
-    CHECK(a.FifoScalarPioBlocks==1 && !a.FifoBufferPioReadBlocks &&
-          !a.FifoBufferPioWriteBlocks && FifoReads==128);
-    for(i=0;i<512;i+=4)CHECK(SdioLoadLe32(buffer+1+i)==Fifo);
     for(write=0;write<2;++write) {
-        InitFifoBlock(&a);Fail53At=2;memset(buffer,0xa5,sizeof(storage.Bytes));
+        InitFifoBlock(&a);Fail53At=2;memset(buffer,0xa5,sizeof(buffer));
         CHECK(SdioFifoTransfer(&a,buffer,65536,(BOOLEAN)write)==STATUS_IO_DEVICE_ERROR);
         CHECK(Command53Count==2 && BlockTotalWords==4096 && a.FifoTransportFailed);
-        if(!write)for(i=0;i<65536;++i)CHECK(!buffer[i]);
+        if(!write)for(i=0;i<sizeof(buffer);++i)CHECK(!buffer[i]);
         CHECK(SdioFifoTransfer(&a,buffer,64,(BOOLEAN)write)==STATUS_INVALID_DEVICE_STATE && Command53Count==2);
     }
     /* Legacy byte path stays available only BEFORE a FIFO failure, never as
@@ -102,5 +88,5 @@ static void TestFifoBlocks(void)
     CHECK(SdioFifoBlocks(&a,buffer,33,FALSE)==STATUS_INVALID_PARAMETER);
     CHECK(SdioFifoTransfer(NULL,buffer,512,FALSE)==STATUS_INVALID_PARAMETER);
     CHECK(SdioPrepareRuntimeFifo(NULL)==STATUS_INVALID_PARAMETER);
-    puts("Checked production F2 buffer-PIO blocks 1..32, scalar alignment fallback, 64KiB split, byte tail, partial failure/no replay, deadlines and stop.");
+    puts("Checked production F2 block counts 1..32, 64KiB split, byte tail, capability gates, partial failure/no replay, deadlines and stop.");
 }

@@ -7,75 +7,6 @@
  */
 #define CYW_FIFO_BLOCK_SIZE 512UL
 #define CYW_FIFO_MAX_BLOCKS 32UL
-#define CYW_FIFO_BLOCK_WORDS (CYW_FIFO_BLOCK_SIZE/sizeof(ULONG))
-#define CYW_FIFO_PIO_BURST_WORDS RPI5CYW_FIFO_BUFFER_PIO_BURST_WORDS
-#define CYW_FIFO_PIO_BURSTS_PER_BLOCK (CYW_FIFO_BLOCK_WORDS/CYW_FIFO_PIO_BURST_WORDS)
-
-C_ASSERT(CYW_FIFO_BLOCK_WORDS==128);
-C_ASSERT(CYW_FIFO_PIO_BURSTS_PER_BLOCK==4);
-
-static BOOLEAN SdioFifoBufferAligned(PUCHAR Buffer)
-{
-#ifdef RPI5CYW_HOST_TEST
-    return (BOOLEAN)(((uintptr_t)Buffer & (sizeof(ULONG)-1))==0);
-#else
-    return (BOOLEAN)(((ULONG_PTR)Buffer & (sizeof(ULONG)-1))==0);
-#endif
-}
-
-/* Use the kernel's register-buffer primitives in four 128-byte bursts per
- * 512-byte SDHCI FIFO block. This cuts mapped-register API/barrier traffic
- * from 128 scalar calls to four bounded calls while preserving an IoStopped
- * check every 128 bytes. Unaligned callers retain the exact scalar path. */
-static NTSTATUS SdioFifoMoveBlock(PRPI5CYW_ADAPTER A,PUCHAR Buffer,BOOLEAN Write)
-{
-    ULONG offset,word,byte;
-    if(!A || !Buffer)return STATUS_INVALID_PARAMETER;
-#if RPI5CYW_FIFO_BUFFER_PIO
-    if(SdioFifoBufferAligned(Buffer)) {
-        for(offset=0;offset<CYW_FIFO_BLOCK_SIZE;
-            offset+=CYW_FIFO_PIO_BURST_WORDS*sizeof(ULONG)) {
-            if(A->IoStopped)return STATUS_INVALID_DEVICE_STATE;
-#ifndef RPI5CYW_HOST_TEST
-            if(Write) {
-                WRITE_REGISTER_BUFFER_ULONG(
-                    (volatile ULONG *)((PUCHAR)A->RegisterBase+SDHCI_BUFFER),
-                    (PULONG)(Buffer+offset),CYW_FIFO_PIO_BURST_WORDS);
-            } else {
-                READ_REGISTER_BUFFER_ULONG(
-                    (volatile ULONG *)((PUCHAR)A->RegisterBase+SDHCI_BUFFER),
-                    (PULONG)(Buffer+offset),CYW_FIFO_PIO_BURST_WORDS);
-            }
-#else
-            /* Host register model has scalar hooks; emulate the same 32-word
-             * bounded burst so protocol/fault tests remain deterministic. */
-            for(word=0;word<CYW_FIFO_PIO_BURST_WORDS;++word) {
-                ULONG pos=offset+word*sizeof(ULONG);
-                if(Write)SdioWrite32(A,SDHCI_BUFFER,SdioLoadLe32(Buffer+pos));
-                else {
-                    ULONG value=SdioRead32(A,SDHCI_BUFFER);
-                    Buffer[pos]=(UCHAR)value;Buffer[pos+1]=(UCHAR)(value>>8);
-                    Buffer[pos+2]=(UCHAR)(value>>16);Buffer[pos+3]=(UCHAR)(value>>24);
-                }
-            }
-#endif
-        }
-        if(Write)A->FifoBufferPioWriteBlocks++;
-        else A->FifoBufferPioReadBlocks++;
-        return STATUS_SUCCESS;
-    }
-#endif
-    A->FifoScalarPioBlocks++;
-    for(offset=0;offset<CYW_FIFO_BLOCK_SIZE;offset+=4) {
-        if(A->IoStopped)return STATUS_INVALID_DEVICE_STATE;
-        if(Write)SdioWrite32(A,SDHCI_BUFFER,SdioLoadLe32(Buffer+offset));
-        else {
-            word=SdioRead32(A,SDHCI_BUFFER);
-            for(byte=0;byte<4;++byte)Buffer[offset+byte]=(UCHAR)(word>>(byte*8));
-        }
-    }
-    return STATUS_SUCCESS;
-}
 
 NTSTATUS SdioPrepareRuntimeFifo(PRPI5CYW_ADAPTER A)
 {
@@ -132,7 +63,7 @@ static NTSTATUS SdioFifoWait(PRPI5CYW_ADAPTER A,ULONG Event,ULONG64 Deadline)
 
 static NTSTATUS SdioFifoBlocksRaw(PRPI5CYW_ADAPTER A,PUCHAR Buffer,ULONG Blocks,BOOLEAN Write)
 {
-    ULONG block,ready,length;
+    ULONG block,offset,word,ready,length;
     ULONG64 deadline;
     NTSTATUS status;
     if(!A || !A->RegisterBase || !Buffer || !A->FifoBlockReady ||
@@ -170,8 +101,16 @@ static NTSTATUS SdioFifoBlocksRaw(PRPI5CYW_ADAPTER A,PUCHAR Buffer,ULONG Blocks,
     for(block=0;block<Blocks;++block) {
         status=SdioFifoWait(A,ready,deadline);if(!NT_SUCCESS(status))goto Failed;
         SdioWrite32(A,SDHCI_INT_STATUS,ready);
-        status=SdioFifoMoveBlock(A,Buffer+block*CYW_FIFO_BLOCK_SIZE,Write);
-        if(!NT_SUCCESS(status))goto Failed;
+        for(offset=0;offset<CYW_FIFO_BLOCK_SIZE;offset+=4) {
+            ULONG pos=block*CYW_FIFO_BLOCK_SIZE+offset;
+            if(A->IoStopped) {status=STATUS_INVALID_DEVICE_STATE;goto Failed;}
+            if(Write)SdioWrite32(A,SDHCI_BUFFER,SdioLoadLe32(Buffer+pos));
+            else {
+                word=SdioRead32(A,SDHCI_BUFFER);
+                Buffer[pos]=(UCHAR)word;Buffer[pos+1]=(UCHAR)(word>>8);
+                Buffer[pos+2]=(UCHAR)(word>>16);Buffer[pos+3]=(UCHAR)(word>>24);
+            }
+        }
         A->Cmd53BytesTransferred+=CYW_FIFO_BLOCK_SIZE;
     }
     status=SdioFifoWait(A,SDHCI_INT_XFER_COMPLETE,deadline);

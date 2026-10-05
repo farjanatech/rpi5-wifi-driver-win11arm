@@ -36,10 +36,6 @@
 #ifndef RPI5CYW_TX_SERVICE_BURST2
 #define RPI5CYW_TX_SERVICE_BURST2 1
 #endif
-#ifndef RPI5CYW_FIFO_BUFFER_PIO
-#define RPI5CYW_FIFO_BUFFER_PIO 1
-#endif
-#define RPI5CYW_FIFO_BUFFER_PIO_BURST_WORDS 32u
 #define RPI5CYW_DRIVER_VERSION 0x0100
 #define RPI5CYW_MAX_MULTICAST 32
 #define RPI5CYW_MAX_LINK_SPEED 433000000ULL
@@ -105,7 +101,6 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts;
     /* Performance branch: worker-owned counters, no packet/credential data. */
     ULONG FifoBlockReady, FifoBlockCommands, FifoBlockBytes, FifoBlockFailures;
-    ULONG FifoBufferPioReadBlocks, FifoBufferPioWriteBlocks, FifoScalarPioBlocks;
     ULONG RxReadAhead, RxReadAheadRejected, RxGlomGroups, RxGlomFrames, RxGlomErrors;
     ULONG RxGlomEnabled;
     ULONG FifoTransportFailed;

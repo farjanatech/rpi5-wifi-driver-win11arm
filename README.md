@@ -1,12 +1,14 @@
-> **`new-improvement-f2-buffer-pio` candidate: v0.7.1.16.** This keeps the
-> measured v0.7.1.15 Service-Burst2 TX gains but changes only the common aligned
-> F2 block-copy mechanics: four bounded 32-ULONG register-buffer operations per
-> 512-byte block replace 128 scalar register accesses. The SDIO protocol, queue,
-> backlog, glom, framing, firmware/radio and frozen utility remain unchanged.
-> See [v0.7.1.16 F2 buffer-PIO](docs/F2-BUFFER-PIO-0.7.1.16.md).
+> **`new-improvement-f2-buffer-pio` corrective candidate: v0.7.1.17.**
+> Raspberry Pi 5 hardware testing rejected v0.7.1.16 after the new
+> READ/WRITE_REGISTER_BUFFER_ULONG F2 path latched FIFO transport failure during
+> connection setup. v0.7.1.17 restores the exact v0.7.1.15 production transport
+> implementation: every FIFO word is read/written through the same SDHCI_BUFFER
+> register address. CI now forbids the rejected register-buffer primitives in
+> that fixed-port path. See
+> [v0.7.1.17 fixed-port rollback](docs/F2-BUFFER-PIO-0.7.1.17-ROLLBACK.md).
 >
-> **v0.7.1.11 remains the immediate rollback/performance reference. v0.7.1.12
-> remains rejected, and v0.7.1.15 is retained as measured TX-service evidence.**
+> **v0.7.1.16 is rejected. v0.7.1.15 remains the direct experiment baseline,
+> and v0.7.1.11 remains the immediate rollback/performance reference.**
 >
 > **`new-improvement` rollback candidate: v0.7.1.9.** This branch keeps the proven
 > 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame
