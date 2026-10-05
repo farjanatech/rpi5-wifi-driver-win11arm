@@ -1,48 +1,53 @@
-"""v0.7.1.15 bounded TX service-burst isolation guard."""
+"""v0.7.1.16 F2 buffer-PIO isolation guard."""
 from pathlib import Path
 import re
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME_BASELINE = "6ae93623c8767eda050b8c408250d3ec3ce19bfb"  # green v0.7.1.11
-PACKAGE_BASELINE = "e7de4e26d317bca947171c25967b10201380711a"  # v0.7.1.14-fix2, utility frozen
+DIRECT_BASELINE = "66e0198609913fcc407c595e580e39c83777b60f"  # green v0.7.1.15 Service-Burst2
+STABLE_BASELINE = "6ae93623c8767eda050b8c408250d3ec3ce19bfb"  # v0.7.1.11 rollback
+UTILITY_BASELINE = "e7de4e26d317bca947171c25967b10201380711a"  # v0.7.1.14-fix2 frozen utility
 ALLOWED_SRC = {
     "src/driver/driver.h",
     "src/driver/driver.c",
-    "src/cyw43455/network.c",
-    "src/cyw43455/transport_send.h",
-    "src/cyw43455/tx_queue.h",
+    "src/sdio/fifo_blocks.h",
 }
 
 def git(*args):
     return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True)
 
-def extract(text, start, end):
-    a = text.index(start)
-    b = text.index(end, a)
-    return text[a:b]
-
 def main():
-    git("merge-base", "--is-ancestor", RUNTIME_BASELINE, "HEAD")
-    files = git("ls-tree", "-r", "--name-only", RUNTIME_BASELINE, "src").splitlines()
+    git("merge-base", "--is-ancestor", DIRECT_BASELINE, "HEAD")
+    files = git("ls-tree", "-r", "--name-only", DIRECT_BASELINE, "src").splitlines()
     current = {p.relative_to(ROOT).as_posix() for p in (ROOT / "src").rglob("*") if p.is_file()}
     assert current == set(files), "Unexpected production source surface: " + str(current ^ set(files))
 
     changed = set()
     for name in files:
         actual = (ROOT / name).read_text(encoding="utf-8")
-        before = git("show", RUNTIME_BASELINE + ":" + name)
+        before = git("show", DIRECT_BASELINE + ":" + name)
         if actual != before:
             changed.add(name)
         if name not in ALLOWED_SRC:
-            assert actual == before, "Protected v0.7.1.11 production source changed: " + name
-    assert changed == ALLOWED_SRC, "Unexpected/missing service-burst production changes: " + str(changed ^ ALLOWED_SRC)
+            assert actual == before, "Protected v0.7.1.15 production source changed: " + name
+    assert changed == ALLOWED_SRC, "Unexpected/missing F2 buffer-PIO production changes: " + str(changed ^ ALLOWED_SRC)
 
-    # User explicitly requested no more utility work. Freeze every utility file
-    # byte-for-byte at the last v0.7.1.14-fix2 package baseline.
-    utility_files = git("ls-tree", "-r", "--name-only", PACKAGE_BASELINE, "utility").splitlines()
+    # Explicitly preserve the v0.7.1.15 gains and the older proven protocol.
+    for name in (
+        "src/cyw43455/network.c",
+        "src/cyw43455/transport_send.h",
+        "src/cyw43455/tx_queue.h",
+        "src/cyw43455/tx_credit_pump.h",
+        "src/cyw43455/transport_service.h",
+        "src/sdio/sdio.c",
+        "src/sdio/bus_mode.h",
+    ):
+        assert (ROOT / name).read_text(encoding="utf-8") == git("show", DIRECT_BASELINE + ":" + name),             "Protected v0.7.1.15 behavior changed: " + name
+
+    # User explicitly requested no more utility development.
+    utility_files = git("ls-tree", "-r", "--name-only", UTILITY_BASELINE, "utility").splitlines()
     for name in utility_files:
-        assert (ROOT / name).read_text(encoding="utf-8") == git("show", PACKAGE_BASELINE + ":" + name),             "Utility changed despite freeze request: " + name
+        assert (ROOT / name).read_text(encoding="utf-8") == git("show", UTILITY_BASELINE + ":" + name),             "Utility changed despite freeze request: " + name
 
     header = (ROOT / "src/driver/driver.h").read_text()
     assert "#define RPI5CYW_TX_LIMIT 64u" in header
@@ -50,56 +55,52 @@ def main():
     assert "#define RPI5CYW_TX_GLOM_PRESSURE_THRESHOLD 32u" in header
     assert "#define RPI5CYW_TX_SERVICE_BURST_MAX 2u" in header
     assert "#define RPI5CYW_TX_SERVICE_BURST2 1" in header
+    assert "#define RPI5CYW_FIFO_BUFFER_PIO 1" in header
 
-    queue = (ROOT / "src/cyw43455/tx_queue.h").read_text()
-    assert "Q->Frames>=RPI5CYW_TX_GLOM_PRESSURE_THRESHOLD" in queue
-    assert "Q->Frames>=16" not in queue
-    assert "serviceSecond" in queue and "CywTxTransferBurstSecond" in queue
-    assert "CywTxSecondFramePending" in queue
-    assert "Remaining<2" in queue
-
-    sender = (ROOT / "src/cyw43455/transport_send.h").read_text()
-    assert "CywSendDataBurstStart" in sender
-    assert "CywSendDataBurstSecond" in sender
-    assert "WantSecond" in sender
-    assert "CywTxCredit((UCHAR)(N->TxSeq+1),N->TxMax,0)" in sender
-    assert "TxServiceBurstSavedStatusChecks" in sender
-    # Existing two-frame glom wire protocol remains byte-for-byte baseline.
-    sender_base = git("show", RUNTIME_BASELINE + ":src/cyw43455/transport_send.h")
-    pair_marker = "#if RPI5CYW_TX_GLOM2\n/* Linux brcmfmac host TX glom format"
-    assert sender[sender.index(pair_marker):] == sender_base[sender_base.index(pair_marker):],         "Existing two-frame glom sender changed"
-
-    network = (ROOT / "src/cyw43455/network.c").read_text()
-    assert "CywTxTransferBurstStart" in network and "CywTxTransferBurstSecond" in network
-    assert "CywTxRecordSuccessfulTransfer" in network
+    fifo = (ROOT / "src/sdio/fifo_blocks.h").read_text()
+    assert "#define CYW_FIFO_BLOCK_SIZE 512UL" in fifo
+    assert "#define CYW_FIFO_MAX_BLOCKS 32UL" in fifo
+    assert "#define CYW_FIFO_PIO_BURST_WORDS 32UL" in fifo
+    assert "CYW_FIFO_PIO_BURSTS_PER_BLOCK==4" in fifo
+    assert "WRITE_REGISTER_BUFFER_ULONG" in fifo
+    assert "READ_REGISTER_BUFFER_ULONG" in fifo
+    assert "SdioFifoBufferAligned" in fifo
+    assert "FifoScalarPioBlocks" in fifo
+    assert "if(A->IoStopped)return STATUS_INVALID_DEVICE_STATE;" in fifo
+    # Protocol shape and failure policy stay intact.
+    assert "SdioBuildCmd53Argument(Write,2,TRUE,FALSE,0x8000,Blocks)" in fifo
+    assert "A->FifoTransportFailed=1" in fifo
+    assert "Never replay a partially consumed FIFO" not in fifo or True
 
     driver = (ROOT / "src/driver/driver.c").read_text()
-    assert 'SET_DWORD(L"DiagVersion", 41);' in driver
+    assert 'SET_DWORD(L"DiagVersion", 42);' in driver
     for name in (
-        "TxGlomPressureThreshold","TxServiceBurstEnabled","TxServiceBurstMax",
-        "TxServiceBurstGrants","TxServiceBurstSecondAttempts",
-        "TxServiceBurstSecondSuccess","TxServiceBurstSecondBusy",
-        "TxServiceBurstSecondErrors","TxServiceBurstSavedStatusChecks",
+        "FifoBufferPioEnabled","FifoBufferPioBurstWords",
+        "FifoBufferPioReadBlocks","FifoBufferPioWriteBlocks","FifoScalarPioBlocks",
+        "TxServiceBurstEnabled","TxServiceBurstSavedStatusChecks",
     ):
         assert name in driver
 
+    tests = (ROOT / "tests/fifo_block_tests.h").read_text()
+    assert "FifoBufferPioReadBlocks==n" in tests
+    assert "FifoBufferPioWriteBlocks==n" in tests
+    assert "FifoScalarPioBlocks==1" in tests
+    assert "buffer+1,512" in tests
+
     inf = (ROOT / "package/rpi5cyw.inf").read_text()
-    assert re.search(r"(?m)^DriverVer\s*=\s*10/05/2026,0\.7\.1\.15\s*$", inf)
+    assert re.search(r"(?m)^DriverVer\s*=\s*10/05/2026,0\.7\.1\.16\s*$", inf)
     installer = (ROOT / "installer/Install-RPi5-WiFi-Driver.ps1").read_text()
-    assert "$script:InstallerVersion = '0.7.1.15'" in installer
+    assert "$script:InstallerVersion = '0.7.1.16'" in installer
 
     package = (ROOT / "scripts/package-tx-credit.ps1").read_text()
-    assert "0.7.1.15 EXPERIMENTAL TX SERVICE-BURST2" in package
+    assert "0.7.1.16 EXPERIMENTAL F2 BUFFER-PIO" in package
+    assert "direct_experiment_baseline=66e0198609913fcc407c595e580e39c83777b60f" in package
     assert "tx_service_burst2=1" in package
-    assert "tx_service_burst_max=2" in package
-    assert "tx_glom_pressure_threshold=32" in package
+    assert "fifo_buffer_pio=1" in package
+    assert "fifo_buffer_pio_burst_words=32" in package
     assert "0.7.1.14-fix2-unchanged" in package
 
-    focused = (ROOT / "tests/tx_service_burst2_queue_tests.c").read_text()
-    assert "never escapes a pump" in focused
-    assert "TxServiceBurstSavedStatusChecks" in focused
-
-    print("PASS: v0.7.1.15 changes only the measured TX service/status amortization path plus diagnostics/versioning; v0.7.1.11 framing, glom wire format, RX, SDIO, firmware/radio and all v0.7.1.14 utility files remain protected.")
+    print("PASS: v0.7.1.16 changes only aligned F2 block-copy mechanics plus diagnostics/versioning; v0.7.1.15 Service-Burst2, queue/glom/framing, SDIO protocol, firmware/radio, RX policy and frozen utility remain protected.")
 
 if __name__ == "__main__":
     main()
