@@ -56,11 +56,12 @@ def main():
     assert "#define RPI5CYW_TX_SERVICE_BURST_MAX 2u" in header
     assert "#define RPI5CYW_TX_SERVICE_BURST2 1" in header
     assert "#define RPI5CYW_FIFO_BUFFER_PIO 1" in header
+    assert "#define RPI5CYW_FIFO_BUFFER_PIO_BURST_WORDS 32u" in header
 
     fifo = (ROOT / "src/sdio/fifo_blocks.h").read_text()
     assert "#define CYW_FIFO_BLOCK_SIZE 512UL" in fifo
     assert "#define CYW_FIFO_MAX_BLOCKS 32UL" in fifo
-    assert "#define CYW_FIFO_PIO_BURST_WORDS 32UL" in fifo
+    assert "#define CYW_FIFO_PIO_BURST_WORDS RPI5CYW_FIFO_BUFFER_PIO_BURST_WORDS" in fifo
     assert "CYW_FIFO_PIO_BURSTS_PER_BLOCK==4" in fifo
     assert "WRITE_REGISTER_BUFFER_ULONG" in fifo
     assert "READ_REGISTER_BUFFER_ULONG" in fifo
