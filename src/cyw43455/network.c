@@ -232,17 +232,17 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
     if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
     return Status;
 }
-#if RPI5CYW_TX_SERVICE_BURST2
+#if RPI5CYW_TX_SERVICE_BURST4
 static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,
-    BOOLEAN WantSecond,BOOLEAN * PermitSecond)
+    ULONG WantFrames,PULONG PermitFollowing)
 {
-    NTSTATUS Status=CywSendDataBurstStart(A,Data,Length,WantSecond,PermitSecond);
+    NTSTATUS Status=CywSendDataBurstStart(A,Data,Length,WantFrames,PermitFollowing);
     if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
     return Status;
 }
-static NTSTATUS CywTxTransferBurstSecond(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
+static NTSTATUS CywTxTransferBurstReuse(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,ULONG Position)
 {
-    NTSTATUS Status=CywSendDataBurstSecond(A,Data,Length);
+    NTSTATUS Status=CywSendDataBurstReuse(A,Data,Length,Position);
     if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
     return Status;
 }

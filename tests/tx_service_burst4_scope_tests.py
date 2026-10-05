@@ -11,6 +11,7 @@ ALLOWED_SRC = {
     "src/driver/driver.c",
     "src/cyw43455/transport_send.h",
     "src/cyw43455/tx_queue.h",
+    "src/cyw43455/network.c",
 }
 
 def git(*args):
@@ -39,7 +40,7 @@ def main():
 
     # RX, firmware, connection, pressure pump, retry and Glom2 are frozen.
     for name in (
-        "src/cyw43455/network.c","src/cyw43455/connection.h","src/cyw43455/firmware.c",
+        "src/cyw43455/connection.h","src/cyw43455/firmware.c",
         "src/cyw43455/tx_pressure_pump.h","src/cyw43455/tx_credit_pump.h",
         "src/cyw43455/tx_retry_gate.h","src/cyw43455/tx_glom2_config.h",
         "src/sdio/sdio.c",
@@ -49,6 +50,41 @@ def main():
     utility_files=git("ls-tree","-r","--name-only",UTILITY_BASELINE,"utility").splitlines()
     for name in utility_files:
         assert (ROOT/name).read_text(encoding="utf-8")==git("show",UTILITY_BASELINE+":"+name), "Frozen utility changed: "+name
+
+    network=(ROOT/"src/cyw43455/network.c").read_text()
+    base_network=git("show",BASELINE+":src/cyw43455/network.c")
+    old_wrapper='''#if RPI5CYW_TX_SERVICE_BURST2
+static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,
+    BOOLEAN WantSecond,BOOLEAN * PermitSecond)
+{
+    NTSTATUS Status=CywSendDataBurstStart(A,Data,Length,WantSecond,PermitSecond);
+    if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
+    return Status;
+}
+static NTSTATUS CywTxTransferBurstSecond(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
+{
+    NTSTATUS Status=CywSendDataBurstSecond(A,Data,Length);
+    if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
+    return Status;
+}
+#endif'''
+    new_wrapper='''#if RPI5CYW_TX_SERVICE_BURST4
+static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,
+    ULONG WantFrames,PULONG PermitFollowing)
+{
+    NTSTATUS Status=CywSendDataBurstStart(A,Data,Length,WantFrames,PermitFollowing);
+    if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
+    return Status;
+}
+static NTSTATUS CywTxTransferBurstReuse(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,ULONG Position)
+{
+    NTSTATUS Status=CywSendDataBurstReuse(A,Data,Length,Position);
+    if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
+    return Status;
+}
+#endif'''
+    assert old_wrapper in base_network
+    assert network == base_network.replace(old_wrapper,new_wrapper), "network.c changed outside the Burst4 wrapper"
 
     header=(ROOT/"src/driver/driver.h").read_text()
     assert "#define RPI5CYW_TX_SERVICE_BURST_MAX 4u" in header
