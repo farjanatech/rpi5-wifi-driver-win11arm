@@ -40,9 +40,10 @@ keeping the long historical milestone log in the main README.
 | **CI / regression safety** | Optimized ARM64 builds, both TX modes, ASAN host tests, transport/ownership/lifecycle tests, packaging, signing and rollback/source-isolation guards are automated. | Physical Pi testing remains necessary for performance and radio behavior; CI cannot prove real RF/Internet performance. |
 | **Release status** | **v0.7.1.20 is the promoted default on `main`**, with its exact tested source frozen on `release/v0.7.1.20`. | It remains **test-signed**, not a Microsoft production-signed general-purpose Windows driver. |
 
-Detailed historical experiment notes remain available under `docs/` for anyone
-who needs the development record, but they are intentionally no longer repeated
-in the main README.
+The `docs/` directory is intentionally curated to current architecture,
+build/bring-up, connector/testing, and the v0.7.1.19/v0.7.1.20 release-reference
+notes. Obsolete version-by-version experiment notes are removed from `main`;
+Git history preserves the development record.
 
 ## Architecture
 
