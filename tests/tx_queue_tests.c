@@ -67,7 +67,7 @@ static NTSTATUS CywTxTransferPair(PRPI5CYW_ADAPTER adapter,
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
 #if RPI5CYW_TX_SERVICE_BURST2
 static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,
-    BOOLEAN wantSecond,PBOOLEAN permitSecond);
+    BOOLEAN wantSecond,BOOLEAN * permitSecond);
 static NTSTATUS CywTxTransferBurstSecond(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
 #endif
 static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags);
@@ -114,7 +114,7 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
 }
 #if RPI5CYW_TX_SERVICE_BURST2
 static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,
-    BOOLEAN wantSecond,PBOOLEAN permitSecond)
+    BOOLEAN wantSecond,BOOLEAN * permitSecond)
 {
     NTSTATUS status;
     BurstStartCalls++;*permitSecond=FALSE;
