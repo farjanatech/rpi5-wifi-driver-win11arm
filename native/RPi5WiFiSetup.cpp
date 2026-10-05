@@ -129,7 +129,7 @@ bool StageDriver(const std::wstring& inf,bool& reboot) {
     SetLastError(first);return false;
 }
 
-struct SuccessDialogState { HWND success{}; bool done{}; int result{IDNO}; };
+struct SuccessDialogState { HWND success{}; HFONT titleFont{}; bool done{}; int result{IDNO}; };
 
 LRESULT CALLBACK SuccessWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     auto* state=reinterpret_cast<SuccessDialogState*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
@@ -139,17 +139,19 @@ LRESULT CALLBACK SuccessWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         state=reinterpret_cast<SuccessDialogState*>(create->lpCreateParams);
         SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(state));
         HFONT font=reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        state->titleFont=CreateFontW(-24,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
         state->success=CreateWindowExW(0,L"STATIC",L"Installed Successfully",
             WS_CHILD|WS_VISIBLE|SS_CENTER,24,22,432,42,hwnd,reinterpret_cast<HMENU>(4101),GetModuleHandleW(nullptr),nullptr);
         HWND detail=CreateWindowExW(0,L"STATIC",
-            L"RPi5 Wi-Fi driver and Wi-Fi Manager were installed.\\r\\n"
+            L"RPi5 Wi-Fi driver and Wi-Fi Manager were installed.\r\n"
             L"A Windows restart is required before using the new installation.",
             WS_CHILD|WS_VISIBLE|SS_CENTER,28,76,424,60,hwnd,reinterpret_cast<HMENU>(4102),GetModuleHandleW(nullptr),nullptr);
         HWND now=CreateWindowExW(0,L"BUTTON",L"Restart Now",WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
             92,154,135,34,hwnd,reinterpret_cast<HMENU>(IDYES),GetModuleHandleW(nullptr),nullptr);
         HWND later=CreateWindowExW(0,L"BUTTON",L"Restart Later",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,
             253,154,135,34,hwnd,reinterpret_cast<HMENU>(IDNO),GetModuleHandleW(nullptr),nullptr);
-        SendMessageW(state->success,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
+        SendMessageW(state->success,WM_SETFONT,reinterpret_cast<WPARAM>(state->titleFont?state->titleFont:font),TRUE);
         SendMessageW(detail,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
         SendMessageW(now,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
         SendMessageW(later,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
@@ -170,6 +172,9 @@ LRESULT CALLBACK SuccessWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     case WM_CLOSE:
         if(state){state->result=IDNO;state->done=true;}
         DestroyWindow(hwnd);return 0;
+    case WM_DESTROY:
+        if(state && state->titleFont){DeleteObject(state->titleFont);state->titleFont=nullptr;}
+        return 0;
     }
     return DefWindowProcW(hwnd,msg,wp,lp);
 }
@@ -194,8 +199,8 @@ int ShowSuccessRestartDialog(HINSTANCE instance) {
 void RestartWindowsNow() {
     wchar_t systemDir[MAX_PATH]{};
     if(!GetSystemDirectoryW(systemDir,MAX_PATH))FailWin(L"Locate System32");
-    std::wstring shutdown=std::wstring(systemDir)+L"\\\\shutdown.exe";
-    if(RunHidden(shutdown,L"/r /t 0 /d p:4:1 /c \\"RPi5 Wi-Fi installation completed\\"")!=0)
+    std::wstring shutdown=std::wstring(systemDir)+L"\\shutdown.exe";
+    if(RunHidden(shutdown,L"/r /t 0 /d p:4:1 /c \"RPi5 Wi-Fi installation completed\"")!=0)
         Fail(L"Windows restart request failed. Please restart Windows manually.");
 }
 
@@ -224,7 +229,8 @@ int APIENTRY wWinMain(HINSTANCE,HINSTANCE,LPWSTR cmd,int) {
         auto cert=ResourceBytes(IDR_PAYLOAD_CERT);AddCertToStore(cert,L"ROOT");AddCertToStore(cert,L"TrustedPublisher");
 
         bool reboot=false;std::wstring inf=temp+L"\\rpi5cyw.inf";
-        if(!StageDriver(inf,reboot))FailWin(L"Stage/install CYW43455 driver");\n        (void)reboot;
+        if(!StageDriver(inf,reboot))FailWin(L"Stage/install CYW43455 driver");
+        (void)reboot;
 
         std::wstring installDir=Known(FOLDERID_ProgramFiles)+L"\\"+kProductDirName;
         CopyGuiAndLicenses(installDir);
