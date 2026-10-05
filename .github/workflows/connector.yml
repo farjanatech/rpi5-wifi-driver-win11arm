@@ -1,7 +1,7 @@
 name: Build C# Wi-Fi connector
 on:
   push:
-    branches: [main, experimental/tx-credit-pump-v0.7.1.4, all-in-one-fix]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read

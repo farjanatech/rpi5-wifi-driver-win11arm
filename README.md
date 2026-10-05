@@ -13,9 +13,6 @@
 > permits one bounded adapter lifecycle recovery after a fatal runtime transport
 > fault. Failed/partial FIFO transactions are never replayed.
 >
-> See [v0.7.1.19 Adaptive TX Hybrid](docs/TX-ADAPTIVE-HYBRID-0.7.1.19.md) and
-> [v0.7.1.20 Stability Recovery](docs/STABILITY-RECOVERY-0.7.1.20.md).
->
 # Raspberry Pi 5 CYW43455 Wi-Fi driver for Windows 11 ARM64
 
 Experimental Windows 11 ARM64 driver work for the Raspberry Pi 5 onboard Infineon/Cypress CYW43455 Wi-Fi controller.
@@ -40,10 +37,9 @@ keeping the long historical milestone log in the main README.
 | **CI / regression safety** | Optimized ARM64 builds, both TX modes, ASAN host tests, transport/ownership/lifecycle tests, packaging, signing and rollback/source-isolation guards are automated. | Physical Pi testing remains necessary for performance and radio behavior; CI cannot prove real RF/Internet performance. |
 | **Release status** | **v0.7.1.20 is the promoted default on `main`**, with its exact tested source frozen on `release-v0.7.1.20`. | It remains **test-signed**, not a Microsoft production-signed general-purpose Windows driver. |
 
-The `docs/` directory is intentionally curated to current architecture,
-build/bring-up, connector/testing, and the v0.7.1.19/v0.7.1.20 release-reference
-notes. Obsolete version-by-version experiment notes are removed from `main`;
-Git history preserves the development record.
+The repository keeps only operational documentation needed for the current
+release. Historical architecture/bring-up/experiment notes are preserved in Git
+history and in the frozen release source instead of cluttering `main`.
 
 ## Architecture
 
@@ -66,7 +62,8 @@ Windows 11 ARM64
 - `src/sdio/` - direct SDHCI PIO transport (no Microsoft SD bus dependency).
 - `src/cyw43455/` - CYW43455-specific chip/firmware protocol code.
 - `package/` - driver INF/package files.
-- `docs/` - architecture, build and bring-up notes.
+- `docs/BUILDING.md` - current ARM64 build/signing notes.
+- `docs/AUTO-CONNECT.md` - optional startup/autoconnect instructions.
 
 ## Branch strategy
 
