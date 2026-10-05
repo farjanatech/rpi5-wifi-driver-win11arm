@@ -245,8 +245,11 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         if(h->code==LVN_ITEMCHANGED) {
             auto* change=reinterpret_cast<NMLISTVIEW*>(lp);
             if((change->uNewState&LVIS_SELECTED) && !(change->uOldState&LVIS_SELECTED)) {
-                if(h->idFrom==IDC_NETWORKS) ListView_SetItemState(g.profiles,-1,0,LVIS_SELECTED|LVIS_FOCUSED);
-                else if(h->idFrom==IDC_PROFILES) ListView_SetItemState(g.networks,-1,0,LVIS_SELECTED|LVIS_FOCUSED);
+                if(h->idFrom==IDC_NETWORKS) {
+                    ListView_SetItemState(g.profiles,-1,0,LVIS_SELECTED|LVIS_FOCUSED);
+                } else if(h->idFrom==IDC_PROFILES) {
+                    ListView_SetItemState(g.networks,-1,0,LVIS_SELECTED|LVIS_FOCUSED);
+                }
             }
             if(h->idFrom==IDC_NETWORKS||h->idFrom==IDC_PROFILES)ApplySelectionHint();
         }
