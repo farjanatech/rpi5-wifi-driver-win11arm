@@ -60,7 +60,7 @@ struct Profile {
 };
 
 struct ProfileDb {
-    std::string country = "BD";
+    std::string country;
     std::vector<Profile> profiles;
 };
 
