@@ -217,17 +217,36 @@ static BOOLEAN CywTxCanTransfer(PRPI5CYW_ADAPTER A)
         N->Authorized && N->Associated && CywTxCredit(N->TxSeq,N->TxMax,0) &&
         CywTransportPriorityAllowed(&A->Transport,N->TxFlow);
 }
-static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
+static VOID CywTxRecordSuccessfulTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
 {
-    NTSTATUS Status=CywSendFrame(A,2,Data,Length);
     /* Transfer success is not proof that the AP received/acknowledged a frame. */
-    if(NT_SUCCESS(Status) && Length>=4) {
+    if(Length>=4) {
         Rpi5CywTrafficFrame(A,TRUE,Data+4,Length-4);
         A->PacketTx[CywPacketKind(Data+4,Length-4)]++;
         CywProbePacket(&A->PacketProbe,Data+4,Length-4,1,KeQueryInterruptTime());
     }
+}
+static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
+{
+    NTSTATUS Status=CywSendFrame(A,2,Data,Length);
+    if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
     return Status;
 }
+#if RPI5CYW_TX_SERVICE_BURST2
+static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,
+    BOOLEAN WantSecond,PBOOLEAN PermitSecond)
+{
+    NTSTATUS Status=CywSendDataBurstStart(A,Data,Length,WantSecond,PermitSecond);
+    if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
+    return Status;
+}
+static NTSTATUS CywTxTransferBurstSecond(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
+{
+    NTSTATUS Status=CywSendDataBurstSecond(A,Data,Length);
+    if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
+    return Status;
+}
+#endif
 #if RPI5CYW_TX_GLOM2
 static BOOLEAN CywTxCanTransferPair(PRPI5CYW_ADAPTER A)
 {
