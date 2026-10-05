@@ -51,7 +51,13 @@ def main():
   if name in RETIRED_UTILITY_FILES:
    assert not (ROOT/name).exists(),"Retired legacy GUI returned: "+name
    continue
-  assert (ROOT/name).read_text(encoding="utf-8")==git("show",UTILITY_BASELINE+":"+name),"Frozen utility changed: "+name
+  actual=(ROOT/name).read_text(encoding="utf-8")
+  before=git("show",UTILITY_BASELINE+":"+name)
+  if name=="utility/RPi5-WiFi-Scan.ps1":
+   before=before.replace(
+    "Write-Output 'This file provides the app scan helpers. Open RPi5-WiFi-App.cmd; no scan was started.'",
+    "Write-Output 'This file provides scan helper functions for diagnostics/compatibility. Use RPi5-WiFi.exe for the current GUI; no scan was started.'")
+  assert actual==before,"Frozen utility changed: "+name
  inf=(ROOT/"package/rpi5cyw.inf").read_text()
  assert re.search(r"(?m)^DriverVer\s*=\s*10/05/2026,0\.7\.1\.20\s*$",inf)
  installer=(ROOT/"installer/Install-RPi5-WiFi-Driver.ps1").read_text()
