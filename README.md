@@ -1,14 +1,13 @@
-> **`new-improvement-f2-buffer-pio` corrective candidate: v0.7.1.17.**
-> Raspberry Pi 5 hardware testing rejected v0.7.1.16 after the new
-> READ/WRITE_REGISTER_BUFFER_ULONG F2 path latched FIFO transport failure during
-> connection setup. v0.7.1.17 restores the exact v0.7.1.15 production transport
-> implementation: every FIFO word is read/written through the same SDHCI_BUFFER
-> register address. CI now forbids the rejected register-buffer primitives in
-> that fixed-port path. See
-> [v0.7.1.17 fixed-port rollback](docs/F2-BUFFER-PIO-0.7.1.17-ROLLBACK.md).
+> **`new-improvement-tx-service-burst4` candidate: v0.7.1.18.**
+> This upload-focused experiment keeps the hardware-validated v0.7.1.17
+> fixed-port F2/RX path unchanged and extends ordinary TX service reuse from
+> two frames to at most four. One fresh F1 service may authorize up to three
+> following F2 frames only when those real firmware credits are already visible.
+> Every reused frame rechecks cached flow and remaining credit; any busy, fault,
+> or cancellation invalidates the rest of the grant. Glom2 retains precedence.
+> See [v0.7.1.18 Service-Burst4](docs/TX-SERVICE-BURST4-0.7.1.18.md).
 >
-> **v0.7.1.16 is rejected. v0.7.1.15 remains the direct experiment baseline,
-> and v0.7.1.11 remains the immediate rollback/performance reference.**
+> **v0.7.1.17 remains the immediate stable rollback. v0.7.1.16 remains rejected.**
 >
 > **`new-improvement` rollback candidate: v0.7.1.9.** This branch keeps the proven
 > 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame

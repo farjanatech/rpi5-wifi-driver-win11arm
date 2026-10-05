@@ -11,7 +11,7 @@ $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $stage=Join-Path $root 'artifacts\rpi5cyw-test-driver'
 @"
-Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.17 FIXED-PORT PIO ROLLBACK
+Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.18 EXPERIMENTAL SERVICE-BURST4
 Immediate rollback baseline: 0.7.1.11 / 6ae93623c8767eda050b8c408250d3ec3ce19bfb
 Direct experiment baseline: 0.7.1.15 / 66e0198609913fcc407c595e580e39c83777b60f
 Architecture rollback: 0.7.1.9 / 0bc5ed12e9438cd82555d7bc8ae77211aa6f236b
@@ -19,22 +19,22 @@ Rejected threshold-16 experiment: 0.7.1.12 - DO NOT RESTORE
 Earlier post-RX dispatch + bounded fast credit wake mode: $TxCreditScheduling
 Two-frame host TX glom compiled candidate: $TxGlom2
 Two-frame service-status amortization: ENABLED, hard cap = 2 ordinary F2 frames
-F2 block PIO: FIXED-PORT scalar ULONG accesses restored from v0.7.1.15
+F2 block PIO: v0.7.1.17 fixed-port implementation UNCHANGED
 
-v0.7.1.16 was rejected by Raspberry Pi 5 hardware testing after the new
-register-buffer PIO path latched FifoTransportFailed during connection setup.
-v0.7.1.17 restores the exact v0.7.1.15 production transport semantics while
-retaining the successful bounded Service-Burst2 behavior.
+v0.7.1.17 restored stable download/connection behavior on Raspberry Pi 5
+hardware. The remaining hardware evidence points to TX status/credit pressure.
+v0.7.1.18 changes only ordinary TX service reuse: one fresh F1 may authorize
+up to three following F2 frames when the matching real credits already exist.
 
 The SDIO protocol, 512-byte block size, block counts, FIFO addressing, 50 MHz /
 4-bit bus mode, 64-frame active queue, 128-frame backlog, 32-frame glom pressure
 threshold, two-frame glom cap, firmware/radio policy and SDPCM framing are unchanged.
 
-Each 512-byte F2 block is again moved by 128 repeated 32-bit accesses to the
-single SDHCI_BUFFER FIFO register address, exactly as in v0.7.1.15.
-READ_REGISTER_BUFFER_ULONG and WRITE_REGISTER_BUFFER_ULONG are prohibited from
-this fixed-port path by CI. Partial FIFO errors remain terminal and are never
-replayed.
+The v0.7.1.17 fixed-address SDHCI FIFO implementation is byte-for-byte frozen.
+Service-Burst4 never grants credit: it snapshots up to four real firmware
+credits after fresh F1 service, then rechecks cached flow plus remaining credit
+before each reused-service F2. Glom2 keeps precedence. Any busy/error/cancel
+invalidates the remaining grant; partial FIFO errors remain terminal/no-replay.
 
 Qualification: use Fast.com under the same AP/band/location, then diagnostics
 only. The packaged all-in-one utility is carried forward unchanged from
@@ -46,7 +46,7 @@ The driver is test-signed, not Microsoft production-signed.
 
 $receiptPath=Join-Path $stage 'SOURCE_REVISION.txt'
 $receipt=Get-Content -LiteralPath $receiptPath -Raw
-$receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.17-fixed-port-rollback`nstable_runtime_baseline=6ae93623c8767eda050b8c408250d3ec3ce19bfb`ndirect_experiment_baseline=66e0198609913fcc407c595e580e39c83777b60f`ntx_credit_scheduling=$TxCreditScheduling`ntx_glom2=$TxGlom2`ntx_service_burst2=1`ntx_service_burst_max=2`ntx_glom_pressure_threshold=32`nfifo_buffer_pio=0`nfifo_fixed_port_pio=1`nv0_7_1_16_buffer_pio=rejected-hardware`nqualification=fast.com-plus-diagnostics`nall_in_one_utility=0.7.1.14-fix2-unchanged")
+$receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.18-experimental-service-burst4`nstable_runtime_baseline=c9d715760da49ef491b681a1ba5b57e6ef6ef13b`ndirect_experiment_baseline=c9d715760da49ef491b681a1ba5b57e6ef6ef13b`ntx_credit_scheduling=$TxCreditScheduling`ntx_glom2=$TxGlom2`ntx_service_burst4=1`ntx_service_burst_max=4`ntx_glom_pressure_threshold=32`nfifo_buffer_pio=0`nfifo_fixed_port_pio=1`nfixed_port_pio=v0.7.1.17-unchanged`nv0_7_1_16_buffer_pio=rejected-hardware`nqualification=fast.com-plus-diagnostics`nall_in_one_utility=0.7.1.14-fix2-unchanged")
 $receipt=$receipt.Replace('performance_branch=better-improvement',"performance_branch=$env:GITHUB_REF_NAME")
 $receipt=$receipt.Replace('performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90','performance_baseline=66e0198609913fcc407c595e580e39c83777b60f')
 $receipt=$receipt.Replace('measurement_utility_version=0.6.27.1','measurement_utility_version=0.7.1.14-fix2-unchanged')
@@ -77,4 +77,4 @@ Get-ChildItem $stage -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sor
     $hash=Get-FileHash $_.FullName -Algorithm SHA256
     "$($hash.Hash)  $($_.Name)"
 } | Set-Content (Join-Path $stage 'SHA256SUMS.txt') -Encoding ASCII
-Write-Host "Packaged v0.7.1.17 fixed-port PIO rollback; v0.7.1.16 buffer-PIO is rejected and v0.7.1.11 remains immediate rollback."
+Write-Host "Packaged v0.7.1.18 Service-Burst4 experiment on unchanged v0.7.1.17 fixed-port transport."

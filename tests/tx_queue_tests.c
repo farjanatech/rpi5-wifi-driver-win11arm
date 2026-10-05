@@ -30,8 +30,8 @@ typedef struct TEST_NBL { struct TEST_NBL *Next;PNET_BUFFER First;PVOID CancelId
 #include "../src/cyw43455/tx_types.h"
 static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter,Immediate,Poison,CheckCompleting;
 static ULONG HookAt,BusyAt,FailAt,CompletionCalls,CompletionNbls,LargestCompletion,ProbeCalls;
-#if RPI5CYW_TX_SERVICE_BURST2
-static ULONG BurstStartCalls,BurstSecondCalls;
+#if RPI5CYW_TX_SERVICE_BURST4
+static ULONG BurstStartCalls,BurstReuseCalls,BurstReusePosition[5];
 #endif
 #if RPI5CYW_TX_GLOM2
 static ULONG PairTransferCalls,PairBusy,PairFail,PairHook;
@@ -65,75 +65,49 @@ static NTSTATUS CywTxTransferPair(PRPI5CYW_ADAPTER adapter,
     PUCHAR data1,ULONG length1,PUCHAR data2,ULONG length2);
 #endif
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
-#if RPI5CYW_TX_SERVICE_BURST2
+#if RPI5CYW_TX_SERVICE_BURST4
 static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,
-    BOOLEAN wantSecond,BOOLEAN * permitSecond);
-static NTSTATUS CywTxTransferBurstSecond(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
-#endif
-static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags);
-#include "../src/cyw43455/tx_queue.h"
-/* Production pressure wrapper around the ACTUAL queue/pump. The network-state
- * gate is exercised separately by tx_retry_gate_tests.c; this fixture models
- * its queue/credit inputs and cancellation/flow changes during a transfer. */
-static ULONG PressureBlocked;
-static BOOLEAN CywTxPressureEligible(PRPI5CYW_ADAPTER A,ULONG Threshold)
+    ULONG wantFrames,PULONG permitFollowing)
 {
-    KIRQL irql;BOOLEAN eligible;(void)A;
-    KeAcquireSpinLock(&TestQueue.Lock,&irql);
-    eligible=(BOOLEAN)(!PressureBlocked && Credits && TestQueue.Count &&
-        TestQueue.Frames>=Threshold && TestQueue.Gate==NDIS_STATUS_SUCCESS);
-    KeReleaseSpinLock(&TestQueue.Lock,irql);return eligible;
-}
-static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG Sent)
-{return CywTxPump(A,Q,Budget,Sent);}
-#include "../src/cyw43455/tx_pressure_pump.h"
-static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
-{
-    (void)adapter;CHECK(!Locks);
-    if(CheckImmediateBoundary)CHECK(CompletionNbls==TransferCalls);
-    TransferCalls++;
-    CHECK(length>=18 && length<=1518 && data[0]==0x20 && !data[1] && !data[2] && !data[3]);
-    Clock+=TransferTicks;
-    if(!HookAt || HookAt==TransferCalls) {
-        if(Hook==1)CywTxCancel(&TestQueue,TestQueue.Entries[0].CancelId);
-        if(Hook==2)CywTxSetGate(&TestQueue,NDIS_STATUS_PAUSED);
-        if(Hook==3)CywTxSetGate(&TestQueue,NDIS_STATUS_LOW_POWER_STATE);
-        if(Hook==4) {
-            ProbeCalls++;
-            CHECK(TestQueue.Frames==ExpectedProbeFrames && TestQueue.Bytes==ExpectedProbeBytes);
-            CHECK(TestQueue.Outstanding==CYW_TX_LIMIT && TestQueue.Count==CYW_TX_LIMIT);
-            CHECK(CywTxSubmit(&TestAdapter,&TestQueue,ProbeNbl)==NDIS_STATUS_RESOURCES);
-        }
-        if(Hook==5)CywTxCancel(&TestQueue,CancelCompletedId);
-        if(Hook==6)Clock=0;
-        if(Hook==7)PressureBlocked=1;
-    }
-    if(Busy || (BusyAt && BusyAt==TransferCalls))return STATUS_DEVICE_BUSY;
-    if(FailTransfer || (FailAt && FailAt==TransferCalls))return STATUS_IO_DEVICE_ERROR;
-    CHECK(Credits>0);Credits--;return STATUS_SUCCESS;
-}
-#if RPI5CYW_TX_SERVICE_BURST2
-static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,
-    BOOLEAN wantSecond,BOOLEAN * permitSecond)
-{
-    NTSTATUS status;
-    BurstStartCalls++;*permitSecond=FALSE;
+    NTSTATUS status;ULONG grant=0;
+    BurstStartCalls++;*permitFollowing=0;
     status=CywTxTransfer(adapter,data,length);
-    if(NT_SUCCESS(status) && wantSecond && Credits>0) {
-        adapter->TxServiceBurstGrants++;*permitSecond=TRUE;
+    if(NT_SUCCESS(status) && wantFrames>1 && Credits) {
+        grant=wantFrames-1;
+        if(grant>RPI5CYW_TX_SERVICE_BURST_MAX-1)grant=RPI5CYW_TX_SERVICE_BURST_MAX-1;
+        if(grant>Credits)grant=Credits;
+        if(grant) {
+            adapter->TxServiceBurstGrants++;
+            adapter->TxServiceBurstGrantedFollowers+=grant;
+            if(grant>adapter->TxServiceBurstMaxFollowers)adapter->TxServiceBurstMaxFollowers=grant;
+            *permitFollowing=grant;
+        }
     }
     return status;
 }
-static NTSTATUS CywTxTransferBurstSecond(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
+static NTSTATUS CywTxTransferBurstReuse(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,ULONG position)
 {
     NTSTATUS status;
-    BurstSecondCalls++;adapter->TxServiceBurstSecondAttempts++;
+    CHECK(position>=2 && position<=RPI5CYW_TX_SERVICE_BURST_MAX);
+    BurstReuseCalls++;BurstReusePosition[position]++;
+    if(position==2)adapter->TxServiceBurstSecondAttempts++;
+    else if(position==3)adapter->TxServiceBurstThirdAttempts++;
+    else adapter->TxServiceBurstFourthAttempts++;
     status=CywTxTransfer(adapter,data,length);
-    if(status==STATUS_DEVICE_BUSY)adapter->TxServiceBurstSecondBusy++;
-    else if(NT_SUCCESS(status)) {
-        adapter->TxServiceBurstSecondSuccess++;
+    if(status==STATUS_DEVICE_BUSY) {
+        if(position==2)adapter->TxServiceBurstSecondBusy++;
+        else if(position==3)adapter->TxServiceBurstThirdBusy++;
+        else adapter->TxServiceBurstFourthBusy++;
+    } else if(NT_SUCCESS(status)) {
+        if(position==2)adapter->TxServiceBurstSecondSuccess++;
+        else if(position==3)adapter->TxServiceBurstThirdSuccess++;
+        else adapter->TxServiceBurstFourthSuccess++;
         adapter->TxServiceBurstSavedStatusChecks++;
-    } else adapter->TxServiceBurstSecondErrors++;
+    } else {
+        if(position==2)adapter->TxServiceBurstSecondErrors++;
+        else if(position==3)adapter->TxServiceBurstThirdErrors++;
+        else adapter->TxServiceBurstFourthErrors++;
+    }
     return status;
 }
 #endif
@@ -192,8 +166,8 @@ static void Init(void)
 {
     memset(&TestAdapter,0,sizeof(TestAdapter));memset(&TestQueue,0,sizeof(TestQueue));Clock=0;Credits=100;
     TransferCalls=Busy=FailTransfer=Hook=Reenter=Immediate=Poison=CheckCompleting=0;CHECK(!Locks);
-#if RPI5CYW_TX_SERVICE_BURST2
-    BurstStartCalls=BurstSecondCalls=0;
+#if RPI5CYW_TX_SERVICE_BURST4
+    BurstStartCalls=BurstReuseCalls=0;memset(BurstReusePosition,0,sizeof(BurstReusePosition));
 #endif
 #if RPI5CYW_TX_GLOM2
     PairTransferCalls=PairBusy=PairFail=PairHook=0;

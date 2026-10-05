@@ -29,12 +29,12 @@
 #define RPI5CYW_TX_LIMIT 64u
 #define RPI5CYW_TX_BACKLOG_LIMIT 128u
 #define RPI5CYW_TX_GLOM_PRESSURE_THRESHOLD 32u
-#define RPI5CYW_TX_SERVICE_BURST_MAX 2u
+#define RPI5CYW_TX_SERVICE_BURST_MAX 4u
 #ifndef RPI5CYW_TX_GLOM2
 #define RPI5CYW_TX_GLOM2 0
 #endif
-#ifndef RPI5CYW_TX_SERVICE_BURST2
-#define RPI5CYW_TX_SERVICE_BURST2 1
+#ifndef RPI5CYW_TX_SERVICE_BURST4
+#define RPI5CYW_TX_SERVICE_BURST4 1
 #endif
 #define RPI5CYW_DRIVER_VERSION 0x0100
 #define RPI5CYW_MAX_MULTICAST 32
@@ -114,9 +114,14 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG TxGlomAttempts, TxGlomChains, TxGlomFrames, TxGlomBusyFallbacks, TxGlomErrors;
     ULONG TxGlomPayloadBytes, TxGlomPaddedBytes;
     ULONG TxGlomExtendedDataSingles, TxGlomExtendedControlSingles;
-    ULONG TxServiceBurstGrants, TxServiceBurstSecondAttempts;
-    ULONG TxServiceBurstSecondSuccess, TxServiceBurstSecondBusy;
-    ULONG TxServiceBurstSecondErrors, TxServiceBurstSavedStatusChecks;
+    ULONG TxServiceBurstGrants, TxServiceBurstGrantedFollowers, TxServiceBurstMaxFollowers;
+    ULONG TxServiceBurstSecondAttempts, TxServiceBurstSecondSuccess;
+    ULONG TxServiceBurstSecondBusy, TxServiceBurstSecondErrors;
+    ULONG TxServiceBurstThirdAttempts, TxServiceBurstThirdSuccess;
+    ULONG TxServiceBurstThirdBusy, TxServiceBurstThirdErrors;
+    ULONG TxServiceBurstFourthAttempts, TxServiceBurstFourthSuccess;
+    ULONG TxServiceBurstFourthBusy, TxServiceBurstFourthErrors;
+    ULONG TxServiceBurstSavedStatusChecks;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */
     CYW_TX_RETRY TxRetry; /* Worker-owned bounded idle-credit retry evidence. */

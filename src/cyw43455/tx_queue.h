@@ -196,19 +196,24 @@ static NDIS_STATUS CywTxAbortStatus(CYW_TX_STATE *Q,CYW_PENDING_SEND *Item,ULONG
     if(Now-Item->Submitted>=CYW_TX_MAX_AGE)return NDIS_STATUS_FAILURE;
     return NDIS_STATUS_SUCCESS;
 }
-#if RPI5CYW_TX_SERVICE_BURST2
-/* Ask for a two-credit service grant only when this same pump has room to
- * consume a second frame. Remaining frame counts, unlike retained admission
- * counts, reflect partially transmitted multi-NB NBLs. */
-static BOOLEAN CywTxSecondFramePending(CYW_TX_STATE *Q,ULONG Remaining)
+#if RPI5CYW_TX_SERVICE_BURST4
+/* Count actual remaining frames, not retained admission frames. The result is
+ * bounded by the current pump budget and the hard four-frame service cap. */
+static ULONG CywTxBurstPendingFrames(CYW_TX_STATE *Q,ULONG Remaining)
 {
-    KIRQL irql;BOOLEAN eligible=FALSE;
-    if(Remaining<2)return FALSE;
+    KIRQL irql;ULONG i,pending=0,take,cap=Remaining;
+    if(cap>RPI5CYW_TX_SERVICE_BURST_MAX)cap=RPI5CYW_TX_SERVICE_BURST_MAX;
+    if(!cap)return 0;
     KeAcquireSpinLock(&Q->Lock,&irql);
-    if(Q->Gate==NDIS_STATUS_SUCCESS && Q->Count &&
-       (Q->Entries[0].Frames>=2 || Q->Count>=2))eligible=TRUE;
+    if(Q->Gate==NDIS_STATUS_SUCCESS) {
+        for(i=0;i<Q->Count && pending<cap;++i) {
+            take=Q->Entries[i].Frames;
+            if(take>cap-pending)take=cap-pending;
+            pending+=take;
+        }
+    }
     KeReleaseSpinLock(&Q->Lock,irql);
-    return eligible;
+    return pending;
 }
 #endif
 
@@ -257,8 +262,9 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
     ULONG i,len;ULONG64 now;KIRQL irql;PUCHAR data;PNET_BUFFER nb;
     PNET_BUFFER_LIST nbl;NDIS_STATUS completion=NDIS_STATUS_SUCCESS;NTSTATUS status;
     BOOLEAN active;
-#if RPI5CYW_TX_SERVICE_BURST2
-    BOOLEAN serviceSecond=FALSE,wantSecond,useServiceSecond;
+#if RPI5CYW_TX_SERVICE_BURST4
+    ULONG serviceRemaining=0,wantFrames,reusePosition=2;
+    BOOLEAN useServiceReuse;
 #endif
 #if RPI5CYW_TX_GLOM2
     ULONG len2;PUCHAR data2;PNET_BUFFER nb2;PNET_BUFFER_LIST nbl2;
@@ -308,8 +314,8 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
 #if RPI5CYW_TX_GLOM2
         nb2=NULL;
         if(
-#if RPI5CYW_TX_SERVICE_BURST2
-           !serviceSecond &&
+#if RPI5CYW_TX_SERVICE_BURST4
+           !serviceRemaining &&
 #endif
            CywTxPairCandidate(A,Q,Budget-*Sent,&nb,&nb2)) {
             len=NET_BUFFER_DATA_LENGTH(nb);len2=NET_BUFFER_DATA_LENGTH(nb2);
@@ -325,8 +331,8 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
                  * No F2 occurred, so safely fall through to the proven
                  * one-frame sender rather than wasting an available credit. */
                 if(status!=STATUS_DEVICE_BUSY) {
-#if RPI5CYW_TX_SERVICE_BURST2
-                    serviceSecond=FALSE;
+#if RPI5CYW_TX_SERVICE_BURST4
+                    serviceRemaining=0;
 #endif
                     KeAcquireSpinLock(&Q->Lock,&irql);nbl=nbl2=NULL;
                     completion=CywTxAbortStatus(Q,&Q->Entries[0],KeQueryInterruptTime());
@@ -352,32 +358,38 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
         }
 #endif
         if(!CywTxCanTransfer(A)) {
-#if RPI5CYW_TX_SERVICE_BURST2
-            serviceSecond=FALSE;
+#if RPI5CYW_TX_SERVICE_BURST4
+            serviceRemaining=0;
 #endif
             A->TxCreditWaits++;break;
         }
         len=NET_BUFFER_DATA_LENGTH(nb);
         RtlZeroMemory(Q->Frame,4);Q->Frame[0]=0x20;
-#if RPI5CYW_TX_SERVICE_BURST2
-        useServiceSecond=serviceSecond;serviceSecond=FALSE;
+#if RPI5CYW_TX_SERVICE_BURST4
+        useServiceReuse=(BOOLEAN)(serviceRemaining!=0);
 #endif
         data=NdisGetDataBuffer(nb,len,Q->Frame+4,1,0);
         if(data && data!=Q->Frame+4)RtlCopyMemory(Q->Frame+4,data,len);
-#if RPI5CYW_TX_SERVICE_BURST2
+#if RPI5CYW_TX_SERVICE_BURST4
         if(data) {
-            if(useServiceSecond)status=CywTxTransferBurstSecond(A,Q->Frame,len+4);
-            else {
-                wantSecond=CywTxSecondFramePending(Q,Budget-*Sent);
-                status=CywTxTransferBurstStart(A,Q->Frame,len+4,wantSecond,&serviceSecond);
+            if(useServiceReuse) {
+                status=CywTxTransferBurstReuse(A,Q->Frame,len+4,reusePosition);
+                if(NT_SUCCESS(status)) {
+                    if(serviceRemaining)serviceRemaining--;
+                    reusePosition++;
+                }
+            } else {
+                wantFrames=CywTxBurstPendingFrames(Q,Budget-*Sent);
+                status=CywTxTransferBurstStart(A,Q->Frame,len+4,wantFrames,&serviceRemaining);
+                if(serviceRemaining)reusePosition=2;
             }
         } else status=STATUS_INSUFFICIENT_RESOURCES;
 #else
         status=data?CywTxTransfer(A,Q->Frame,len+4):STATUS_INSUFFICIENT_RESOURCES;
 #endif
         if(status==STATUS_DEVICE_BUSY) {
-#if RPI5CYW_TX_SERVICE_BURST2
-            serviceSecond=FALSE;
+#if RPI5CYW_TX_SERVICE_BURST4
+            serviceRemaining=0;
 #endif
             A->TxCreditWaits++;break;
         }
@@ -394,17 +406,20 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
             Q->Entries[0].Frames--;
         } else if(completion==NDIS_STATUS_SUCCESS)completion=NDIS_STATUS_FAILURE;
         if(completion!=NDIS_STATUS_SUCCESS || !Q->Entries[0].Frames)nbl=CywTxRemove(A,Q,0,completion);
+#if RPI5CYW_TX_SERVICE_BURST4
+        if(completion!=NDIS_STATUS_SUCCESS)serviceRemaining=0;
+#endif
         KeReleaseSpinLock(&Q->Lock,irql);
         if(nbl)CywTxComplete(A,Q,nbl,completion);
         if(!NT_SUCCESS(status) && data) {
-#if RPI5CYW_TX_SERVICE_BURST2
-            serviceSecond=FALSE;
+#if RPI5CYW_TX_SERVICE_BURST4
+            serviceRemaining=0;
 #endif
             return status; /* Bus fault: fail rest in worker exit. */
         }
         if(!data) {
-#if RPI5CYW_TX_SERVICE_BURST2
-            serviceSecond=FALSE;
+#if RPI5CYW_TX_SERVICE_BURST4
+            serviceRemaining=0;
 #endif
             break; /* Mapping failure is per-NBL, not a radio failure. */
         }

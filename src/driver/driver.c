@@ -451,7 +451,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 41);
+    SET_DWORD(L"DiagVersion", 43);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -649,13 +649,23 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"TxGlomExtendedDataSingles", Adapter->TxGlomExtendedDataSingles);
     SET_DWORD(L"TxGlomExtendedControlSingles", Adapter->TxGlomExtendedControlSingles);
     SET_DWORD(L"TxGlomPressureThreshold", RPI5CYW_TX_GLOM_PRESSURE_THRESHOLD);
-    SET_DWORD(L"TxServiceBurstEnabled", RPI5CYW_TX_SERVICE_BURST2);
+    SET_DWORD(L"TxServiceBurstEnabled", RPI5CYW_TX_SERVICE_BURST4);
     SET_DWORD(L"TxServiceBurstMax", RPI5CYW_TX_SERVICE_BURST_MAX);
     SET_DWORD(L"TxServiceBurstGrants", Adapter->TxServiceBurstGrants);
+    SET_DWORD(L"TxServiceBurstGrantedFollowers", Adapter->TxServiceBurstGrantedFollowers);
+    SET_DWORD(L"TxServiceBurstMaxFollowers", Adapter->TxServiceBurstMaxFollowers);
     SET_DWORD(L"TxServiceBurstSecondAttempts", Adapter->TxServiceBurstSecondAttempts);
     SET_DWORD(L"TxServiceBurstSecondSuccess", Adapter->TxServiceBurstSecondSuccess);
     SET_DWORD(L"TxServiceBurstSecondBusy", Adapter->TxServiceBurstSecondBusy);
     SET_DWORD(L"TxServiceBurstSecondErrors", Adapter->TxServiceBurstSecondErrors);
+    SET_DWORD(L"TxServiceBurstThirdAttempts", Adapter->TxServiceBurstThirdAttempts);
+    SET_DWORD(L"TxServiceBurstThirdSuccess", Adapter->TxServiceBurstThirdSuccess);
+    SET_DWORD(L"TxServiceBurstThirdBusy", Adapter->TxServiceBurstThirdBusy);
+    SET_DWORD(L"TxServiceBurstThirdErrors", Adapter->TxServiceBurstThirdErrors);
+    SET_DWORD(L"TxServiceBurstFourthAttempts", Adapter->TxServiceBurstFourthAttempts);
+    SET_DWORD(L"TxServiceBurstFourthSuccess", Adapter->TxServiceBurstFourthSuccess);
+    SET_DWORD(L"TxServiceBurstFourthBusy", Adapter->TxServiceBurstFourthBusy);
+    SET_DWORD(L"TxServiceBurstFourthErrors", Adapter->TxServiceBurstFourthErrors);
     SET_DWORD(L"TxServiceBurstSavedStatusChecks", Adapter->TxServiceBurstSavedStatusChecks);
     SET_DWORD(L"RadioVersion", Adapter->RadioReport[0]);
     SET_DWORD(L"RadioGeneration", Adapter->RadioReport[1]);

@@ -1,28 +1,55 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Actual SDPCM sender, shared with the mocked transport integration tests. */
+#if RPI5CYW_TX_SERVICE_BURST4
+static VOID CywServiceBurstAttempt(PRPI5CYW_ADAPTER A,ULONG Position)
+{
+    if(Position==2)A->TxServiceBurstSecondAttempts++;
+    else if(Position==3)A->TxServiceBurstThirdAttempts++;
+    else if(Position==4)A->TxServiceBurstFourthAttempts++;
+}
+static VOID CywServiceBurstBusy(PRPI5CYW_ADAPTER A,ULONG Position)
+{
+    if(Position==2)A->TxServiceBurstSecondBusy++;
+    else if(Position==3)A->TxServiceBurstThirdBusy++;
+    else if(Position==4)A->TxServiceBurstFourthBusy++;
+}
+static VOID CywServiceBurstSuccess(PRPI5CYW_ADAPTER A,ULONG Position)
+{
+    if(Position==2)A->TxServiceBurstSecondSuccess++;
+    else if(Position==3)A->TxServiceBurstThirdSuccess++;
+    else if(Position==4)A->TxServiceBurstFourthSuccess++;
+    A->TxServiceBurstSavedStatusChecks++;
+}
+static VOID CywServiceBurstError(PRPI5CYW_ADAPTER A,ULONG Position)
+{
+    if(Position==2)A->TxServiceBurstSecondErrors++;
+    else if(Position==3)A->TxServiceBurstThirdErrors++;
+    else if(Position==4)A->TxServiceBurstFourthErrors++;
+}
+#endif
+
 static NTSTATUS CywSendFrameCore(PRPI5CYW_ADAPTER A, UCHAR Channel,
-    PUCHAR Data, ULONG Length, BOOLEAN ServiceData, BOOLEAN WantSecond,
-    BOOLEAN * PermitSecond)
+    PUCHAR Data, ULONG Length, BOOLEAN ServiceData, ULONG ReusePosition,
+    ULONG WantFrames, PULONG PermitFollowing)
 {
     CYW_NETWORK *N=A->Network;
     ULONG header=A->TxGlomEnabled?20u:12u;
     ULONG total=Length+header,padded=(total+3)&~3UL,tailPad,word;
+    ULONG grant=0,available=0,cap=0;
     NTSTATUS Status;
-    BOOLEAN grant=FALSE;
 /* TX-CREDIT-DIAG-BEGIN */
     CYW_TX_CREDIT_DIAG *D=&A->TxCreditDiag;CYW_TXD_U64 detailStart=0;
     unsigned reads=0,acks=0,mails=0,commands=0;
 /* TX-CREDIT-DIAG-END */
-    if(PermitSecond)*PermitSecond=FALSE;
+    if(PermitFollowing)*PermitFollowing=0;
     if(Length>CYW_CONTROL_CAPACITY-header)return STATUS_INVALID_BUFFER_SIZE;
     if(A->FifoBlockReady && padded>512)padded=(padded+511)&~511UL;
     if(padded>CYW_CONTROL_CAPACITY || padded<total)return STATUS_INVALID_BUFFER_SIZE;
     if(Channel==2) {
         if(ServiceData) {
-            /* Fresh F1 service remains mandatory for the first frame in every
-             * burst. Only this observed state may authorize one following
-             * ordinary F2 frame; the grant never survives beyond the caller's
-             * current pump invocation. */
+            /* Every burst starts with one fresh F1 service. The resulting
+             * firmware-credit window may authorize up to three immediately
+             * following ordinary F2 frames in this same pump only. */
             A->Transport.TxStatusChecks++;
 /* TX-CREDIT-DIAG-BEGIN */
             CywTxDiagInc(&D->F1Calls);
@@ -43,41 +70,44 @@ static NTSTATUS CywSendFrameCore(PRPI5CYW_ADAPTER A, UCHAR Channel,
             if(!NT_SUCCESS(Status))return Status;
             if(A->Transport.GlobalFlow || !CywTransportPriorityAllowed(&A->Transport,N->TxFlow))
                 return STATUS_DEVICE_BUSY;
-            if(WantSecond &&
-               CywTxCredit(N->TxSeq,N->TxMax,0) &&
-               CywTxCredit((UCHAR)(N->TxSeq+1),N->TxMax,0))
-                grant=TRUE;
-        } else {
-#if RPI5CYW_TX_SERVICE_BURST2
-            A->TxServiceBurstSecondAttempts++;
+#if RPI5CYW_TX_SERVICE_BURST4
+            cap=WantFrames;if(cap>RPI5CYW_TX_SERVICE_BURST_MAX)cap=RPI5CYW_TX_SERVICE_BURST_MAX;
+            available=(UCHAR)(N->TxMax-N->TxSeq);
+            if(cap>1 && available>1 && available<=0x40) {
+                grant=available-1;
+                if(grant>cap-1)grant=cap-1;
+            }
+#else
+            (void)ReusePosition;(void)WantFrames;
 #endif
-            /* Second-frame service reuse is intentionally conservative: cached
-             * global/priority flow state and a real remaining credit must still
-             * be valid immediately before F2. No status is invented. */
+        } else {
+#if RPI5CYW_TX_SERVICE_BURST4
+            if(ReusePosition<2 || ReusePosition>RPI5CYW_TX_SERVICE_BURST_MAX)
+                return STATUS_INVALID_PARAMETER;
+            CywServiceBurstAttempt(A,ReusePosition);
+            /* A grant never fabricates state. Before every reused-service F2,
+             * recheck cached flow plus a real remaining firmware credit. */
             if(A->Transport.GlobalFlow ||
                !CywTransportPriorityAllowed(&A->Transport,N->TxFlow) ||
                !CywTxCredit(N->TxSeq,N->TxMax,0)) {
-#if RPI5CYW_TX_SERVICE_BURST2
-                A->TxServiceBurstSecondBusy++;
-#endif
+                CywServiceBurstBusy(A,ReusePosition);
                 return STATUS_DEVICE_BUSY;
             }
+#else
+            return STATUS_NOT_SUPPORTED;
+#endif
         }
     }
     if(A->Transport.Halted)return STATUS_DEVICE_NOT_READY;
     if(!CywTxCredit(N->TxSeq,N->TxMax,0)) {
-#if RPI5CYW_TX_SERVICE_BURST2
-        if(Channel==2 && !ServiceData)A->TxServiceBurstSecondBusy++;
+#if RPI5CYW_TX_SERVICE_BURST4
+        if(Channel==2 && !ServiceData)CywServiceBurstBusy(A,ReusePosition);
 #endif
         return STATUS_DEVICE_BUSY;
     }
 
     RtlZeroMemory(N->Tx,padded);
     if(A->TxGlomEnabled) {
-        /* Once bus:rxglom succeeds, brcmfmac switches the host TX header
-         * length globally, not only for multi-frame chains. Every subsequent
-         * host->firmware control/data frame carries the 8-byte HW extension.
-         * The first/only HW length covers the complete padded transfer. */
         tailPad=padded-total;
         if(tailPad>0xffffUL)return STATUS_INVALID_BUFFER_SIZE;
         CywPut16(N->Tx,(USHORT)padded);CywPut16(N->Tx+2,(USHORT)~padded);
@@ -110,21 +140,21 @@ static NTSTATUS CywSendFrameCore(PRPI5CYW_ADAPTER A, UCHAR Channel,
         if(Channel==2)A->TxGlomExtendedDataSingles++;
         else A->TxGlomExtendedControlSingles++;
     }
-#if RPI5CYW_TX_SERVICE_BURST2
+#if RPI5CYW_TX_SERVICE_BURST4
     if(Channel==2 && !ServiceData) {
-        if(NT_SUCCESS(Status)) {
-            A->TxServiceBurstSecondSuccess++;
-            A->TxServiceBurstSavedStatusChecks++;
-        } else A->TxServiceBurstSecondErrors++;
+        if(NT_SUCCESS(Status))CywServiceBurstSuccess(A,ReusePosition);
+        else CywServiceBurstError(A,ReusePosition);
     }
 #endif
     RtlSecureZeroMemory(N->Tx,padded);
     if(NT_SUCCESS(Status)) {
         N->TxSeq++;
-#if RPI5CYW_TX_SERVICE_BURST2
-        if(Channel==2 && ServiceData && grant && PermitSecond) {
+#if RPI5CYW_TX_SERVICE_BURST4
+        if(Channel==2 && ServiceData && grant && PermitFollowing) {
             A->TxServiceBurstGrants++;
-            *PermitSecond=TRUE;
+            A->TxServiceBurstGrantedFollowers+=grant;
+            if(grant>A->TxServiceBurstMaxFollowers)A->TxServiceBurstMaxFollowers=grant;
+            *PermitFollowing=grant;
         }
 #endif
     }
@@ -133,18 +163,18 @@ static NTSTATUS CywSendFrameCore(PRPI5CYW_ADAPTER A, UCHAR Channel,
 
 static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULONG Length)
 {
-    return CywSendFrameCore(A,Channel,Data,Length,TRUE,FALSE,NULL);
+    return CywSendFrameCore(A,Channel,Data,Length,TRUE,0,1,NULL);
 }
 
-#if RPI5CYW_TX_SERVICE_BURST2
+#if RPI5CYW_TX_SERVICE_BURST4
 static NTSTATUS CywSendDataBurstStart(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,
-    BOOLEAN WantSecond,BOOLEAN * PermitSecond)
+    ULONG WantFrames,PULONG PermitFollowing)
 {
-    return CywSendFrameCore(A,2,Data,Length,TRUE,WantSecond,PermitSecond);
+    return CywSendFrameCore(A,2,Data,Length,TRUE,0,WantFrames,PermitFollowing);
 }
-static NTSTATUS CywSendDataBurstSecond(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
+static NTSTATUS CywSendDataBurstReuse(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,ULONG Position)
 {
-    return CywSendFrameCore(A,2,Data,Length,FALSE,FALSE,NULL);
+    return CywSendFrameCore(A,2,Data,Length,FALSE,Position,1,NULL);
 }
 #endif
 
