@@ -4,6 +4,7 @@ import re,subprocess
 ROOT=Path(__file__).resolve().parents[1]
 BASELINE="1dbe4b11ef06ee4dde360e5fc8172732d53e0ecc"
 UTILITY_BASELINE="e7de4e26d317bca947171c25967b10201380711a"
+RETIRED_UTILITY_FILES={"utility/RPi5-WiFi-App.ps1","utility/RPi5-WiFi-App.cmd"}
 ALLOWED_SRC={
  "src/sdio/fifo_blocks.h","src/driver/driver.h","src/driver/driver.c",
  "src/cyw43455/network.c","src/cyw43455/runtime_recovery.h",
@@ -47,6 +48,9 @@ def main():
  assert "RuntimeRecoveryAttempts" in header and "FifoLastFailureWaitEvent" in header
  utility_files=git("ls-tree","-r","--name-only",UTILITY_BASELINE,"utility").splitlines()
  for name in utility_files:
+  if name in RETIRED_UTILITY_FILES:
+   assert not (ROOT/name).exists(),"Retired legacy GUI returned: "+name
+   continue
   assert (ROOT/name).read_text(encoding="utf-8")==git("show",UTILITY_BASELINE+":"+name),"Frozen utility changed: "+name
  inf=(ROOT/"package/rpi5cyw.inf").read_text()
  assert re.search(r"(?m)^DriverVer\s*=\s*10/05/2026,0\.7\.1\.20\s*$",inf)
