@@ -1,7 +1,7 @@
 # Integrated testing
 
 The current default is **v0.7.1.20** on `main`. The exact hardware-tested
-driver source is frozen on `release/v0.7.1.20` at
+driver source is frozen on `release-v0.7.1.20` at
 `c16aa318da490350126739add45223a186ab0a47`.
 
 ## Hardware validation baseline
