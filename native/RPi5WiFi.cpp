@@ -22,7 +22,7 @@ namespace {
 enum : int {
     IDC_STATUS=1001, IDC_COUNTRY, IDC_SCAN, IDC_NETWORKS, IDC_PASSWORD,
     IDC_CONNECT, IDC_DISCONNECT, IDC_SAVE_PROFILE, IDC_AUTO, IDC_PROFILES,
-    IDC_DELETE_PROFILE, IDC_HINT
+    IDC_DELETE_PROFILE, IDC_HINT, IDC_SELECTED
 };
 constexpr UINT WM_APP_DONE = WM_APP + 10;
 
@@ -37,14 +37,17 @@ struct AsyncResult {
 
 struct App {
     HWND hwnd{}, status{}, country{}, scan{}, networks{}, password{}, connect{}, disconnect{},
-        saveProfile{}, autoBox{}, profiles{}, deleteProfile{}, hint{};
+        saveProfile{}, autoBox{}, profiles{}, deleteProfile{}, hint{}, selected{};
     HFONT font{};
+    UINT dpi{96};
     std::atomic_bool busy{false};
     std::vector<NetworkEntry> scanEntries;
     ProfileDb db;
 };
 
 App g;
+
+int S(int value) { return MulDiv(value, static_cast<int>(g.dpi ? g.dpi : 96), 96); }
 
 std::wstring WidenError(const std::exception& e) {
     try { return Utf8ToWide(e.what()); } catch (...) { return L"Unexpected error."; }
@@ -81,7 +84,7 @@ void SetBusy(bool busy,const std::wstring& status=L"") {
     if(!status.empty())SetText(g.status,status);
 }
 void AddColumn(HWND list,int index,int width,const wchar_t* text) {
-    LVCOLUMNW c{};c.mask=LVCF_TEXT|LVCF_WIDTH|LVCF_SUBITEM;c.pszText=const_cast<wchar_t*>(text);c.cx=width;c.iSubItem=index;
+    LVCOLUMNW c{};c.mask=LVCF_TEXT|LVCF_WIDTH|LVCF_SUBITEM;c.pszText=const_cast<wchar_t*>(text);c.cx=S(width);c.iSubItem=index;
     ListView_InsertColumn(list,index,&c);
 }
 void AddItem(HWND list,int row,int col,const std::wstring& text) {
@@ -114,8 +117,21 @@ void ApplySelectionHint() {
         std::string ssid=SelectedSsid(false);
         const Profile* p=ProfileStore::Find(g.db,ssid);
         SendMessageW(g.autoBox,BM_SETCHECK,p&&p->autoConnect?BST_CHECKED:BST_UNCHECKED,0);
-        SetText(g.hint,p?L"Saved key available. Leave Password blank to use it.":L"Enter the WPA2 password to connect or save this profile.");
-    }catch(...){SetText(g.hint,L"Select a scanned network or saved profile.");}
+
+        int i=SelectedIndex(g.networks);
+        if(i>=0 && static_cast<size_t>(i)<g.scanEntries.size()) {
+            const auto& n=g.scanEntries[static_cast<size_t>(i)];
+            SetText(g.selected,L"Selected Wi-Fi: "+n.display+L"  —  "+n.band+
+                L", Channel "+std::to_wstring(n.channel)+L", "+std::to_wstring(n.rssi)+L" dBm");
+        } else {
+            SetText(g.selected,L"Selected saved profile: "+Utf8ToWide(ssid));
+        }
+        SetText(g.hint,p?L"Saved key available. Leave Password blank to use it.":
+            L"Enter the WPA2 password for the green selected Wi-Fi, then Connect or Save Profile.");
+    }catch(...){
+        SetText(g.selected,L"No Wi-Fi selected.");
+        SetText(g.hint,L"Select a Wi-Fi network above. The selected network will be highlighted green.");
+    }
 }
 template<class F>
 void StartAsync(OpKind kind,const std::wstring& startText,F fn) {
@@ -194,21 +210,34 @@ void PollStatus() {
     }catch(const std::exception&e){SetText(g.status,L"Driver unavailable: "+WidenError(e));}
 }
 void Layout(HWND hwnd) {
-    RECT rc{};GetClientRect(hwnd,&rc);int w=rc.right-rc.left;
-    MoveWindow(g.status,12,10,w-24,24,TRUE);
-    MoveWindow(GetDlgItem(hwnd,2001),12,43,118,22,TRUE);MoveWindow(g.country,132,40,60,26,TRUE);MoveWindow(g.scan,205,39,90,28,TRUE);
-    MoveWindow(g.networks,12,76,w-24,225,TRUE);
-    MoveWindow(GetDlgItem(hwnd,2002),12,311,118,22,TRUE);MoveWindow(g.password,132,307,w-144,27,TRUE);
-    MoveWindow(g.autoBox,12,344,215,24,TRUE);MoveWindow(g.hint,235,345,w-247,23,TRUE);
-    MoveWindow(g.connect,12,376,100,30,TRUE);MoveWindow(g.disconnect,120,376,100,30,TRUE);MoveWindow(g.saveProfile,228,376,145,30,TRUE);
-    MoveWindow(GetDlgItem(hwnd,2003),12,419,150,22,TRUE);MoveWindow(g.deleteProfile,w-132,414,120,28,TRUE);
-    MoveWindow(g.profiles,12,447,w-24,125,TRUE);
+    RECT rc{};GetClientRect(hwnd,&rc);int w=rc.right-rc.left;int h=rc.bottom-rc.top;
+    MoveWindow(g.status,S(14),S(10),w-S(28),S(42),TRUE);
+    MoveWindow(GetDlgItem(hwnd,2001),S(14),S(61),S(132),S(24),TRUE);
+    MoveWindow(g.country,S(150),S(57),S(64),S(29),TRUE);
+    MoveWindow(g.scan,S(230),S(56),S(120),S(31),TRUE);
+    MoveWindow(g.networks,S(14),S(98),w-S(28),S(270),TRUE);
+
+    MoveWindow(g.selected,S(14),S(380),w-S(28),S(30),TRUE);
+    MoveWindow(GetDlgItem(hwnd,2002),S(14),S(422),S(120),S(24),TRUE);
+    MoveWindow(g.password,S(140),S(417),w-S(154),S(30),TRUE);
+
+    MoveWindow(g.autoBox,S(14),S(461),S(220),S(28),TRUE);
+    MoveWindow(g.hint,S(245),S(456),w-S(259),S(46),TRUE);
+
+    MoveWindow(g.connect,S(14),S(515),S(110),S(34),TRUE);
+    MoveWindow(g.disconnect,S(132),S(515),S(110),S(34),TRUE);
+    MoveWindow(g.saveProfile,S(250),S(515),S(165),S(34),TRUE);
+
+    MoveWindow(GetDlgItem(hwnd,2003),S(14),S(566),S(160),S(24),TRUE);
+    MoveWindow(g.deleteProfile,w-S(144),S(560),S(130),S(32),TRUE);
+    MoveWindow(g.profiles,S(14),S(600),w-S(28),max(S(105),h-S(614)),TRUE);
 }
 LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
     switch(msg){
     case WM_CREATE:{
         g.hwnd=hwnd;
-        g.font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+        g.dpi=GetDpiForWindow(hwnd);
+        g.font=CreateFontW(-S(16),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
         auto C=[&](LPCWSTR cls,LPCWSTR text,DWORD style,int id)->HWND{
             HWND h=CreateWindowExW(0,cls,text,WS_CHILD|WS_VISIBLE|style,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);
             SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(g.font),TRUE);return h;
@@ -220,7 +249,8 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         g.scan=C(L"BUTTON",L"Scan / Refresh",BS_PUSHBUTTON,IDC_SCAN);
         g.networks=CreateWindowExW(WS_EX_CLIENTEDGE,WC_LISTVIEWW,L"",WS_CHILD|WS_VISIBLE|LVS_REPORT|LVS_SINGLESEL|LVS_SHOWSELALWAYS,0,0,0,0,hwnd,reinterpret_cast<HMENU>(IDC_NETWORKS),GetModuleHandleW(nullptr),nullptr);
         SendMessageW(g.networks,WM_SETFONT,reinterpret_cast<WPARAM>(g.font),TRUE);ListView_SetExtendedListViewStyle(g.networks,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
-        AddColumn(g.networks,0,255,L"SSID");AddColumn(g.networks,1,85,L"Band");AddColumn(g.networks,2,70,L"Channel");AddColumn(g.networks,3,85,L"Signal");AddColumn(g.networks,4,190,L"Security");
+        AddColumn(g.networks,0,310,L"SSID");AddColumn(g.networks,1,95,L"Band");AddColumn(g.networks,2,80,L"Channel");AddColumn(g.networks,3,95,L"Signal");AddColumn(g.networks,4,225,L"Security");
+        g.selected=C(L"STATIC",L"No Wi-Fi selected.",SS_LEFT,IDC_SELECTED);
         C(L"STATIC",L"Password:",SS_LEFT,2002);
         g.password=C(L"EDIT",L"",WS_BORDER|ES_PASSWORD|ES_AUTOHSCROLL,IDC_PASSWORD);SendMessageW(g.password,EM_SETLIMITTEXT,63,0);
         g.autoBox=C(L"BUTTON",L"Auto-connect after reboot",BS_AUTOCHECKBOX,IDC_AUTO);
@@ -232,9 +262,23 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         g.deleteProfile=C(L"BUTTON",L"Delete Profile",BS_PUSHBUTTON,IDC_DELETE_PROFILE);
         g.profiles=CreateWindowExW(WS_EX_CLIENTEDGE,WC_LISTVIEWW,L"",WS_CHILD|WS_VISIBLE|LVS_REPORT|LVS_SINGLESEL|LVS_SHOWSELALWAYS,0,0,0,0,hwnd,reinterpret_cast<HMENU>(IDC_PROFILES),GetModuleHandleW(nullptr),nullptr);
         SendMessageW(g.profiles,WM_SETFONT,reinterpret_cast<WPARAM>(g.font),TRUE);ListView_SetExtendedListViewStyle(g.profiles,LVS_EX_FULLROWSELECT|LVS_EX_DOUBLEBUFFER);
-        AddColumn(g.profiles,0,420,L"SSID");AddColumn(g.profiles,1,120,L"Auto-connect");
+        AddColumn(g.profiles,0,600,L"SSID");AddColumn(g.profiles,1,135,L"Auto-connect");
         RefreshProfiles();Layout(hwnd);SetTimer(hwnd,1,1000,nullptr);PollStatus();return 0;}
     case WM_SIZE:Layout(hwnd);return 0;
+    case WM_DPICHANGED:{
+        g.dpi=HIWORD(wp);
+        auto* suggested=reinterpret_cast<RECT*>(lp);
+        SetWindowPos(hwnd,nullptr,suggested->left,suggested->top,suggested->right-suggested->left,
+            suggested->bottom-suggested->top,SWP_NOZORDER|SWP_NOACTIVATE);
+        Layout(hwnd);return 0;}
+    case WM_CTLCOLORSTATIC:{
+        HDC dc=reinterpret_cast<HDC>(wp);
+        HWND child=reinterpret_cast<HWND>(lp);
+        if(child==g.selected) {
+            SetTextColor(dc,RGB(0,128,0));SetBkMode(dc,TRANSPARENT);
+            return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
+        }
+        break;}
     case WM_TIMER:if(wp==1)PollStatus();return 0;
     case WM_COMMAND:
         if(HIWORD(wp)==BN_CLICKED){
@@ -242,6 +286,15 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         }return 0;
     case WM_NOTIFY:{
         auto* h=reinterpret_cast<NMHDR*>(lp);
+        if((h->idFrom==IDC_NETWORKS||h->idFrom==IDC_PROFILES) && h->code==NM_CUSTOMDRAW) {
+            auto* draw=reinterpret_cast<NMLVCUSTOMDRAW*>(lp);
+            if(draw->nmcd.dwDrawStage==CDDS_PREPAINT)return CDRF_NOTIFYITEMDRAW;
+            if(draw->nmcd.dwDrawStage==CDDS_ITEMPREPAINT && (draw->nmcd.uItemState&CDIS_SELECTED)) {
+                draw->clrText=RGB(0,96,0);
+                draw->clrTextBk=RGB(214,245,214);
+                return CDRF_NEWFONT;
+            }
+        }
         if(h->code==LVN_ITEMCHANGED) {
             auto* change=reinterpret_cast<NMLISTVIEW*>(lp);
             if((change->uNewState&LVIS_SELECTED) && !(change->uOldState&LVIS_SELECTED)) {
@@ -281,7 +334,7 @@ int APIENTRY wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR cmd,int show) {
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
     if(!RegisterClassExW(&wc))return 1;
     HWND hwnd=CreateWindowExW(0,wc.lpszClassName,L"RPi5 Wi-Fi",WS_OVERLAPPEDWINDOW&~WS_MAXIMIZEBOX,
-        CW_USEDEFAULT,CW_USEDEFAULT,780,635,nullptr,nullptr,instance,nullptr);
+        CW_USEDEFAULT,CW_USEDEFAULT,940,790,nullptr,nullptr,instance,nullptr);
     if(!hwnd)return 2;ShowWindow(hwnd,show);UpdateWindow(hwnd);
     MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);
 }

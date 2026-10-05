@@ -41,7 +41,7 @@ Push-Location (Join-Path $root 'native')
 try {
     $res=Join-Path $out 'RPi5WiFiSetup.res'
     $exe=Join-Path $out 'RPi5-WiFi-Setup.exe'
-    $command='call "{0}" && rc.exe /nologo /I "{1}" /fo"{2}" "{3}" && cl.exe /nologo /std:c++20 /EHsc /O2 /W4 /WX /DUNICODE /D_UNICODE RPi5WiFiSetup.cpp "{2}" /Fe:"{4}" /link /SUBSYSTEM:WINDOWS /MANIFEST:NO newdev.lib setupapi.lib crypt32.lib shell32.lib ole32.lib user32.lib' -f $vcvars,(Join-Path $root 'native'),$res,$rc,$exe
+    $command='call "{0}" && rc.exe /nologo /I "{1}" /fo"{2}" "{3}" && cl.exe /nologo /std:c++20 /EHsc /O2 /W4 /WX /DUNICODE /D_UNICODE RPi5WiFiSetup.cpp "{2}" /Fe:"{4}" /link /SUBSYSTEM:WINDOWS /MANIFEST:NO newdev.lib setupapi.lib crypt32.lib shell32.lib ole32.lib user32.lib gdi32.lib' -f $vcvars,(Join-Path $root 'native'),$res,$rc,$exe
     cmd.exe /d /s /c $command
     if($LASTEXITCODE -ne 0){throw "Native setup build failed with exit code $LASTEXITCODE."}
 } finally { Pop-Location }

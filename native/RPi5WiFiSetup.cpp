@@ -74,16 +74,6 @@ void WriteResource(int id,const std::wstring& path) {
     DWORD wrote=0;BOOL ok=WriteFile(h,bytes.data(),static_cast<DWORD>(bytes.size()),&wrote,nullptr);
     DWORD e=ok&&wrote==bytes.size()?ERROR_SUCCESS:GetLastError();CloseHandle(h);if(e)FailWin(L"Write "+path,e);
 }
-bool HasCompatibleAcpiNode() {
-    HDEVINFO h=SetupDiGetClassDevsW(nullptr,nullptr,nullptr,DIGCF_ALLCLASSES|DIGCF_PRESENT);if(h==INVALID_HANDLE_VALUE)return false;
-    bool found=false;SP_DEVINFO_DATA d{sizeof(d)};
-    for(DWORD i=0;SetupDiEnumDeviceInfo(h,i,&d);++i){
-        wchar_t id[512]{};if(SetupDiGetDeviceInstanceIdW(h,&d,id,512,nullptr)){
-            std::wstring s=id;if(s.rfind(L"ACPI\\RPI0011",0)==0){found=true;break;}
-        }
-    }
-    SetupDiDestroyDeviceInfoList(h);return found;
-}
 void AddCertToStore(const std::vector<BYTE>& bytes,const wchar_t* storeName) {
     PCCERT_CONTEXT cert=CertCreateCertificateContext(X509_ASN_ENCODING|PKCS_7_ASN_ENCODING,bytes.data(),static_cast<DWORD>(bytes.size()));
     if(!cert)FailWin(L"Read bundled driver certificate");
@@ -138,6 +128,77 @@ bool StageDriver(const std::wstring& inf,bool& reboot) {
     }
     SetLastError(first);return false;
 }
+
+struct SuccessDialogState { HWND success{}; bool done{}; int result{IDNO}; };
+
+LRESULT CALLBACK SuccessWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
+    auto* state=reinterpret_cast<SuccessDialogState*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
+    switch(msg) {
+    case WM_CREATE:{
+        auto* create=reinterpret_cast<CREATESTRUCTW*>(lp);
+        state=reinterpret_cast<SuccessDialogState*>(create->lpCreateParams);
+        SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(state));
+        HFONT font=reinterpret_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+        state->success=CreateWindowExW(0,L"STATIC",L"Installed Successfully",
+            WS_CHILD|WS_VISIBLE|SS_CENTER,24,22,432,42,hwnd,reinterpret_cast<HMENU>(4101),GetModuleHandleW(nullptr),nullptr);
+        HWND detail=CreateWindowExW(0,L"STATIC",
+            L"RPi5 Wi-Fi driver and Wi-Fi Manager were installed.\\r\\n"
+            L"A Windows restart is required before using the new installation.",
+            WS_CHILD|WS_VISIBLE|SS_CENTER,28,76,424,60,hwnd,reinterpret_cast<HMENU>(4102),GetModuleHandleW(nullptr),nullptr);
+        HWND now=CreateWindowExW(0,L"BUTTON",L"Restart Now",WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
+            92,154,135,34,hwnd,reinterpret_cast<HMENU>(IDYES),GetModuleHandleW(nullptr),nullptr);
+        HWND later=CreateWindowExW(0,L"BUTTON",L"Restart Later",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,
+            253,154,135,34,hwnd,reinterpret_cast<HMENU>(IDNO),GetModuleHandleW(nullptr),nullptr);
+        SendMessageW(state->success,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
+        SendMessageW(detail,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
+        SendMessageW(now,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
+        SendMessageW(later,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
+        return 0;}
+    case WM_CTLCOLORSTATIC:
+        if(state && reinterpret_cast<HWND>(lp)==state->success) {
+            HDC dc=reinterpret_cast<HDC>(wp);
+            SetTextColor(dc,RGB(0,145,55));SetBkMode(dc,TRANSPARENT);
+            return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
+        }
+        break;
+    case WM_COMMAND:
+        if(LOWORD(wp)==IDYES||LOWORD(wp)==IDNO) {
+            if(state){state->result=LOWORD(wp);state->done=true;}
+            DestroyWindow(hwnd);return 0;
+        }
+        break;
+    case WM_CLOSE:
+        if(state){state->result=IDNO;state->done=true;}
+        DestroyWindow(hwnd);return 0;
+    }
+    return DefWindowProcW(hwnd,msg,wp,lp);
+}
+
+int ShowSuccessRestartDialog(HINSTANCE instance) {
+    WNDCLASSEXW wc{sizeof(wc)};wc.hInstance=instance;wc.lpfnWndProc=SuccessWndProc;
+    wc.lpszClassName=L"RPi5WiFiSetupSuccess";wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+    wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
+    RegisterClassExW(&wc);
+    SuccessDialogState state{};
+    HWND hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME|WS_EX_TOPMOST,wc.lpszClassName,L"RPi5 Wi-Fi Setup",
+        WS_CAPTION|WS_SYSMENU,CW_USEDEFAULT,CW_USEDEFAULT,500,235,nullptr,nullptr,instance,&state);
+    if(!hwnd)return IDNO;
+    ShowWindow(hwnd,SW_SHOW);UpdateWindow(hwnd);
+    MSG msg{};
+    while(!state.done && GetMessageW(&msg,nullptr,0,0)>0) {
+        TranslateMessage(&msg);DispatchMessageW(&msg);
+    }
+    return state.result;
+}
+
+void RestartWindowsNow() {
+    wchar_t systemDir[MAX_PATH]{};
+    if(!GetSystemDirectoryW(systemDir,MAX_PATH))FailWin(L"Locate System32");
+    std::wstring shutdown=std::wstring(systemDir)+L"\\\\shutdown.exe";
+    if(RunHidden(shutdown,L"/r /t 0 /d p:4:1 /c \\"RPi5 Wi-Fi installation completed\\"")!=0)
+        Fail(L"Windows restart request failed. Please restart Windows manually.");
+}
+
 bool NativeArm64() {
     SYSTEM_INFO si{};GetNativeSystemInfo(&si);return si.wProcessorArchitecture==PROCESSOR_ARCHITECTURE_ARM64;
 }
@@ -157,14 +218,13 @@ int APIENTRY wWinMain(HINSTANCE,HINSTANCE,LPWSTR cmd,int) {
         if(args.find(L"--self-test")!=std::wstring::npos)return SelfTest()?0:10;
         if(!NativeArm64()){MessageBoxW(nullptr,L"This installer is for Windows ARM64 on Raspberry Pi 5.",L"RPi5 Wi-Fi Setup",MB_ICONERROR);return 3;}
 
-        bool node=HasCompatibleAcpiNode();
         std::wstring temp=MakeTempDir();
         for(const auto&p:kDriverPayloads)WriteResource(p.id,temp+L"\\"+p.file);
 
         auto cert=ResourceBytes(IDR_PAYLOAD_CERT);AddCertToStore(cert,L"ROOT");AddCertToStore(cert,L"TrustedPublisher");
 
         bool reboot=false;std::wstring inf=temp+L"\\rpi5cyw.inf";
-        if(!StageDriver(inf,reboot))FailWin(L"Stage/install CYW43455 driver");
+        if(!StageDriver(inf,reboot))FailWin(L"Stage/install CYW43455 driver");\n        (void)reboot;
 
         std::wstring installDir=Known(FOLDERID_ProgramFiles)+L"\\"+kProductDirName;
         CopyGuiAndLicenses(installDir);
@@ -173,14 +233,8 @@ int APIENTRY wWinMain(HINSTANCE,HINSTANCE,LPWSTR cmd,int) {
 
         std::error_code ec;std::filesystem::remove_all(temp,ec);
 
-        std::wstring message=L"RPi5 Wi-Fi installed successfully.\n\n";
-        if(node)message+=L"A compatible ACPI\\RPI0011 device is currently exposed. ";
-        else message+=L"No compatible ACPI\\RPI0011 node is currently exposed. The driver is staged and can bind automatically on a future boot when platform firmware exposes the supported device/resource structure. ";
-        message+=L"The installer did not inspect, replace, flash, or modify UEFI.\n\n";
-        message+=L"A Desktop shortcut was created. Saved profiles and reboot auto-connect are managed by RPi5-WiFi.exe.\n\n";
-        message+=L"This driver is test-signed. Windows Test Signing must already be enabled; this installer does not change BCD or Secure Boot.";
-        if(reboot)message+=L"\n\nWindows reported that a reboot is required.";
-        MessageBoxW(nullptr,message.c_str(),L"RPi5 Wi-Fi Setup",MB_OK|MB_ICONINFORMATION);
+        int restart=ShowSuccessRestartDialog(GetModuleHandleW(nullptr));
+        if(restart==IDYES)RestartWindowsNow();
         return 0;
     }catch(const std::exception&e){
         std::wstring m=Wide(e.what());MessageBoxW(nullptr,m.c_str(),L"RPi5 Wi-Fi Setup",MB_ICONERROR);return 2;
