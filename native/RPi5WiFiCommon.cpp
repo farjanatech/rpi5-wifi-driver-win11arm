@@ -5,6 +5,7 @@
 #include <sddl.h>
 #include <shlobj.h>
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <stdexcept>

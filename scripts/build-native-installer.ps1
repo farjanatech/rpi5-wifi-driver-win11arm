@@ -15,7 +15,8 @@ New-Item -ItemType Directory -Path $out -Force | Out-Null
 $required=@('rpi5cyw.inf','rpi5cyw.sys','rpi5cyw.cat','rpi5cyw-test.cer','cyfmac43455-sdio.bin','cyfmac43455-sdio.clm_blob','brcmfmac43455-sdio.txt')
 foreach($name in $required){if(-not (Test-Path (Join-Path $driver $name) -PathType Leaf)){throw "Missing setup payload: $name"}}
 if(-not (Test-Path $gui -PathType Leaf)){throw 'Native GUI payload is missing.'}
-$vswhere="$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+$programFilesX86=[Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+$vswhere=Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
 $install=& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 $vcvars=if($Architecture -eq 'arm64'){Join-Path $install 'VC\Auxiliary\Build\vcvarsamd64_arm64.bat'}else{Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'}
 function Q([string]$p){return $p.Replace('\','\\').Replace('"','\"')}

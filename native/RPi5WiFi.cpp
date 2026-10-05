@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -49,8 +50,9 @@ std::wstring WidenError(const std::exception& e) {
     try { return Utf8ToWide(e.what()); } catch (...) { return L"Unexpected error."; }
 }
 std::wstring GetText(HWND h) {
-    int n=GetWindowTextLengthW(h); std::wstring s(n,L'\0');
-    if(n) GetWindowTextW(h,s.data(),n+1); return s;
+    int n=GetWindowTextLengthW(h); std::wstring s(static_cast<size_t>(n)+1,L'\0');
+    if(n) GetWindowTextW(h,s.data(),n+1);
+    s.resize(static_cast<size_t>(n)); return s;
 }
 void SetText(HWND h,const std::wstring&s){SetWindowTextW(h,s.c_str());}
 std::wstring UpperCountry() {
@@ -111,7 +113,7 @@ void ApplySelectionHint() {
     try{
         std::string ssid=SelectedSsid(false);
         const Profile* p=ProfileStore::Find(g.db,ssid);
-        Button_SetCheck(g.autoBox,p&&p->autoConnect?BST_CHECKED:BST_UNCHECKED);
+        SendMessageW(g.autoBox,BM_SETCHECK,p&&p->autoConnect?BST_CHECKED:BST_UNCHECKED,0);
         SetText(g.hint,p?L"Saved key available. Leave Password blank to use it.":L"Enter the WPA2 password to connect or save this profile.");
     }catch(...){SetText(g.hint,L"Select a scanned network or saved profile.");}
 }
@@ -162,7 +164,7 @@ void DoSaveProfile() {
     try{
         std::wstring country=UpperCountry();if(!ValidCountry(country))throw std::runtime_error("Country must be exactly two uppercase letters.");
         std::string ssid=SelectedSsid(false);std::wstring password=GetText(g.password);
-        bool autoConnect=Button_GetCheck(g.autoBox)==BST_CHECKED;
+        bool autoConnect=SendMessageW(g.autoBox,BM_GETCHECK,0,0)==BST_CHECKED;
         ProfileDb db=ProfileStore::Load();db.country=WideToUtf8(country);
         const Profile* existing=ProfileStore::Find(db,ssid);
         if(password.empty() && existing){

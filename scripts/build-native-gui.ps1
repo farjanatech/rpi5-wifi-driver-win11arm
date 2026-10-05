@@ -8,7 +8,8 @@ $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $out=[IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
 New-Item -ItemType Directory -Path $out -Force | Out-Null
-$vswhere="$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+$programFilesX86=[Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFilesX86)
+$vswhere=Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
 $install=& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
 if(-not $install){throw 'Visual C++ tools were not found.'}
 $vcvars=if($Architecture -eq 'arm64'){Join-Path $install 'VC\Auxiliary\Build\vcvarsamd64_arm64.bat'}else{Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'}
