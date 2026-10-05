@@ -39,6 +39,17 @@ static void TestFifoBlocks(void)
     }
     InitFifoBlock(&a);CHECK(SdioFifoTransfer(&a,buffer,1540,FALSE)==0);
     CHECK(Command53Count==2 && a.FifoBlockCommands==1 && FifoReads==385);
+    /* Regression for the hardware failure captured on v0.7.1.19: if Windows
+     * resumes the PASSIVE worker after the software deadline but SDHCI already
+     * shows completion/readiness, accept the completed event rather than
+     * manufacturing STATUS_IO_TIMEOUT. */
+    InitFifoBlock(&a);SimTime=3000000ULL;
+    Registers[SDHCI_INT_STATUS/4]=SDHCI_INT_XFER_COMPLETE;
+    CHECK(SdioFifoWait(&a,SDHCI_INT_XFER_COMPLETE,2500000ULL)==STATUS_SUCCESS);
+    CHECK(a.FifoLateCompletionAccepted==1 && !a.Cmd53Timeouts);
+    Registers[SDHCI_INT_STATUS/4]=0;Registers[SDHCI_PRESENT_STATE/4]=SDHCI_PS_DATA_AVAILABLE;
+    CHECK(SdioFifoWait(&a,SDHCI_INT_BUFFER_READ_READY,2500000ULL)==STATUS_SUCCESS);
+    CHECK(a.FifoLateCompletionAccepted==2 && !a.Cmd53Timeouts);
     for(write=0;write<2;++write) {
         InitFifoBlock(&a);Fail53At=2;memset(buffer,0xa5,sizeof(buffer));
         CHECK(SdioFifoTransfer(&a,buffer,65536,(BOOLEAN)write)==STATUS_IO_DEVICE_ERROR);
@@ -66,6 +77,10 @@ static void TestFifoBlocks(void)
         CHECK(SimTime<2700000ULL && Command53Count==1 && !a.FifoBlockReady);
         CHECK(a.RuntimeF2WaitSleeps==SleepCount && a.RuntimeCmd53SleepPhase[1]==SleepCount);
         CHECK(a.RuntimeCmd53Sleep100ns==(ULONG64)SleepCount*SleepUs*10);
+        CHECK(a.FifoLastFailureStatus==STATUS_IO_TIMEOUT && !a.FifoLastFailureWrite);
+        CHECK(a.FifoLastFailureBlocks==3 && a.FifoLastFailureCompletedBlocks==i);
+        CHECK(a.FifoLastFailureWaitEvent==SDHCI_INT_BUFFER_READ_READY);
+        CHECK(a.FifoLastFailureBytesTransferred==i*512);
     }
     for(write=0;write<2;++write) {
         InitFifoBlock(&a);BlockHoldAt=1;BlockStaleReady=1;

@@ -1,14 +1,15 @@
-> **`new-improvement-adaptive-tx-hybrid` candidate: v0.7.1.19.**
-> This combines the v0.7.1.18 small-packet efficiency path with the upload
-> pacing observed on `main` v0.7.1.8. Ethernet frames up to 512 bytes may use
-> the 128-frame deferred backlog, Glom2 and Service-Burst4. Frames above 512
-> bytes use active-only admission, never Glom2 or follower reuse, and perform a
-> fresh F1 service before every F2 frame. The v0.7.1.18 RX/fixed-port SDIO,
-> firmware/radio, worker scheduling and queue sizes are otherwise unchanged.
-> See [v0.7.1.19 Adaptive TX Hybrid](docs/TX-ADAPTIVE-HYBRID-0.7.1.19.md).
+> **`new-improvement-stability-recovery-v0.7.1.20` candidate: v0.7.1.20.**
+> Hardware diagnostics after the successful v0.7.1.19 80/78 Mbps test captured
+> one RX-glom block-mode `STATUS_IO_TIMEOUT`: `Cmd53Timeouts=1`,
+> `FifoBlockFailures=1`, `FifoTransportFailed=1`, `RxGlomErrors=1`, and
+> worker-source disconnect, with no firmware deauth and no D3 transition.
+> v0.7.1.20 keeps the adaptive TX policy byte-for-byte, accepts already-complete
+> SDHCI block events before evaluating the software deadline, records exact
+> block failure evidence, and permits one bounded adapter lifecycle recovery
+> after a fatal runtime transport fault. Failed FIFO transfers are never replayed.
+> See [v0.7.1.20 Stability Recovery](docs/STABILITY-RECOVERY-0.7.1.20.md).
 >
-> **v0.7.1.18 remains the immediate experimental rollback; `main` v0.7.1.8
-> remains the upload-behavior reference.**
+> **v0.7.1.19 remains the performance rollback/reference.**
 >
 > **`new-improvement` rollback candidate: v0.7.1.9.** This branch keeps the proven
 > 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame

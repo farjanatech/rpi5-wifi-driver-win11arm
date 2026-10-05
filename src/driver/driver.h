@@ -106,6 +106,11 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG Cmd53FastPolls, Cmd53WaitSleeps, Cmd53Timeouts;
     /* Performance branch: worker-owned counters, no packet/credential data. */
     ULONG FifoBlockReady, FifoBlockCommands, FifoBlockBytes, FifoBlockFailures;
+    ULONG FifoLateCompletionAccepted;
+    NTSTATUS FifoLastFailureStatus;
+    ULONG FifoLastFailureWrite, FifoLastFailureBlocks, FifoLastFailureCompletedBlocks;
+    ULONG FifoLastFailureWaitEvent, FifoLastFailureInterruptStatus;
+    ULONG FifoLastFailurePresentState, FifoLastFailureBytesTransferred;
     ULONG RxReadAhead, RxReadAheadRejected, RxGlomGroups, RxGlomFrames, RxGlomErrors;
     ULONG RxGlomEnabled;
     ULONG FifoTransportFailed;
@@ -310,6 +315,9 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG WorkerExitCount;
     NTSTATUS LastWorkerFailureStatus;
     ULONG64 LastWorkerFailure100ns;
+    ULONG RuntimeRecoveryAttempts, RuntimeRecoveryRestarts, RuntimeRecoveryFailures;
+    ULONG RuntimeRecoveryInProgress;
+    NTSTATUS RuntimeRecoveryTriggerStatus, RuntimeRecoveryLastStatus;
     ULONG PowerTransitionCount;
     ULONG PowerD0Count, PowerD1Count, PowerD2Count, PowerD3Count;
     ULONG LastPowerState;

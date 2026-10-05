@@ -12,6 +12,7 @@
 #include "scan_protocol.h"
 #include "rx_performance.h"
 #include "stability_diag.h"
+#include "runtime_recovery.h"
 /* TIMING-BEGIN */
 #include "../driver/timing_clock.h"
 /* TIMING-END */
@@ -59,6 +60,7 @@ static NDIS_HANDLE ControlHandle;
 static PDEVICE_OBJECT ControlDevice;
 static VOID CywRefreshTxGate(PRPI5CYW_ADAPTER A);
 static VOID CywScanEvent(PRPI5CYW_ADAPTER A,ULONG Status,PUCHAR Payload,ULONG Length);
+static BOOLEAN CywQueueRuntimeRecovery(PRPI5CYW_ADAPTER A,NTSTATUS TriggerStatus);
 #include "scan_control.h"
 BOOLEAN CywNetworkCancelled(PRPI5CYW_ADAPTER A)
 {return A->IoStopped || (A->Network && A->Network->Stop);}
@@ -391,13 +393,56 @@ static VOID CywRadioRequest(PRPI5CYW_ADAPTER A)
     KeReleaseSpinLock(&N->Lock,irql);
     CywMeasuredDiagnostics(A,120,A->NetworkStatus);
 }
+
+typedef struct _CYW_RUNTIME_RECOVERY_WORK {
+    PRPI5CYW_ADAPTER Adapter;
+} CYW_RUNTIME_RECOVERY_WORK;
+
+static VOID CywRuntimeRecoveryWork(PVOID Context,NDIS_HANDLE WorkItem)
+{
+    CYW_RUNTIME_RECOVERY_WORK *work=Context;
+    PRPI5CYW_ADAPTER A=work->Adapter;
+    NTSTATUS status;
+    /* This work item is not a power-policy event; it reuses the already-tested
+     * D3/D0 network lifecycle only after the failed worker has terminated. */
+    status=CywNetworkPower(A,FALSE);
+    if(NT_SUCCESS(status))status=CywNetworkPower(A,TRUE);
+    A->RuntimeRecoveryLastStatus=status;
+    if(NT_SUCCESS(status))A->RuntimeRecoveryRestarts++;
+    else A->RuntimeRecoveryFailures++;
+    A->RuntimeRecoveryInProgress=0;
+    Rpi5CywWriteDiagnostics(A,120,status);
+    ExFreePoolWithTag(work,RPI5CYW_TAG);
+    NdisFreeIoWorkItem(WorkItem);
+}
+static BOOLEAN CywQueueRuntimeRecovery(PRPI5CYW_ADAPTER A,NTSTATUS TriggerStatus)
+{
+    NDIS_HANDLE item;CYW_RUNTIME_RECOVERY_WORK *work;
+    if(!A || A->RuntimeRecoveryInProgress ||
+       A->RuntimeRecoveryAttempts>=CYW_RUNTIME_RECOVERY_MAX)return FALSE;
+    item=NdisAllocateIoWorkItem(A->MiniportHandle);
+    if(!item) {A->RuntimeRecoveryFailures++;A->RuntimeRecoveryLastStatus=STATUS_INSUFFICIENT_RESOURCES;return FALSE;}
+    work=ExAllocatePool2(POOL_FLAG_NON_PAGED,sizeof(*work),RPI5CYW_TAG);
+    if(!work) {NdisFreeIoWorkItem(item);A->RuntimeRecoveryFailures++;
+        A->RuntimeRecoveryLastStatus=STATUS_INSUFFICIENT_RESOURCES;return FALSE;}
+    work->Adapter=A;A->RuntimeRecoveryAttempts++;
+    A->RuntimeRecoveryTriggerStatus=TriggerStatus;
+    A->RuntimeRecoveryLastStatus=STATUS_PENDING;
+    A->RuntimeRecoveryInProgress=1;
+    /* Keep user-mode status polling in startup/wait mode while this adapter
+     * lifecycle restart is queued. LastWorkerFailureStatus retains the cause. */
+    A->NetworkPhase=400;A->NetworkStatus=STATUS_SUCCESS;
+    NdisQueueIoWorkItem(item,CywRuntimeRecoveryWork,work);
+    return TRUE;
+}
+
 static VOID CywWorker(PVOID Context)
 {
     PRPI5CYW_ADAPTER A=Context;CYW_NETWORK *N=A->Network;
     CYW_CONNECT_REQUEST request;
     KIRQL irql;ULONG op,channel,off,len,i,lastPhase=0,sentBefore,sentAfter;
     ULONG irqStatusAcksBefore,irqMailReadsBefore,irqFrameNotificationsBefore;
-    BOOLEAN interruptWake,interruptUseful;
+    BOOLEAN interruptWake,interruptUseful,runtimeReady=FALSE,queueRecovery=FALSE;
     ULONGLONG nextSnapshot=0, rxStart;
     LARGE_INTEGER wait;NTSTATUS Status;
 /* TX-CREDIT-DIAG-BEGIN */
@@ -427,7 +472,7 @@ static VOID CywWorker(PVOID Context)
     if(NT_SUCCESS(Status) && !N->Stop)Status=CywConfigure(A);
     if(!NT_SUCCESS(Status))goto Failed;
     if(N->Stop)goto Exit;
-    N->Ready=TRUE;A->NetworkStatus=STATUS_SUCCESS;
+    N->Ready=TRUE;runtimeReady=TRUE;A->NetworkStatus=STATUS_SUCCESS;
     Rpi5CywInterruptRearm(A,FALSE,FALSE);
 /* TIMING-BEGIN */
     CywTimingStart(&A->Timing);
@@ -604,10 +649,13 @@ Failed:
         if(CywConnectionWasUp(A,N))
             CywRecordDisconnect(A,CYW_DISCONNECT_SOURCE_WORKER,0,(ULONG)Status,0);
     }
+    queueRecovery=(BOOLEAN)CywRuntimeRecoveryEligible(runtimeReady,(unsigned)N->Stop,
+        (unsigned)N->Paused,A->RuntimeRecoveryAttempts,(long)Status,A->FifoTransportFailed);
     A->NetworkStatus=Status;N->Ready=FALSE;
     N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
     CywMeasuredDiagnostics(A,120,Status);
     CywFirmwareStop(A);
+    if(queueRecovery)(VOID)CywQueueRuntimeRecovery(A,Status);
 Exit:
     A->WorkerExitCount++;
 /* TIMING-BEGIN */

@@ -28,26 +28,39 @@ NTSTATUS SdioPrepareRuntimeFifo(PRPI5CYW_ADAPTER A)
 
 static NTSTATUS SdioFifoWait(PRPI5CYW_ADAPTER A,ULONG Event,ULONG64 Deadline)
 {
-    ULONG poll,status;
+    ULONG poll,status,present;ULONG64 now;
     for(poll=0;poll<254;++poll) {
         if(A->IoStopped)return STATUS_INVALID_DEVICE_STATE;
         status=SdioRead32(A,SDHCI_INT_STATUS);A->LastInterruptStatus=status;
         if(status&(SDHCI_INT_ERROR|SDHCI_INT_CMD_ERROR_MASK|SDHCI_INT_DATA_ERROR_MASK))
             return STATUS_IO_DEVICE_ERROR;
-        if(KeQueryInterruptTime()>=Deadline)break;
-        /* Buffer-ready interrupts may coalesce across blocks. PRESENT_STATE
-         * is level state, as used by Linux sdhci_transfer_pio; consume exactly
-         * one block per readiness observation, with errors checked first.
-         * A stale latched event alone must not authorize another FIFO block. */
+        /* Hardware state wins over the software deadline. A PASSIVE worker may
+         * be descheduled after SDHCI completed the requested event; accepting
+         * that already-observed completion is not a retry and cannot extend a
+         * still-pending command. v0.7.1.19 checked the deadline first and could
+         * falsely report STATUS_IO_TIMEOUT after a long scheduler preemption. */
+        now=KeQueryInterruptTime();
         if(Event==SDHCI_INT_BUFFER_READ_READY) {
-            if(SdioRead32(A,SDHCI_PRESENT_STATE)&SDHCI_PS_DATA_AVAILABLE)return STATUS_SUCCESS;
+            present=SdioRead32(A,SDHCI_PRESENT_STATE);
+            if(present&SDHCI_PS_DATA_AVAILABLE) {
+                if(now>=Deadline)A->FifoLateCompletionAccepted++;
+                return STATUS_SUCCESS;
+            }
         } else if(Event==SDHCI_INT_BUFFER_WRITE_READY) {
-            if(SdioRead32(A,SDHCI_PRESENT_STATE)&SDHCI_PS_SPACE_AVAILABLE)return STATUS_SUCCESS;
-        } else if(status&Event)return STATUS_SUCCESS;
+            present=SdioRead32(A,SDHCI_PRESENT_STATE);
+            if(present&SDHCI_PS_SPACE_AVAILABLE) {
+                if(now>=Deadline)A->FifoLateCompletionAccepted++;
+                return STATUS_SUCCESS;
+            }
+        } else if(status&Event) {
+            if(now>=Deadline)A->FifoLateCompletionAccepted++;
+            return STATUS_SUCCESS;
+        }
         /* Completing before the requested block is available is a short
          * transfer, not permission to consume uninitialised FIFO words. */
         if(Event!=SDHCI_INT_XFER_COMPLETE && (status&SDHCI_INT_XFER_COMPLETE))
             return STATUS_DEVICE_DATA_ERROR;
+        if(now>=Deadline)break;
         if(poll<5) {KeStallExecutionProcessor(10);A->Cmd53FastPolls++;}
         else {
             ULONG phase=Event==SDHCI_INT_CMD_COMPLETE?0:(Event==SDHCI_INT_XFER_COMPLETE?2:1);
@@ -63,7 +76,7 @@ static NTSTATUS SdioFifoWait(PRPI5CYW_ADAPTER A,ULONG Event,ULONG64 Deadline)
 
 static NTSTATUS SdioFifoBlocksRaw(PRPI5CYW_ADAPTER A,PUCHAR Buffer,ULONG Blocks,BOOLEAN Write)
 {
-    ULONG block,offset,word,ready,length;
+    ULONG block,offset,word,ready,length,waitEvent=0;
     ULONG64 deadline;
     NTSTATUS status;
     if(!A || !A->RegisterBase || !Buffer || !A->FifoBlockReady ||
@@ -92,14 +105,15 @@ static NTSTATUS SdioFifoBlocksRaw(PRPI5CYW_ADAPTER A,PUCHAR Buffer,ULONG Blocks,
     /* One absolute deadline for the entire command; per-block progress
      * cannot turn a failed request into an unbounded wait. */
     deadline=KeQueryInterruptTime()+2500000ULL;
-    status=SdioFifoWait(A,SDHCI_INT_CMD_COMPLETE,deadline);
+    waitEvent=SDHCI_INT_CMD_COMPLETE;
+    status=SdioFifoWait(A,waitEvent,deadline);
     if(!NT_SUCCESS(status))goto Failed;
     A->LastResponse=SdioRead32(A,SDHCI_RESPONSE0);
     if(SdioR5HasError(A->LastResponse)) {status=STATUS_IO_DEVICE_ERROR;goto Failed;}
     SdioWrite32(A,SDHCI_INT_STATUS,SDHCI_INT_CMD_COMPLETE);
     ready=Write?SDHCI_INT_BUFFER_WRITE_READY:SDHCI_INT_BUFFER_READ_READY;
     for(block=0;block<Blocks;++block) {
-        status=SdioFifoWait(A,ready,deadline);if(!NT_SUCCESS(status))goto Failed;
+        waitEvent=ready;status=SdioFifoWait(A,waitEvent,deadline);if(!NT_SUCCESS(status))goto Failed;
         SdioWrite32(A,SDHCI_INT_STATUS,ready);
         for(offset=0;offset<CYW_FIFO_BLOCK_SIZE;offset+=4) {
             ULONG pos=block*CYW_FIFO_BLOCK_SIZE+offset;
@@ -113,7 +127,8 @@ static NTSTATUS SdioFifoBlocksRaw(PRPI5CYW_ADAPTER A,PUCHAR Buffer,ULONG Blocks,
         }
         A->Cmd53BytesTransferred+=CYW_FIFO_BLOCK_SIZE;
     }
-    status=SdioFifoWait(A,SDHCI_INT_XFER_COMPLETE,deadline);
+    waitEvent=SDHCI_INT_XFER_COMPLETE;
+    status=SdioFifoWait(A,waitEvent,deadline);
     if(!NT_SUCCESS(status))goto Failed;
     SdioWrite32(A,SDHCI_INT_STATUS,SDHCI_INT_XFER_COMPLETE);
     if(Write)A->Cmd53WriteCount++;else A->Cmd53ReadCount++;
@@ -121,6 +136,13 @@ static NTSTATUS SdioFifoBlocksRaw(PRPI5CYW_ADAPTER A,PUCHAR Buffer,ULONG Blocks,
     return STATUS_SUCCESS;
 Failed:
     A->FifoBlockFailures++;A->FifoBlockReady=0;A->FifoTransportFailed=1;
+    A->FifoLastFailureStatus=status;A->FifoLastFailureWrite=Write?1u:0u;
+    A->FifoLastFailureBlocks=Blocks;
+    A->FifoLastFailureCompletedBlocks=A->Cmd53BytesTransferred/CYW_FIFO_BLOCK_SIZE;
+    A->FifoLastFailureWaitEvent=waitEvent;
+    A->FifoLastFailureInterruptStatus=A->LastInterruptStatus;
+    A->FifoLastFailurePresentState=SdioRead32(A,SDHCI_PRESENT_STATE);
+    A->FifoLastFailureBytesTransferred=A->Cmd53BytesTransferred;
     A->Cmd53ResetStatus=SdioResetHost(A,SDHCI_RESET_CMD|SDHCI_RESET_DATA);
     SdioWrite32(A,SDHCI_INT_STATUS,SDHCI_INT_ALL_MASK);
     if(!Write)RtlZeroMemory(Buffer,length);

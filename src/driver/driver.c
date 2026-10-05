@@ -451,7 +451,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 44);
+    SET_DWORD(L"DiagVersion", 45);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -543,6 +543,12 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"WorkerExitCount", Adapter->WorkerExitCount);
     SET_DWORD(L"LastWorkerFailureStatus", Adapter->LastWorkerFailureStatus);
     SET_QWORD(L"LastWorkerFailure100ns", Adapter->LastWorkerFailure100ns);
+    SET_DWORD(L"RuntimeRecoveryAttempts", Adapter->RuntimeRecoveryAttempts);
+    SET_DWORD(L"RuntimeRecoveryRestarts", Adapter->RuntimeRecoveryRestarts);
+    SET_DWORD(L"RuntimeRecoveryFailures", Adapter->RuntimeRecoveryFailures);
+    SET_DWORD(L"RuntimeRecoveryInProgress", Adapter->RuntimeRecoveryInProgress);
+    SET_DWORD(L"RuntimeRecoveryTriggerStatus", Adapter->RuntimeRecoveryTriggerStatus);
+    SET_DWORD(L"RuntimeRecoveryLastStatus", Adapter->RuntimeRecoveryLastStatus);
     SET_DWORD(L"PowerTransitionCount", Adapter->PowerTransitionCount);
     SET_DWORD(L"PowerD0Count", Adapter->PowerD0Count);
     SET_DWORD(L"PowerD1Count", Adapter->PowerD1Count);
@@ -611,6 +617,15 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"FifoBlockCommands", Adapter->FifoBlockCommands);
     SET_DWORD(L"FifoBlockBytes", Adapter->FifoBlockBytes);
     SET_DWORD(L"FifoBlockFailures", Adapter->FifoBlockFailures);
+    SET_DWORD(L"FifoLateCompletionAccepted", Adapter->FifoLateCompletionAccepted);
+    SET_DWORD(L"FifoLastFailureStatus", Adapter->FifoLastFailureStatus);
+    SET_DWORD(L"FifoLastFailureWrite", Adapter->FifoLastFailureWrite);
+    SET_DWORD(L"FifoLastFailureBlocks", Adapter->FifoLastFailureBlocks);
+    SET_DWORD(L"FifoLastFailureCompletedBlocks", Adapter->FifoLastFailureCompletedBlocks);
+    SET_DWORD(L"FifoLastFailureWaitEvent", Adapter->FifoLastFailureWaitEvent);
+    SET_DWORD(L"FifoLastFailureInterruptStatus", Adapter->FifoLastFailureInterruptStatus);
+    SET_DWORD(L"FifoLastFailurePresentState", Adapter->FifoLastFailurePresentState);
+    SET_DWORD(L"FifoLastFailureBytesTransferred", Adapter->FifoLastFailureBytesTransferred);
     SET_DWORD(L"FifoTransportFailed", Adapter->FifoTransportFailed);
     SET_DWORD(L"RxReadAhead", Adapter->RxReadAhead);
     SET_DWORD(L"RxReadAheadRejected", Adapter->RxReadAheadRejected);
