@@ -57,7 +57,7 @@ static void TestFifoBlocks(void)
         InitFifoBlock(&a);Fail53At=2;memset(buffer,0xa5,sizeof(storage.Bytes));
         CHECK(SdioFifoTransfer(&a,buffer,65536,(BOOLEAN)write)==STATUS_IO_DEVICE_ERROR);
         CHECK(Command53Count==2 && BlockTotalWords==4096 && a.FifoTransportFailed);
-        if(!write)for(i=0;i<sizeof(storage.Bytes);++i)CHECK(!buffer[i]);
+        if(!write)for(i=0;i<65536;++i)CHECK(!buffer[i]);
         CHECK(SdioFifoTransfer(&a,buffer,64,(BOOLEAN)write)==STATUS_INVALID_DEVICE_STATE && Command53Count==2);
     }
     /* Legacy byte path stays available only BEFORE a FIFO failure, never as
