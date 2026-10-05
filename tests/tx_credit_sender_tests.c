@@ -61,7 +61,7 @@ int main(void)
      * sequence ownership advances only once. */
     Init();TestNetwork.TxMax=8;permit=FALSE;
     CHECK(CywSendDataBurstStart(&TestAdapter,CreditPayload,sizeof(CreditPayload),TRUE,&permit)==STATUS_SUCCESS && permit);
-    FailFifo=1;
+    FailFifo=2; /* First F2 already succeeded; fail the following service-reused F2. */
     CHECK(CywSendDataBurstSecond(&TestAdapter,CreditPayload,sizeof(CreditPayload))==STATUS_IO_DEVICE_ERROR);
     CHECK(TestNetwork.TxSeq==1 && DataWrites==2);
     CHECK(d->F1Calls==1 && d->F2Calls==2 && d->F2Errors==1);
