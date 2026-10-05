@@ -451,7 +451,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 41);
+    SET_DWORD(L"DiagVersion", 42);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -611,6 +611,11 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"FifoBlockCommands", Adapter->FifoBlockCommands);
     SET_DWORD(L"FifoBlockBytes", Adapter->FifoBlockBytes);
     SET_DWORD(L"FifoBlockFailures", Adapter->FifoBlockFailures);
+    SET_DWORD(L"FifoBufferPioEnabled", RPI5CYW_FIFO_BUFFER_PIO);
+    SET_DWORD(L"FifoBufferPioBurstWords", CYW_FIFO_PIO_BURST_WORDS);
+    SET_DWORD(L"FifoBufferPioReadBlocks", Adapter->FifoBufferPioReadBlocks);
+    SET_DWORD(L"FifoBufferPioWriteBlocks", Adapter->FifoBufferPioWriteBlocks);
+    SET_DWORD(L"FifoScalarPioBlocks", Adapter->FifoScalarPioBlocks);
     SET_DWORD(L"FifoTransportFailed", Adapter->FifoTransportFailed);
     SET_DWORD(L"RxReadAhead", Adapter->RxReadAhead);
     SET_DWORD(L"RxReadAheadRejected", Adapter->RxReadAheadRejected);
