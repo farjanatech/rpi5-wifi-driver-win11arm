@@ -19,7 +19,7 @@ static void TestFifoBlocks(void)
         CHECK(SdioPrepareRuntimeFifo(&a)==STATUS_IO_DEVICE_ERROR && !a.FifoBlockReady);
     }
     for(write=0;write<2;++write)for(n=1;n<=32;++n) {
-        InitFifoBlock(&a);memset(buffer,0x5a,sizeof(buffer));
+        InitFifoBlock(&a);memset(buffer,0x5a,sizeof(storage.Bytes));
         CHECK(SdioFifoTransfer(&a,buffer,n*512,(BOOLEAN)write)==0);
         CHECK(Command53Count==1 && a.FifoBlockCommands==1 && a.FifoBlockBytes==n*512);
         CHECK(a.FifoScalarPioBlocks==0);
@@ -54,10 +54,10 @@ static void TestFifoBlocks(void)
           !a.FifoBufferPioWriteBlocks && FifoReads==128);
     for(i=0;i<512;i+=4)CHECK(SdioLoadLe32(buffer+1+i)==Fifo);
     for(write=0;write<2;++write) {
-        InitFifoBlock(&a);Fail53At=2;memset(buffer,0xa5,sizeof(buffer));
+        InitFifoBlock(&a);Fail53At=2;memset(buffer,0xa5,sizeof(storage.Bytes));
         CHECK(SdioFifoTransfer(&a,buffer,65536,(BOOLEAN)write)==STATUS_IO_DEVICE_ERROR);
         CHECK(Command53Count==2 && BlockTotalWords==4096 && a.FifoTransportFailed);
-        if(!write)for(i=0;i<sizeof(buffer);++i)CHECK(!buffer[i]);
+        if(!write)for(i=0;i<sizeof(storage.Bytes);++i)CHECK(!buffer[i]);
         CHECK(SdioFifoTransfer(&a,buffer,64,(BOOLEAN)write)==STATUS_INVALID_DEVICE_STATE && Command53Count==2);
     }
     /* Legacy byte path stays available only BEFORE a FIFO failure, never as
