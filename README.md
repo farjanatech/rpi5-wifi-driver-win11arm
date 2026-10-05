@@ -1,27 +1,20 @@
-> **`new-improvement-stability-recovery-v0.7.1.20` candidate: v0.7.1.20.**
-> Hardware diagnostics after the successful v0.7.1.19 80/78 Mbps test captured
-> one RX-glom block-mode `STATUS_IO_TIMEOUT`: `Cmd53Timeouts=1`,
-> `FifoBlockFailures=1`, `FifoTransportFailed=1`, `RxGlomErrors=1`, and
-> worker-source disconnect, with no firmware deauth and no D3 transition.
-> v0.7.1.20 keeps the adaptive TX policy byte-for-byte, accepts already-complete
-> SDHCI block events before evaluating the software deadline, records exact
-> block failure evidence, and permits one bounded adapter lifecycle recovery
-> after a fatal runtime transport fault. Failed FIFO transfers are never replayed.
-> See [v0.7.1.20 Stability Recovery](docs/STABILITY-RECOVERY-0.7.1.20.md).
+> **Current default release: v0.7.1.20 on `main`.**
+> This is the Raspberry Pi 5 hardware-validated build promoted after sustained
+> real-world use with approximately **80 Mbps download / 80 Mbps upload** and no
+> recurrence of the prior runtime disconnect. The exact tested source is frozen
+> at **`c16aa318da490350126739add45223a186ab0a47`** on
+> **`release/v0.7.1.20`**.
 >
-> **v0.7.1.19 remains the performance rollback/reference.**
+> v0.7.1.20 preserves the adaptive TX hybrid: Ethernet frames up to 512 bytes
+> may use the bounded deferred backlog, Glom2 and Service-Burst4, while larger
+> bulk-upload frames use active-only admission with a fresh F1 service before
+> every F2 transfer. The stability update accepts an already-observed SDHCI
+> readiness/completion event before declaring the software deadline expired and
+> permits one bounded adapter lifecycle recovery after a fatal runtime transport
+> fault. Failed/partial FIFO transactions are never replayed.
 >
-> **`new-improvement` rollback candidate: v0.7.1.9.** This branch keeps the proven
-> 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame
-> pending-NBL backlog so temporary active-queue pressure can be retained instead
-> of immediately rejected. It is a CI/hardware-validation candidate, not yet the
-> default release. See [TX backlog 0.7.1.9](docs/TX-BACKLOG-0.7.1.9.md).
->
-> **Current default: v0.7.1.8 on `main`.** The promoted mode-1 path keeps the
-> stable v0.7.1.4 TX budgets, uses earlier post-RX dispatch, skips futile TX
-> attempts when firmware credits are exactly exhausted, and uses bounded fast
-> event wakes before the existing 10 ms fallback. The original v0.7.1.4 remains
-> the full rollback reference.
+> See [v0.7.1.19 Adaptive TX Hybrid](docs/TX-ADAPTIVE-HYBRID-0.7.1.19.md) and
+> [v0.7.1.20 Stability Recovery](docs/STABILITY-RECOVERY-0.7.1.20.md).
 >
 # Raspberry Pi 5 CYW43455 Wi-Fi driver for Windows 11 ARM64
 
@@ -35,17 +28,17 @@ keeping the long historical milestone log in the main README.
 
 | Area | What we have achieved | What may still need improvement |
 |---|---|---|
-| **Current release** | **v0.7.1.8 is the default on `main`**, with mode 1 promoted after the best recent hardware result and a full green CI run. | Continue validating the promoted build over longer real-world use and keep v0.7.1.4 available as a rollback reference. |
+| **Current release** | **v0.7.1.20 is the default on `main`**. The exact hardware-tested source is frozen on `release/v0.7.1.20` at `c16aa318da490350126739add45223a186ab0a47`. | Keep future performance/stability experiments isolated from the frozen release and promote only after hardware validation. |
 | **Hardware bring-up** | Direct Raspberry Pi 5 SDIO2 access to the onboard CYW43455 is working through the `ACPI\\RPI0011` device, including chip/core discovery, firmware startup and runtime transport. | Broader UEFI/platform compatibility is still limited; the driver remains targeted at the tested Raspberry Pi 5 setup. |
 | **Connection & Internet** | WPA2-Personal/AES connection, DHCP/IP traffic, gateway access, DNS and HTTPS/Internet traffic have been demonstrated on real hardware. | WPA3, enterprise authentication and native Windows Wi-Fi/WLAN UX are not the current focus; Windows still sees an Ethernet-style NDIS adapter. |
-| **TX path** | `main` has the proven **64-frame** active queue and mode-1 credit scheduling. `new-improvement` adds the bounded **128-frame deferred backlog**. `new-improvement-tx-glom` keeps both limits unchanged and may combine exactly **2** one-frame NBLs into one F2 transfer under pressure. | Hardware-validate whether two-frame glom drains backlog pressure faster without latency, throughput, lifecycle, or stability regression. |
-| **RX path** | Bounded RX batching, validated SDPCM parsing, read-ahead handling and glom validation are implemented with malformed/fault paths covered by tests. | Further RX changes should only be made if measurements identify RX as a real bottleneck; current evidence points more strongly to TX queue/credit pressure. |
-| **SDIO transport** | Direct CMD52/CMD53 PIO transport, runtime flow control, bounded polling, error propagation and tested high-speed/4-bit operation are in place. | DMA/block-mode or more aggressive transfer batching could improve efficiency, but should be pursued only after timing data proves SDIO transaction overhead is the limiting factor. |
-| **Stability** | Recent v0.7.1.8 hardware testing completed the full download workload with no observed disconnect, worker failure, FIFO failure, RX glom error, CMD53 timeout or interrupt-storm fallback. | Longer soak tests, sleep/resume, D0/D3, Pause/Restart, adapter restart and AP/router reconnect should continue to be exercised. |
-| **Performance** | The best recent v0.7.1.8 Internet workload reached about **27.9 Mbps**, materially better than the immediately preceding experimental builds. | Improve repeatability and reduce queue-full events without sacrificing latency or stability; do not increase queue size simply to hide pressure. |
+| **TX path** | The v0.7.1.20 adaptive hybrid keeps a **64-frame active queue**. Frames up to **512 bytes** may use the bounded **128-frame deferred backlog**, Glom2 and Service-Burst4; frames above 512 bytes use active-only admission and fresh-F1-per-frame pacing. | Preserve this hardware-validated policy as the baseline; test any future TX change independently before promotion. |
+| **RX path** | Bounded RX batching, validated SDPCM parsing, read-ahead and glom validation are implemented. v0.7.1.20 also fixes the block-wait deadline ordering exposed by the prior RX-glom timeout. | Keep RX behavior unchanged unless new diagnostics identify a reproducible bottleneck or fault. |
+| **SDIO transport** | Direct CMD52/CMD53 fixed-address PIO, negotiated block mode, runtime flow control, bounded polling, error propagation and tested 50 MHz / 4-bit operation are in place. Already-observed SDHCI completion/readiness wins over an expired software deadline; genuine partial FIFO failures remain terminal/no-replay. | Treat the v0.7.1.20 transport as frozen release behavior; pursue any DMA or deeper batching only on experimental branches. |
+| **Stability** | v0.7.1.20 completed extended normal use after the prior timeout fix with no observed disconnect recurrence. A fatal runtime transport fault also has one bounded adapter lifecycle recovery path, without replaying the failed FIFO transaction. | Continue broader soak, sleep/resume, D0/D3, Pause/Restart and AP reconnect testing while keeping the release branch unchanged. |
+| **Performance** | Hardware testing of the promoted v0.7.1.20 build reached approximately **80 Mbps download / 80 Mbps upload** on Fast.com under the tested setup. | Treat this result as the current performance reference and reject future changes that regress either direction or stability. |
 | **Diagnostics** | One-click diagnostics, readiness checks, transport/radio/timing snapshots, TX-credit diagnostics and performance tooling are available for hardware analysis. | Keep normal release overhead low and use detailed timing only when needed for targeted bottleneck analysis. |
 | **CI / regression safety** | Optimized ARM64 builds, both TX modes, ASAN host tests, transport/ownership/lifecycle tests, packaging, signing and rollback/source-isolation guards are automated. | Physical Pi testing remains necessary for performance and radio behavior; CI cannot prove real RF/Internet performance. |
-| **Release status** | The driver is usable on the tested Raspberry Pi 5 and v0.7.1.8 is now the project default. | It is still **test-signed**, not a Microsoft production-signed general-purpose Windows driver. |
+| **Release status** | **v0.7.1.20 is the promoted default on `main`**, with its exact tested source frozen on `release/v0.7.1.20`. | It remains **test-signed**, not a Microsoft production-signed general-purpose Windows driver. |
 
 Detailed historical experiment notes remain available under `docs/` for anyone
 who needs the development record, but they are intentionally no longer repeated
@@ -58,7 +51,7 @@ Windows 11 ARM64
     |
     +-- NDIS 6.30 Ethernet miniport
     |
-    +-- CYW43455 firmware/control layer (integrated experimental candidate)
+    +-- CYW43455 firmware/control layer
     |       +-- BCDC / SDPCM / chip backplane
     |
     +-- direct SDIO2 host transport
@@ -76,16 +69,19 @@ Windows 11 ARM64
 
 ## Branch strategy
 
-`main` is the current default release branch. New performance or stability
-work should be isolated on experimental branches and promoted only after the
-relevant CI checks and Raspberry Pi hardware validation.
+`main` is the current default release branch. `release/v0.7.1.20` is the frozen
+hardware-tested v0.7.1.20 source reference and should not be advanced. New
+performance or stability work should be isolated on experimental branches and
+promoted only after full CI plus Raspberry Pi hardware validation.
 
 ## Status
 
-v0.7.1.8 on `main` is hardware-tested and Internet-capable on the matching
-Raspberry Pi 5 setup. The project is still experimental/test-signed rather than
-a production-certified Windows Wi-Fi driver. Keep recovery access and a known
-rollback package available when testing new changes.
+v0.7.1.20 on `main` is the current hardware-tested default for the matching
+Raspberry Pi 5 setup, with approximately 80/80 Mbps observed in the validated
+Fast.com test and stable extended use after the RX/FIFO timeout fix. The project
+is still experimental/test-signed rather than a production-certified Windows
+Wi-Fi driver. Keep the frozen `release/v0.7.1.20` reference available when
+testing future changes.
 
 ## License
 
