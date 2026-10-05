@@ -1,11 +1,12 @@
-> **`new-improvement-upload-measurement` candidate: v0.7.1.14.** Every production
-> driver source file remains byte-for-byte the green v0.7.1.11 runtime. The single
-> all-in-one utility now measures sustained **1/2/4-stream download and upload**
-> with a fresh driver snapshot around every stage. See
-> [v0.7.1.14 measurement plan](docs/MEASUREMENT-0.7.1.14.md).
+> **`new-improvement-f2-buffer-pio` candidate: v0.7.1.16.** This keeps the
+> measured v0.7.1.15 Service-Burst2 TX gains but changes only the common aligned
+> F2 block-copy mechanics: four bounded 32-ULONG register-buffer operations per
+> 512-byte block replace 128 scalar register accesses. The SDIO protocol, queue,
+> backlog, glom, framing, firmware/radio and frozen utility remain unchanged.
+> See [v0.7.1.16 F2 buffer-PIO](docs/F2-BUFFER-PIO-0.7.1.16.md).
 >
-> **v0.7.1.11 remains the protected runtime/performance baseline. v0.7.1.12 is
-> rejected for poor performance; no threshold-16 tuning is carried forward.**
+> **v0.7.1.11 remains the immediate rollback/performance reference. v0.7.1.12
+> remains rejected, and v0.7.1.15 is retained as measured TX-service evidence.**
 >
 > **`new-improvement` rollback candidate: v0.7.1.9.** This branch keeps the proven
 > 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame
