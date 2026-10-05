@@ -612,7 +612,7 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"FifoBlockBytes", Adapter->FifoBlockBytes);
     SET_DWORD(L"FifoBlockFailures", Adapter->FifoBlockFailures);
     SET_DWORD(L"FifoBufferPioEnabled", RPI5CYW_FIFO_BUFFER_PIO);
-    SET_DWORD(L"FifoBufferPioBurstWords", CYW_FIFO_PIO_BURST_WORDS);
+    SET_DWORD(L"FifoBufferPioBurstWords", RPI5CYW_FIFO_BUFFER_PIO_BURST_WORDS);
     SET_DWORD(L"FifoBufferPioReadBlocks", Adapter->FifoBufferPioReadBlocks);
     SET_DWORD(L"FifoBufferPioWriteBlocks", Adapter->FifoBufferPioWriteBlocks);
     SET_DWORD(L"FifoScalarPioBlocks", Adapter->FifoScalarPioBlocks);
