@@ -30,6 +30,9 @@ typedef struct TEST_NBL { struct TEST_NBL *Next;PNET_BUFFER First;PVOID CancelId
 #include "../src/cyw43455/tx_types.h"
 static ULONG Failures,Locks,TransferCalls,Credits,Busy,FailTransfer,Hook,Reenter,Immediate,Poison,CheckCompleting;
 static ULONG HookAt,BusyAt,FailAt,CompletionCalls,CompletionNbls,LargestCompletion,ProbeCalls;
+#if RPI5CYW_TX_SERVICE_BURST2
+static ULONG BurstStartCalls,BurstSecondCalls;
+#endif
 #if RPI5CYW_TX_GLOM2
 static ULONG PairTransferCalls,PairBusy,PairFail,PairHook;
 #endif
@@ -62,6 +65,11 @@ static NTSTATUS CywTxTransferPair(PRPI5CYW_ADAPTER adapter,
     PUCHAR data1,ULONG length1,PUCHAR data2,ULONG length2);
 #endif
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
+#if RPI5CYW_TX_SERVICE_BURST2
+static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,
+    BOOLEAN wantSecond,PBOOLEAN permitSecond);
+static NTSTATUS CywTxTransferBurstSecond(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
+#endif
 static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags);
 #include "../src/cyw43455/tx_queue.h"
 /* Production pressure wrapper around the ACTUAL queue/pump. The network-state
@@ -104,6 +112,31 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
     if(FailTransfer || (FailAt && FailAt==TransferCalls))return STATUS_IO_DEVICE_ERROR;
     CHECK(Credits>0);Credits--;return STATUS_SUCCESS;
 }
+#if RPI5CYW_TX_SERVICE_BURST2
+static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,
+    BOOLEAN wantSecond,PBOOLEAN permitSecond)
+{
+    NTSTATUS status;
+    BurstStartCalls++;*permitSecond=FALSE;
+    status=CywTxTransfer(adapter,data,length);
+    if(NT_SUCCESS(status) && wantSecond && Credits>0) {
+        adapter->TxServiceBurstGrants++;*permitSecond=TRUE;
+    }
+    return status;
+}
+static NTSTATUS CywTxTransferBurstSecond(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
+{
+    NTSTATUS status;
+    BurstSecondCalls++;adapter->TxServiceBurstSecondAttempts++;
+    status=CywTxTransfer(adapter,data,length);
+    if(status==STATUS_DEVICE_BUSY)adapter->TxServiceBurstSecondBusy++;
+    else if(NT_SUCCESS(status)) {
+        adapter->TxServiceBurstSecondSuccess++;
+        adapter->TxServiceBurstSavedStatusChecks++;
+    } else adapter->TxServiceBurstSecondErrors++;
+    return status;
+}
+#endif
 #if RPI5CYW_TX_GLOM2
 static NTSTATUS CywTxTransferPair(PRPI5CYW_ADAPTER adapter,
     PUCHAR data1,ULONG length1,PUCHAR data2,ULONG length2)
@@ -159,6 +192,9 @@ static void Init(void)
 {
     memset(&TestAdapter,0,sizeof(TestAdapter));memset(&TestQueue,0,sizeof(TestQueue));Clock=0;Credits=100;
     TransferCalls=Busy=FailTransfer=Hook=Reenter=Immediate=Poison=CheckCompleting=0;CHECK(!Locks);
+#if RPI5CYW_TX_SERVICE_BURST2
+    BurstStartCalls=BurstSecondCalls=0;
+#endif
 #if RPI5CYW_TX_GLOM2
     PairTransferCalls=PairBusy=PairFail=PairHook=0;
 #endif
