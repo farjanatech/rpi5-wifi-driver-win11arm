@@ -451,7 +451,7 @@ Rpi5CywWriteDiagnostics(
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 39);
+    SET_DWORD(L"DiagVersion", 41);
     /* Remove stale prior-session timing evidence while firmware is starting.
      * A zero-size snapshot is deliberately invalid to all timing readers. */
     if(!Adapter->Timing.Enabled) {
@@ -648,6 +648,15 @@ Rpi5CywWriteDiagnostics(
     SET_DWORD(L"TxGlomPaddedBytes", Adapter->TxGlomPaddedBytes);
     SET_DWORD(L"TxGlomExtendedDataSingles", Adapter->TxGlomExtendedDataSingles);
     SET_DWORD(L"TxGlomExtendedControlSingles", Adapter->TxGlomExtendedControlSingles);
+    SET_DWORD(L"TxGlomPressureThreshold", RPI5CYW_TX_GLOM_PRESSURE_THRESHOLD);
+    SET_DWORD(L"TxServiceBurstEnabled", RPI5CYW_TX_SERVICE_BURST2);
+    SET_DWORD(L"TxServiceBurstMax", RPI5CYW_TX_SERVICE_BURST_MAX);
+    SET_DWORD(L"TxServiceBurstGrants", Adapter->TxServiceBurstGrants);
+    SET_DWORD(L"TxServiceBurstSecondAttempts", Adapter->TxServiceBurstSecondAttempts);
+    SET_DWORD(L"TxServiceBurstSecondSuccess", Adapter->TxServiceBurstSecondSuccess);
+    SET_DWORD(L"TxServiceBurstSecondBusy", Adapter->TxServiceBurstSecondBusy);
+    SET_DWORD(L"TxServiceBurstSecondErrors", Adapter->TxServiceBurstSecondErrors);
+    SET_DWORD(L"TxServiceBurstSavedStatusChecks", Adapter->TxServiceBurstSavedStatusChecks);
     SET_DWORD(L"RadioVersion", Adapter->RadioReport[0]);
     SET_DWORD(L"RadioGeneration", Adapter->RadioReport[1]);
     SET_DWORD(L"RadioValidMask", Adapter->RadioReport[2]);
