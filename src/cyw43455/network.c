@@ -234,7 +234,7 @@ static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
 }
 #if RPI5CYW_TX_SERVICE_BURST2
 static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,
-    BOOLEAN WantSecond,PBOOLEAN PermitSecond)
+    BOOLEAN WantSecond,BOOLEAN * PermitSecond)
 {
     NTSTATUS Status=CywSendDataBurstStart(A,Data,Length,WantSecond,PermitSecond);
     if(NT_SUCCESS(Status))CywTxRecordSuccessfulTransfer(A,Data,Length);
