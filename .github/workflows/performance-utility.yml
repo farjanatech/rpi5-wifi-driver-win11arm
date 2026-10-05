@@ -27,7 +27,7 @@ jobs:
           $issues += @(@('utility/RPi5-WiFi-DownloadTiming.ps1','utility/RPi5-WiFi-MeasurementClock.ps1','tests/download_timing_tests.ps1','tests/measurement_clock_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
           })
-          $issues += @(@('utility/RPi5-WiFi-App.ps1','utility/RPi5-WiFi-Scan.ps1','tests/scan_utility_tests.ps1') | ForEach-Object {
+          $issues += @(@('utility/RPi5-WiFi-Scan.ps1','tests/scan_utility_tests.ps1') | ForEach-Object {
             Invoke-ScriptAnalyzer -Path $_ -Severity Warning,Error
           })
           $issues | Format-List ScriptName,Line,Column,RuleName,Severity,Message

@@ -24,7 +24,7 @@ $rc=Join-Path $out 'SetupPayload.rc'
 @"
 #include "resource.h"
 #include "SetupPayloadIds.h"
-IDI_SETUP ICON "$(Q (Join-Path $root 'connector\Assets\RPi5-WiFi-Connector.ico'))"
+IDI_SETUP ICON "$(Q (Join-Path $root 'native\Assets\RPi5-WiFi.ico'))"
 1 24 "$(Q (Join-Path $root 'native\RPi5WiFiSetup.manifest'))"
 IDR_PAYLOAD_GUI RCDATA "$(Q $gui)"
 IDR_PAYLOAD_INF RCDATA "$(Q (Join-Path $driver 'rpi5cyw.inf'))"

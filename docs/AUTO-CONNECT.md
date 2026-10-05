@@ -1,57 +1,51 @@
-# Editable Wi-Fi configuration
+# Native Wi-Fi profiles and auto-connect
 
-Use only on the Raspberry Pi, after installing the driver and restarting.
-This optional feature automates connecting; it does not fix packet loss or prove Internet access.
+The current user-facing Wi-Fi application is the native C++ `RPi5-WiFi.exe`
+installed by `RPi5-WiFi-Setup.exe`. The older C# connector and PowerShell GUI
+are no longer part of `main`.
 
-1. Put your private `WiFi.private.json` beside `Connect-RPi5-WiFi.cmd` in the extracted package.
-   Alternatively, copy `WiFi.config.example.json` to that name and fill its three fields.
-2. Run `Connect-RPi5-WiFi.cmd` to use the file without prompts. Without the private file,
-   the usual interactive prompts remain available.
-3. For connection at every Windows startup, run `Enable-RPi5-WiFi-Autoconnect.cmd` once
-   and approve Administrator access. It copies the connector and configuration to
-   `C:\ProgramData\RPi5WiFi` and registers `RPi5WiFi-AutoConnect` as SYSTEM.
-4. To change Wi-Fi later, open Notepad **as Administrator**, then edit
-   `C:\ProgramData\RPi5WiFi\WiFi.private.json`. Preserve JSON quotes and escape any
-   password backslash as `\\` and quote as `\"`. Save and reboot, or run
-   `Start-ScheduledTask -TaskName RPi5WiFi-AutoConnect` in Administrator PowerShell.
-   Editing the package copy alone does not change the installed startup profile.
-5. To remove the startup task, run `Disable-RPi5-WiFi-Autoconnect.cmd`.
-   This preserves the driver and configuration. Delete the private file manually
-   when no longer needed. Re-enabling copies the package profile again.
+## Save a Wi-Fi profile
 
-Country must be where the Pi is physically located. BD is Bangladesh.
-Only WPA2-Personal/AES and passwords of 8–63 printable ASCII characters are supported.
-SSID is case-sensitive, 1–32 UTF-8 bytes; no separate username is needed.
+1. Open the **RPi5 Wi-Fi** Desktop shortcut.
+2. Confirm the two-letter country code for the Pi's physical location.
+3. Click **Scan / Refresh**.
+4. Select the desired SSID. The selected row is highlighted green and the app
+   shows the selected SSID, band, channel and RSSI above the password field.
+5. Enter the WPA2-Personal/AES password.
+6. Enable **Auto-connect after reboot** if desired.
+7. Click **Save / Update Profile**.
 
-The editable JSON contains the password in **plaintext**. The installed directory
-is limited to SYSTEM and Administrators, but administrators can still read it.
-Keep the original file and any USB copy private; never upload it to GitHub,
-include it in diagnostics, or send a screenshot of its contents. The public package
-contains only a blank example. The diagnostic collector does not copy this file.
-No credentials appear in task command-line arguments or connector output.
+The application stores the derived WPA2 PMK, not the plaintext password. The
+saved key is protected with Windows DPAPI using machine scope and the profile
+database is restricted to SYSTEM and Administrators.
 
-The startup task runs once per boot, waits up to 180 seconds for the driver and uses
-the existing bounded firmware wait (up to 30 minutes while progressing). It will
-not loop indefinitely, change UEFI/security settings, or reconnect continuously
-after sleep/dropouts. Firmware or association failures still require diagnosis.
+Profiles are stored under:
 
-## Updates and readiness (0.6.26)
+`C:\ProgramData\RPi5 WiFi\profiles.bin`
 
-The driver installer refreshes connector code for an already-enabled, matching
-startup task. It preserves the installed private profile and task settings; it
-does not enable autoconnect if it was off. An unsafe/unrecognized task or busy
-operation produces a warning instead of being overwritten. Review the installer
-log if startup utility refresh fails. Re-enabling manually still copies the
-package profile, so do not do that unless you intend to replace the installed one.
+## Auto-connect after restart
 
-Startup and performance use an existing authenticated IPv4/default-route
-connection without requesting another join. Manual Connect remains an explicit
-connection request and can change the profile. Conflicting operations are
-serialized with a bounded wait. One explicit reconnect is bounded; there is no
-perpetual monitoring/reset task.
+The installer creates the scheduled task:
 
-The startup script records a small protected `Startup-receipt.json` alongside
-the installed scripts. It contains timing, version, boot identity and readiness
-flags, not the SSID/password/PMK. `Check-RPi5-WiFi-Readiness.cmd` uses this evidence
-before any new connection, and labels absent/stale evidence **Not tested**.
-An authenticated link plus IP/route is not by itself proof of Internet access.
+`RPi5 WiFi AutoConnect`
+
+At Windows startup the same native executable runs with `--autoconnect`. It
+waits for the driver control device to become available, scans nearby networks,
+and connects to the strongest supported saved profile that has auto-connect
+enabled. It does not modify UEFI, BCD, Secure Boot or Windows Test Signing.
+
+## Delete or change a profile
+
+Open **RPi5 Wi-Fi**, select the saved profile, and use **Delete Profile**.
+To change its password or auto-connect setting, select the network/profile,
+enter the new password when needed, change the checkbox, and click
+**Save / Update Profile**.
+
+## Current connection limits
+
+- WPA2-Personal/AES is supported.
+- SSID must be 1-32 UTF-8 bytes.
+- WPA2 password must be 8-63 printable ASCII characters.
+- The country code must match the Pi's actual physical location.
+- The driver remains an Ethernet-style NDIS adapter; scan/connect operations
+  are performed through the driver's control interface rather than Windows WLAN.

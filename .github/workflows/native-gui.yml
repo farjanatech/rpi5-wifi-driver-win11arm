@@ -2,7 +2,7 @@ name: Build native RPi5 Wi-Fi GUI and installer
 
 on:
   push:
-    branches: [native-gui-installer]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

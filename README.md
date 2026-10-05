@@ -62,8 +62,13 @@ Windows 11 ARM64
 - `src/sdio/` - direct SDHCI PIO transport (no Microsoft SD bus dependency).
 - `src/cyw43455/` - CYW43455-specific chip/firmware protocol code.
 - `package/` - driver INF/package files.
+- `native/` - current native Win32 C++ Wi-Fi GUI and standalone installer.
 - `docs/BUILDING.md` - current ARM64 build/signing notes.
 - `docs/AUTO-CONNECT.md` - optional startup/autoconnect instructions.
+
+## Native Wi-Fi application
+
+The native C++ `RPi5-WiFi.exe` is the current user-facing connection manager. It is installed by `RPi5-WiFi-Setup.exe`, supports scan/connect/disconnect, band/channel/RSSI display, secure saved profiles and reboot auto-connect. Legacy C# and PowerShell connection GUIs have been removed from `main`.
 
 ## Branch strategy
 

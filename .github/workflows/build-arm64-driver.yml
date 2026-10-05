@@ -248,7 +248,6 @@ jobs:
             '.\utility\RPi5-WiFi-Operations.ps1',
             '.\utility\Check-RPi5-WiFi-Readiness.ps1',
             '.\tests\readiness_utility_tests.ps1',
-            '.\utility\RPi5-WiFi-App.ps1',
             '.\utility\RPi5-WiFi-Scan.ps1',
             '.\tests\scan_utility_tests.ps1',
             '.\tests\autoconnect_utility_tests.ps1',
@@ -307,13 +306,6 @@ jobs:
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\transport_utility_tests.ps1 2>&1 |
             Tee-Object -FilePath ci-logs\transport-utility-tests.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Render offline connection app preview
-        shell: pwsh
-        run: |
-          powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File utility/RPi5-WiFi-App.ps1 -PreviewPath ci-logs\wifi-app.png
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path -LiteralPath ci-logs\wifi-app.png)) { throw 'Connection app preview was not produced.' }
 
       - name: Simulate actual firmware startup with bus failures
         shell: pwsh
