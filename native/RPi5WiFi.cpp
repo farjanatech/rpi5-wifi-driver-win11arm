@@ -140,7 +140,7 @@ void DoScan() {
     std::wstring country=UpperCountry();
     if(!ValidCountry(country)){MessageBoxW(g.hwnd,L"Country must be exactly two uppercase letters for your physical location.",L"RPi5 Wi-Fi",MB_ICONWARNING);return;}
     StartAsync(OpKind::Scan,L"Scanning nearby networks...",[country](AsyncResult&r){
-        Driver d;r.networks=ScanNetworks(d,country,[&](const std::wstring& m){r.message=m;});
+        Driver d;auto report=ScanNetworks(d,country,[&](const std::wstring& m){r.message=m;});r.networks=std::move(report.networks);
         r.message=L"Scan complete.";
     });
 }
