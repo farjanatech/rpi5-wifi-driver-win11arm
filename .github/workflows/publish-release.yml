@@ -1,0 +1,56 @@
+name: Publish v0.7.1.20 setup release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-release.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  release:
+    if: github.event.head_commit.message == 'release: publish v0.7.1.20 public setup'
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Download exact verified native artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 37356342480 --repo $env:GITHUB_REPOSITORY --name rpi5-wifi-native-v0.7.1.20 --dir release-input
+
+      - name: Verify and stage setup only
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem release-input -Recurse -File -Filter 'RPi5-WiFi-Setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'RPi5-WiFi-Setup.exe was not found in the verified artifact.' }
+          New-Item -ItemType Directory -Path release-only -Force | Out-Null
+          Copy-Item -LiteralPath $setup.FullName -Destination release-only\RPi5-WiFi-Setup.exe
+          @'
+          from pathlib import Path
+          import struct, hashlib
+          p=Path("release-only/RPi5-WiFi-Setup.exe")
+          b=p.read_bytes()
+          pe=struct.unpack_from("<I",b,0x3c)[0]
+          machine=struct.unpack_from("<H",b,pe+4)[0]
+          if machine != 0xaa64:
+              raise SystemExit(f"Setup is not ARM64: {machine:#x}")
+          print("Setup bytes:",len(b))
+          print("SHA256:",hashlib.sha256(b).hexdigest())
+          '@ | python
+
+      - name: Publish public release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @'
+          Hardware-tested v0.7.1.20 driver with native Wi-Fi setup for Windows 11 ARM64 on Raspberry Pi 5.
+
+          Includes Wi-Fi manager, saved profiles and reboot auto-connect. Test signing required.
+          '@
+          gh release create v0.7.1.20 release-only\RPi5-WiFi-Setup.exe --repo $env:GITHUB_REPOSITORY --target 32ca4fe7b5ba1b78eb1941eb37b8b4eb8a9b1c50 --title 'RPi5 Wi-Fi v0.7.1.20' --notes $notes
