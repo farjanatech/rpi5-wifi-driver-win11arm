@@ -1,13 +1,14 @@
-> **`new-improvement-tx-service-burst4` candidate: v0.7.1.18.**
-> This upload-focused experiment keeps the hardware-validated v0.7.1.17
-> fixed-port F2/RX path unchanged and extends ordinary TX service reuse from
-> two frames to at most four. One fresh F1 service may authorize up to three
-> following F2 frames only when those real firmware credits are already visible.
-> Every reused frame rechecks cached flow and remaining credit; any busy, fault,
-> or cancellation invalidates the rest of the grant. Glom2 retains precedence.
-> See [v0.7.1.18 Service-Burst4](docs/TX-SERVICE-BURST4-0.7.1.18.md).
+> **`new-improvement-adaptive-tx-hybrid` candidate: v0.7.1.19.**
+> This combines the v0.7.1.18 small-packet efficiency path with the upload
+> pacing observed on `main` v0.7.1.8. Ethernet frames up to 512 bytes may use
+> the 128-frame deferred backlog, Glom2 and Service-Burst4. Frames above 512
+> bytes use active-only admission, never Glom2 or follower reuse, and perform a
+> fresh F1 service before every F2 frame. The v0.7.1.18 RX/fixed-port SDIO,
+> firmware/radio, worker scheduling and queue sizes are otherwise unchanged.
+> See [v0.7.1.19 Adaptive TX Hybrid](docs/TX-ADAPTIVE-HYBRID-0.7.1.19.md).
 >
-> **v0.7.1.17 remains the immediate stable rollback. v0.7.1.16 remains rejected.**
+> **v0.7.1.18 remains the immediate experimental rollback; `main` v0.7.1.8
+> remains the upload-behavior reference.**
 >
 > **`new-improvement` rollback candidate: v0.7.1.9.** This branch keeps the proven
 > 64-frame active TX window from v0.7.1.8 and adds a separate bounded 128-frame

@@ -17,18 +17,18 @@ static ULONG CywTxOutstanding(CYW_TX_STATE *Q)
 }
 static NDIS_STATUS CywTxPrepare(PRPI5CYW_ADAPTER A,PNET_BUFFER_LIST Nbl,CYW_PENDING_SEND *Item)
 {
-    PNET_BUFFER nb;ULONG frames=0,bytes=0,len;
+    PNET_BUFFER nb;ULONG frames=0,bytes=0,len,maxLength=0;
     for(nb=NET_BUFFER_LIST_FIRST_NB(Nbl);nb;nb=NET_BUFFER_NEXT_NB(nb)) {
         len=NET_BUFFER_DATA_LENGTH(nb);
         if(len<14 || len>1514)return NDIS_STATUS_INVALID_LENGTH;
         if(++frames>CYW_TX_LIMIT) {A->TxOversizedNbl++;return NDIS_STATUS_RESOURCES;}
-        bytes+=len;
+        bytes+=len;if(len>maxLength)maxLength=len;
     }
     if(!frames)return NDIS_STATUS_INVALID_LENGTH;
     RtlZeroMemory(Item,sizeof(*Item));
     Item->Nbl=Nbl;Item->Next=NET_BUFFER_LIST_FIRST_NB(Nbl);
     Item->CancelId=NDIS_GET_NET_BUFFER_LIST_CANCEL_ID(Nbl);
-    Item->Frames=Item->HeldFrames=frames;Item->Bytes=bytes;
+    Item->Frames=Item->HeldFrames=frames;Item->Bytes=bytes;Item->MaxFrameLength=maxLength;
     Item->Submitted=KeQueryInterruptTime();
     return NDIS_STATUS_SUCCESS;
 }
@@ -41,6 +41,22 @@ static BOOLEAN CywTxBacklogFits(CYW_TX_STATE *Q,ULONG Frames)
 {
     return (BOOLEAN)(Q->BacklogCount<CYW_TX_BACKLOG_LIMIT &&
         Q->BacklogFrames<=CYW_TX_BACKLOG_LIMIT-Frames);
+}
+static BOOLEAN CywTxAdaptiveSmallLength(ULONG Length)
+{
+#if RPI5CYW_TX_ADAPTIVE_HYBRID
+    return (BOOLEAN)(Length<=RPI5CYW_TX_ADAPTIVE_SMALL_MAX);
+#else
+    (void)Length;return TRUE;
+#endif
+}
+static BOOLEAN CywTxAdaptiveSmallItem(const CYW_PENDING_SEND *Item)
+{
+    return Item && CywTxAdaptiveSmallLength(Item->MaxFrameLength);
+}
+static BOOLEAN CywTxAdaptiveSmallNb(PNET_BUFFER Nb)
+{
+    return Nb && CywTxAdaptiveSmallLength(NET_BUFFER_DATA_LENGTH(Nb));
 }
 static VOID CywTxActivateLocked(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
     const CYW_PENDING_SEND *Item,BOOLEAN CountAccepted)
@@ -93,12 +109,16 @@ static NDIS_STATUS CywTxSubmitWithBacklog(
     status=CywTxPrepare(A,Nbl,&item);if(status!=NDIS_STATUS_SUCCESS)return status;
     KeAcquireSpinLock(&Q->Lock,&irql);status=Q->Gate;
     if(status==NDIS_STATUS_SUCCESS) {
+        BOOLEAN small=CywTxAdaptiveSmallItem(&item);
         if(!Q->BacklogCount && CywTxActiveFits(Q,item.HeldFrames)) {
             CywTxActivateLocked(A,Q,&item,TRUE);status=NDIS_STATUS_PENDING;
-        } else if(CywTxBacklogFits(Q,item.HeldFrames)) {
-            CywTxBacklogLocked(A,Q,&item);status=NDIS_STATUS_PENDING;
+        } else if(small && CywTxBacklogFits(Q,item.HeldFrames)) {
+            CywTxBacklogLocked(A,Q,&item);A->TxAdaptiveSmallBacklogAccepted++;
+            status=NDIS_STATUS_PENDING;
         } else {
-            A->TxQueueFull++;A->TxBacklogFull++;status=NDIS_STATUS_RESOURCES;
+            A->TxQueueFull++;
+            if(small)A->TxBacklogFull++;else A->TxAdaptiveBulkBackpressure++;
+            status=NDIS_STATUS_RESOURCES;
         }
     }
     KeReleaseSpinLock(&Q->Lock,irql);return status;
@@ -201,17 +221,19 @@ static NDIS_STATUS CywTxAbortStatus(CYW_TX_STATE *Q,CYW_PENDING_SEND *Item,ULONG
  * bounded by the current pump budget and the hard four-frame service cap. */
 static ULONG CywTxBurstPendingFrames(CYW_TX_STATE *Q,ULONG Remaining)
 {
-    KIRQL irql;ULONG i,pending=0,take,cap=Remaining;
+    KIRQL irql;ULONG i,pending=0,cap=Remaining;PNET_BUFFER nb;
     if(cap>RPI5CYW_TX_SERVICE_BURST_MAX)cap=RPI5CYW_TX_SERVICE_BURST_MAX;
     if(!cap)return 0;
     KeAcquireSpinLock(&Q->Lock,&irql);
     if(Q->Gate==NDIS_STATUS_SUCCESS) {
         for(i=0;i<Q->Count && pending<cap;++i) {
-            take=Q->Entries[i].Frames;
-            if(take>cap-pending)take=cap-pending;
-            pending+=take;
+            for(nb=Q->Entries[i].Next;nb && pending<cap;nb=NET_BUFFER_NEXT_NB(nb)) {
+                if(!CywTxAdaptiveSmallNb(nb))goto Done;
+                pending++;
+            }
         }
     }
+Done:
     KeReleaseSpinLock(&Q->Lock,irql);
     return pending;
 }
@@ -233,6 +255,8 @@ static BOOLEAN CywTxPairCandidate(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
        Q->Entries[0].Frames==1 && Q->Entries[0].HeldFrames==1 &&
        Q->Entries[1].Frames==1 && Q->Entries[1].HeldFrames==1 &&
        Q->Entries[0].Next && Q->Entries[1].Next &&
+       CywTxAdaptiveSmallNb(Q->Entries[0].Next) &&
+       CywTxAdaptiveSmallNb(Q->Entries[1].Next) &&
        !NET_BUFFER_NEXT_NB(Q->Entries[0].Next) &&
        !NET_BUFFER_NEXT_NB(Q->Entries[1].Next) &&
        CywTxAbortStatus(Q,&Q->Entries[0],now)==NDIS_STATUS_SUCCESS &&
@@ -261,7 +285,7 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
 {
     ULONG i,len;ULONG64 now;KIRQL irql;PUCHAR data;PNET_BUFFER nb;
     PNET_BUFFER_LIST nbl;NDIS_STATUS completion=NDIS_STATUS_SUCCESS;NTSTATUS status;
-    BOOLEAN active;
+    BOOLEAN active,smallFrame=FALSE;
 #if RPI5CYW_TX_SERVICE_BURST4
     ULONG serviceRemaining=0,wantFrames,reusePosition=2;
     BOOLEAN useServiceReuse;
@@ -338,7 +362,8 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
                     completion=CywTxAbortStatus(Q,&Q->Entries[0],KeQueryInterruptTime());
                     completion2=CywTxAbortStatus(Q,&Q->Entries[1],KeQueryInterruptTime());
                     if(NT_SUCCESS(status)) {
-                        A->TxPackets+=2;*Sent+=2;
+                        A->TxPackets+=2;A->TxAdaptiveSmallFrames+=2;
+                        A->TxAdaptiveSmallGlomChains++;*Sent+=2;
                         Q->Entries[0].Next=NET_BUFFER_NEXT_NB(nb);
                         Q->Entries[1].Next=NET_BUFFER_NEXT_NB(nb2);
                         Q->Entries[0].Frames--;Q->Entries[1].Frames--;
@@ -363,10 +388,11 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
 #endif
             A->TxCreditWaits++;break;
         }
-        len=NET_BUFFER_DATA_LENGTH(nb);
+        len=NET_BUFFER_DATA_LENGTH(nb);smallFrame=CywTxAdaptiveSmallLength(len);
         RtlZeroMemory(Q->Frame,4);Q->Frame[0]=0x20;
 #if RPI5CYW_TX_SERVICE_BURST4
-        useServiceReuse=(BOOLEAN)(serviceRemaining!=0);
+        if(!smallFrame)serviceRemaining=0;
+        useServiceReuse=(BOOLEAN)(smallFrame && serviceRemaining!=0);
 #endif
         data=NdisGetDataBuffer(nb,len,Q->Frame+4,1,0);
         if(data && data!=Q->Frame+4)RtlCopyMemory(Q->Frame+4,data,len);
@@ -379,7 +405,12 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
                     reusePosition++;
                 }
             } else {
-                wantFrames=CywTxBurstPendingFrames(Q,Budget-*Sent);
+                if(smallFrame) {
+                    wantFrames=CywTxBurstPendingFrames(Q,Budget-*Sent);
+                    A->TxAdaptiveSmallBurstStarts++;
+                } else {
+                    wantFrames=1;A->TxAdaptiveBulkFreshF1Attempts++;
+                }
                 status=CywTxTransferBurstStart(A,Q->Frame,len+4,wantFrames,&serviceRemaining);
                 if(serviceRemaining)reusePosition=2;
             }
@@ -398,8 +429,8 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
         KeAcquireSpinLock(&Q->Lock,&irql);nbl=NULL;
         completion=CywTxAbortStatus(Q,&Q->Entries[0],KeQueryInterruptTime());
         if(NT_SUCCESS(status)) {
-            A->TxPackets++;(*Sent)++;
-            Q->Entries[0].Next=NET_BUFFER_NEXT_NB(nb);
+            A->TxPackets++;if(smallFrame)A->TxAdaptiveSmallFrames++;else A->TxAdaptiveBulkFrames++;
+            (*Sent)++;Q->Entries[0].Next=NET_BUFFER_NEXT_NB(nb);
             /* NDIS owns the whole NB chain: already-transferred buffers are
              * still retained until NBL completion, so do not release their
              * admission budget early. */

@@ -72,6 +72,9 @@ static NTSTATUS CywSendFrameCore(PRPI5CYW_ADAPTER A, UCHAR Channel,
                 return STATUS_DEVICE_BUSY;
 #if RPI5CYW_TX_SERVICE_BURST4
             cap=WantFrames;if(cap>RPI5CYW_TX_SERVICE_BURST_MAX)cap=RPI5CYW_TX_SERVICE_BURST_MAX;
+            /* Defense in depth: bulk payloads must keep main-style fresh-F1
+             * pacing even if a caller accidentally requests follower reuse. */
+            if(Length>RPI5CYW_TX_ADAPTIVE_SMALL_DATA_MAX)cap=1;
             available=(UCHAR)(N->TxMax-N->TxSeq);
             if(cap>1 && available>1 && available<=0x40) {
                 grant=available-1;

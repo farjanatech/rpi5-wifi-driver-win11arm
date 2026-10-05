@@ -15,7 +15,7 @@ typedef struct _CYW_PENDING_SEND {
     PNET_BUFFER_LIST Nbl;
     PNET_BUFFER Next;
     PVOID CancelId;
-    ULONG Frames, HeldFrames, Bytes;
+    ULONG Frames, HeldFrames, Bytes, MaxFrameLength;
     ULONG64 Submitted;
     BOOLEAN Cancelled;
 } CYW_PENDING_SEND;

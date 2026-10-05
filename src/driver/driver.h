@@ -30,6 +30,11 @@
 #define RPI5CYW_TX_BACKLOG_LIMIT 128u
 #define RPI5CYW_TX_GLOM_PRESSURE_THRESHOLD 32u
 #define RPI5CYW_TX_SERVICE_BURST_MAX 4u
+#define RPI5CYW_TX_ADAPTIVE_SMALL_MAX 512u
+#define RPI5CYW_TX_ADAPTIVE_SMALL_DATA_MAX (RPI5CYW_TX_ADAPTIVE_SMALL_MAX+4u)
+#ifndef RPI5CYW_TX_ADAPTIVE_HYBRID
+#define RPI5CYW_TX_ADAPTIVE_HYBRID 1
+#endif
 #ifndef RPI5CYW_TX_GLOM2
 #define RPI5CYW_TX_GLOM2 0
 #endif
@@ -122,6 +127,10 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG TxServiceBurstFourthAttempts, TxServiceBurstFourthSuccess;
     ULONG TxServiceBurstFourthBusy, TxServiceBurstFourthErrors;
     ULONG TxServiceBurstSavedStatusChecks;
+    ULONG TxAdaptiveSmallFrames, TxAdaptiveBulkFrames;
+    ULONG TxAdaptiveSmallBacklogAccepted, TxAdaptiveBulkBackpressure;
+    ULONG TxAdaptiveSmallGlomChains, TxAdaptiveSmallBurstStarts;
+    ULONG TxAdaptiveBulkFreshF1Attempts;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */
     CYW_TX_RETRY TxRetry; /* Worker-owned bounded idle-credit retry evidence. */

@@ -10,6 +10,7 @@ LARGE_INTEGER KeQueryPerformanceCounter(LARGE_INTEGER *Frequency)
     value.QuadPart=(LONGLONG)++QpcCalls;return value;
 }
 static UCHAR CreditPayload[100];
+static UCHAR BulkCreditPayload[600];
 int main(void)
 {
     CYW_TX_CREDIT_DIAG *d=&TestAdapter.TxCreditDiag;
@@ -83,6 +84,13 @@ int main(void)
     CHECK(TestNetwork.TxSeq==3 && FifoCalls==4 && DataWrites==3);
     CHECK(TestAdapter.TxServiceBurstFourthAttempts==1 && TestAdapter.TxServiceBurstFourthErrors==1);
     CHECK(TestAdapter.TxServiceBurstSavedStatusChecks==2);
+
+    /* Adaptive hybrid defense: bulk payload cannot receive follower reuse even
+     * with abundant real credits and a caller asking for four frames. */
+    Init();TestNetwork.TxMax=8;permit=99;
+    CHECK(CywSendDataBurstStart(&TestAdapter,BulkCreditPayload,sizeof(BulkCreditPayload),4,&permit)==STATUS_SUCCESS);
+    CHECK(!permit && !TestAdapter.TxServiceBurstGrants && TestNetwork.TxSeq==1);
+    CHECK(d->F1Calls==1 && d->F2Calls==1 && DataWrites==1);
 #endif
     if(Failures)return 1;
     puts("PASS: actual sender diagnostics plus bounded four-credit service reuse preserve F1/F2 errors, credits, wrap, flow gates and no-replay ownership.");
