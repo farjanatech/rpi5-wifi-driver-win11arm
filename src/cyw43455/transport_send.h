@@ -1,44 +1,76 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Actual SDPCM sender, shared with the mocked transport integration tests. */
-static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULONG Length)
+static NTSTATUS CywSendFrameCore(PRPI5CYW_ADAPTER A, UCHAR Channel,
+    PUCHAR Data, ULONG Length, BOOLEAN ServiceData, BOOLEAN WantSecond,
+    PBOOLEAN PermitSecond)
 {
     CYW_NETWORK *N=A->Network;
     ULONG header=A->TxGlomEnabled?20u:12u;
     ULONG total=Length+header,padded=(total+3)&~3UL,tailPad,word;
     NTSTATUS Status;
+    BOOLEAN grant=FALSE;
 /* TX-CREDIT-DIAG-BEGIN */
     CYW_TX_CREDIT_DIAG *D=&A->TxCreditDiag;CYW_TXD_U64 detailStart=0;
     unsigned reads=0,acks=0,mails=0,commands=0;
 /* TX-CREDIT-DIAG-END */
+    if(PermitSecond)*PermitSecond=FALSE;
     if(Length>CYW_CONTROL_CAPACITY-header)return STATUS_INVALID_BUFFER_SIZE;
     if(A->FifoBlockReady && padded>512)padded=(padded+511)&~511UL;
     if(padded>CYW_CONTROL_CAPACITY || padded<total)return STATUS_INVALID_BUFFER_SIZE;
     if(Channel==2) {
-        /* Fresh global state before EVERY data frame, including frames in the
-         * same four-frame TX pump. RX batching never makes this gate stale. */
-        A->Transport.TxStatusChecks++;
+        if(ServiceData) {
+            /* Fresh F1 service remains mandatory for the first frame in every
+             * burst. Only this observed state may authorize one following
+             * ordinary F2 frame; the grant never survives beyond the caller's
+             * current pump invocation. */
+            A->Transport.TxStatusChecks++;
 /* TX-CREDIT-DIAG-BEGIN */
-        CywTxDiagInc(&D->F1Calls);
-        reads=A->Transport.StatusReads;acks=A->Transport.StatusAcks;mails=A->Transport.MailReads;
-        detailStart=CYW_TXD_CLOCK(A);
+            CywTxDiagInc(&D->F1Calls);
+            reads=A->Transport.StatusReads;acks=A->Transport.StatusAcks;mails=A->Transport.MailReads;
+            detailStart=CYW_TXD_CLOCK(A);
 /* TX-CREDIT-DIAG-END */
-        Status=CywTransportService(A,FALSE);
+            Status=CywTransportService(A,FALSE);
 /* TX-CREDIT-DIAG-BEGIN */
-        if(RPI5CYW_DETAILED_TIMING && A->Timing.Enabled)
-            CywTxDiagDuration(D,&D->F1Ticks,&D->F1MaxTicks,detailStart,CYW_TXD_CLOCK(A));
-        D->F1StatusReads=CywTxDiagAdd(D->F1StatusReads,(unsigned)(A->Transport.StatusReads-reads));
-        D->F1StatusAcks=CywTxDiagAdd(D->F1StatusAcks,(unsigned)(A->Transport.StatusAcks-acks));
-        D->F1MailboxReads=CywTxDiagAdd(D->F1MailboxReads,(unsigned)(A->Transport.MailReads-mails));
-        if(!NT_SUCCESS(Status))CywTxDiagInc(&D->F1Errors);
-        else if(A->Transport.GlobalFlow || !CywTransportPriorityAllowed(&A->Transport,N->TxFlow))
-            CywTxDiagInc(&D->F1FlowBusy);
+            if(RPI5CYW_DETAILED_TIMING && A->Timing.Enabled)
+                CywTxDiagDuration(D,&D->F1Ticks,&D->F1MaxTicks,detailStart,CYW_TXD_CLOCK(A));
+            D->F1StatusReads=CywTxDiagAdd(D->F1StatusReads,(unsigned)(A->Transport.StatusReads-reads));
+            D->F1StatusAcks=CywTxDiagAdd(D->F1StatusAcks,(unsigned)(A->Transport.StatusAcks-acks));
+            D->F1MailboxReads=CywTxDiagAdd(D->F1MailboxReads,(unsigned)(A->Transport.MailReads-mails));
+            if(!NT_SUCCESS(Status))CywTxDiagInc(&D->F1Errors);
+            else if(A->Transport.GlobalFlow || !CywTransportPriorityAllowed(&A->Transport,N->TxFlow))
+                CywTxDiagInc(&D->F1FlowBusy);
 /* TX-CREDIT-DIAG-END */
-        if(!NT_SUCCESS(Status))return Status;
-        if(A->Transport.GlobalFlow || !CywTransportPriorityAllowed(&A->Transport,N->TxFlow))
-            return STATUS_DEVICE_BUSY;
+            if(!NT_SUCCESS(Status))return Status;
+            if(A->Transport.GlobalFlow || !CywTransportPriorityAllowed(&A->Transport,N->TxFlow))
+                return STATUS_DEVICE_BUSY;
+            if(WantSecond &&
+               CywTxCredit(N->TxSeq,N->TxMax,0) &&
+               CywTxCredit((UCHAR)(N->TxSeq+1),N->TxMax,0))
+                grant=TRUE;
+        } else {
+#if RPI5CYW_TX_SERVICE_BURST2
+            A->TxServiceBurstSecondAttempts++;
+#endif
+            /* Second-frame service reuse is intentionally conservative: cached
+             * global/priority flow state and a real remaining credit must still
+             * be valid immediately before F2. No status is invented. */
+            if(A->Transport.GlobalFlow ||
+               !CywTransportPriorityAllowed(&A->Transport,N->TxFlow) ||
+               !CywTxCredit(N->TxSeq,N->TxMax,0)) {
+#if RPI5CYW_TX_SERVICE_BURST2
+                A->TxServiceBurstSecondBusy++;
+#endif
+                return STATUS_DEVICE_BUSY;
+            }
+        }
     }
     if(A->Transport.Halted)return STATUS_DEVICE_NOT_READY;
-    if(!CywTxCredit(N->TxSeq,N->TxMax,0))return STATUS_DEVICE_BUSY;
+    if(!CywTxCredit(N->TxSeq,N->TxMax,0)) {
+#if RPI5CYW_TX_SERVICE_BURST2
+        if(Channel==2 && !ServiceData)A->TxServiceBurstSecondBusy++;
+#endif
+        return STATUS_DEVICE_BUSY;
+    }
 
     RtlZeroMemory(N->Tx,padded);
     if(A->TxGlomEnabled) {
@@ -78,10 +110,43 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULO
         if(Channel==2)A->TxGlomExtendedDataSingles++;
         else A->TxGlomExtendedControlSingles++;
     }
+#if RPI5CYW_TX_SERVICE_BURST2
+    if(Channel==2 && !ServiceData) {
+        if(NT_SUCCESS(Status)) {
+            A->TxServiceBurstSecondSuccess++;
+            A->TxServiceBurstSavedStatusChecks++;
+        } else A->TxServiceBurstSecondErrors++;
+    }
+#endif
     RtlSecureZeroMemory(N->Tx,padded);
-    if(NT_SUCCESS(Status))N->TxSeq++;
+    if(NT_SUCCESS(Status)) {
+        N->TxSeq++;
+#if RPI5CYW_TX_SERVICE_BURST2
+        if(Channel==2 && ServiceData && grant && PermitSecond) {
+            A->TxServiceBurstGrants++;
+            *PermitSecond=TRUE;
+        }
+#endif
+    }
     return Status;
 }
+
+static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULONG Length)
+{
+    return CywSendFrameCore(A,Channel,Data,Length,TRUE,FALSE,NULL);
+}
+
+#if RPI5CYW_TX_SERVICE_BURST2
+static NTSTATUS CywSendDataBurstStart(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,
+    BOOLEAN WantSecond,PBOOLEAN PermitSecond)
+{
+    return CywSendFrameCore(A,2,Data,Length,TRUE,WantSecond,PermitSecond);
+}
+static NTSTATUS CywSendDataBurstSecond(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length)
+{
+    return CywSendFrameCore(A,2,Data,Length,FALSE,FALSE,NULL);
+}
+#endif
 
 #if RPI5CYW_TX_GLOM2
 /* Linux brcmfmac host TX glom format, deliberately capped at two frames:
