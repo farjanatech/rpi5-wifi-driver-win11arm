@@ -38,7 +38,25 @@ std::wstring WinError(DWORD code=GetLastError()) {
     std::wstring s=n&&raw?std::wstring(raw,n):L"Windows error "+std::to_wstring(code);
     if(raw)LocalFree(raw);while(!s.empty()&&(s.back()==L'\r'||s.back()==L'\n'||s.back()==L' '))s.pop_back();return s;
 }
-[[noreturn]] void Fail(const std::wstring& m){throw std::runtime_error(std::string(m.begin(),m.end()));}
+std::string Utf8(const std::wstring& value) {
+    if(value.empty())return {};
+    int n=WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);
+    if(!n)return "Installer error";
+    std::string out(static_cast<size_t>(n),'\0');
+    if(!WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),out.data(),n,nullptr,nullptr))
+        return "Installer error";
+    return out;
+}
+std::wstring Wide(const std::string& value) {
+    if(value.empty())return L"Installation failed.";
+    int n=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),nullptr,0);
+    if(!n)return L"Installation failed.";
+    std::wstring out(static_cast<size_t>(n),L'\0');
+    if(!MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,value.data(),static_cast<int>(value.size()),out.data(),n))
+        return L"Installation failed.";
+    return out;
+}
+[[noreturn]] void Fail(const std::wstring& m){throw std::runtime_error(Utf8(m));}
 [[noreturn]] void FailWin(const std::wstring& where,DWORD e=GetLastError()){MessageBoxW(nullptr,(where+L": "+WinError(e)).c_str(),L"RPi5 Wi-Fi Setup",MB_ICONERROR);ExitProcess(2);}
 std::wstring Known(REFKNOWNFOLDERID id) {
     PWSTR p=nullptr;if(FAILED(SHGetKnownFolderPath(id,KF_FLAG_DEFAULT,nullptr,&p)))Fail(L"Unable to locate Windows folder.");
@@ -165,6 +183,6 @@ int APIENTRY wWinMain(HINSTANCE,HINSTANCE,LPWSTR cmd,int) {
         MessageBoxW(nullptr,message.c_str(),L"RPi5 Wi-Fi Setup",MB_OK|MB_ICONINFORMATION);
         return 0;
     }catch(const std::exception&e){
-        std::string what=e.what();std::wstring m(what.begin(),what.end());MessageBoxW(nullptr,m.c_str(),L"RPi5 Wi-Fi Setup",MB_ICONERROR);return 2;
+        std::wstring m=Wide(e.what());MessageBoxW(nullptr,m.c_str(),L"RPi5 Wi-Fi Setup",MB_ICONERROR);return 2;
     }catch(...){MessageBoxW(nullptr,L"Installation failed.",L"RPi5 Wi-Fi Setup",MB_ICONERROR);return 2;}
 }
