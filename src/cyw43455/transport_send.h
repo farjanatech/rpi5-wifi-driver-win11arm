@@ -2,7 +2,7 @@
 /* Actual SDPCM sender, shared with the mocked transport integration tests. */
 static NTSTATUS CywSendFrameCore(PRPI5CYW_ADAPTER A, UCHAR Channel,
     PUCHAR Data, ULONG Length, BOOLEAN ServiceData, BOOLEAN WantSecond,
-    PBOOLEAN PermitSecond)
+    BOOLEAN * PermitSecond)
 {
     CYW_NETWORK *N=A->Network;
     ULONG header=A->TxGlomEnabled?20u:12u;
@@ -138,7 +138,7 @@ static NTSTATUS CywSendFrame(PRPI5CYW_ADAPTER A, UCHAR Channel, PUCHAR Data, ULO
 
 #if RPI5CYW_TX_SERVICE_BURST2
 static NTSTATUS CywSendDataBurstStart(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Length,
-    BOOLEAN WantSecond,PBOOLEAN PermitSecond)
+    BOOLEAN WantSecond,BOOLEAN * PermitSecond)
 {
     return CywSendFrameCore(A,2,Data,Length,TRUE,WantSecond,PermitSecond);
 }
