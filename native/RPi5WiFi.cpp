@@ -155,6 +155,7 @@ void DoConnect() {
             Driver d;ConnectNetwork(d,country,ssid,pmk,[&](const std::wstring&m){r.message=m;});
             SecureZeroMemory(pmk.data(),pmk.size());r.message=L"Connected and authenticated.";
         });
+        SecureZeroMemory(pmk.data(),pmk.size());
     }catch(const std::exception&e){MessageBoxW(g.hwnd,WidenError(e).c_str(),L"RPi5 Wi-Fi",MB_ICONWARNING);}
 }
 void DoDisconnect() {
@@ -241,7 +242,14 @@ LRESULT CALLBACK WndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         }return 0;
     case WM_NOTIFY:{
         auto* h=reinterpret_cast<NMHDR*>(lp);
-        if((h->idFrom==IDC_NETWORKS||h->idFrom==IDC_PROFILES)&&h->code==LVN_ITEMCHANGED)ApplySelectionHint();
+        if(h->code==LVN_ITEMCHANGED) {
+            auto* change=reinterpret_cast<NMLISTVIEW*>(lp);
+            if((change->uNewState&LVIS_SELECTED) && !(change->uOldState&LVIS_SELECTED)) {
+                if(h->idFrom==IDC_NETWORKS) ListView_SetItemState(g.profiles,-1,0,LVIS_SELECTED|LVIS_FOCUSED);
+                else if(h->idFrom==IDC_PROFILES) ListView_SetItemState(g.networks,-1,0,LVIS_SELECTED|LVIS_FOCUSED);
+            }
+            if(h->idFrom==IDC_NETWORKS||h->idFrom==IDC_PROFILES)ApplySelectionHint();
+        }
         return 0;}
     case WM_APP_DONE:{
         std::unique_ptr<AsyncResult> r(reinterpret_cast<AsyncResult*>(lp));SetBusy(false);

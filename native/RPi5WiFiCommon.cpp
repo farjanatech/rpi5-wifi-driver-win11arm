@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <memory>
 #include <stdexcept>
 #include <thread>
 
@@ -449,10 +450,17 @@ int RunAutoConnect(){
     try{
         ProfileDb db=ProfileStore::Load();
         bool any=false;for(const auto&p:db.profiles)if(p.autoConnect){any=true;break;}if(!any)return 0;
-        Driver driver;LiveState live=WaitForIdleOrConnected(driver,300000);
+        std::unique_ptr<Driver> driver;
+        ULONGLONG openStart=GetTickCount64();
+        while(!driver && GetTickCount64()-openStart<300000) {
+            try { driver=std::make_unique<Driver>(); }
+            catch(...) { Sleep(1000); }
+        }
+        if(!driver)return 2;
+        LiveState live=WaitForIdleOrConnected(*driver,300000);
         if(live.authenticated)return 0;
         std::wstring country=Utf8ToWide(db.country);
-        ScanReport report=ScanNetworks(driver,country);
+        ScanReport report=ScanNetworks(*driver,country);
         const Profile* best=nullptr;int bestRssi=-1000;
         for(const auto&n:report.networks){
             if(!n.supported)continue;
@@ -461,7 +469,7 @@ int RunAutoConnect(){
         }
         if(!best)return 0;
         auto pmk=UnprotectPmk(best->protectedPmk);
-        ConnectNetwork(driver,country,best->ssidUtf8,pmk);
+        ConnectNetwork(*driver,country,best->ssidUtf8,pmk);
         SecureZeroMemory(pmk.data(),pmk.size());
         if(Profile* p=ProfileStore::Find(db,best->ssidUtf8)){p->lastUsed=NowFileTime();ProfileStore::Save(db);}
         return 0;
