@@ -67,6 +67,53 @@ static NTSTATUS CywTxTransferPair(PRPI5CYW_ADAPTER adapter,
 static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length);
 #if RPI5CYW_TX_SERVICE_BURST4
 static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,
+    ULONG wantFrames,PULONG permitFollowing);
+static NTSTATUS CywTxTransferBurstReuse(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,ULONG position);
+#endif
+static void NdisMSendNetBufferListsComplete(NDIS_HANDLE handle,PNET_BUFFER_LIST nbl,ULONG flags);
+#include "../src/cyw43455/tx_queue.h"
+/* Production pressure wrapper around the ACTUAL queue/pump. The network-state
+ * gate is exercised separately by tx_retry_gate_tests.c; this fixture models
+ * its queue/credit inputs and cancellation/flow changes during a transfer. */
+static ULONG PressureBlocked;
+static BOOLEAN CywTxPressureEligible(PRPI5CYW_ADAPTER A,ULONG Threshold)
+{
+    KIRQL irql;BOOLEAN eligible;(void)A;
+    KeAcquireSpinLock(&TestQueue.Lock,&irql);
+    eligible=(BOOLEAN)(!PressureBlocked && Credits && TestQueue.Count &&
+        TestQueue.Frames>=Threshold && TestQueue.Gate==NDIS_STATUS_SUCCESS);
+    KeReleaseSpinLock(&TestQueue.Lock,irql);return eligible;
+}
+static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG Sent)
+{return CywTxPump(A,Q,Budget,Sent);}
+#include "../src/cyw43455/tx_pressure_pump.h"
+static NTSTATUS CywTxTransfer(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length)
+{
+    (void)adapter;CHECK(!Locks);
+    if(CheckImmediateBoundary)CHECK(CompletionNbls==TransferCalls);
+    TransferCalls++;
+    CHECK(length>=18 && length<=1518 && data[0]==0x20 && !data[1] && !data[2] && !data[3]);
+    Clock+=TransferTicks;
+    if(!HookAt || HookAt==TransferCalls) {
+        if(Hook==1)CywTxCancel(&TestQueue,TestQueue.Entries[0].CancelId);
+        if(Hook==2)CywTxSetGate(&TestQueue,NDIS_STATUS_PAUSED);
+        if(Hook==3)CywTxSetGate(&TestQueue,NDIS_STATUS_LOW_POWER_STATE);
+        if(Hook==4) {
+            ProbeCalls++;
+            CHECK(TestQueue.Frames==ExpectedProbeFrames && TestQueue.Bytes==ExpectedProbeBytes);
+            CHECK(TestQueue.Outstanding==CYW_TX_LIMIT && TestQueue.Count==CYW_TX_LIMIT);
+            CHECK(CywTxSubmit(&TestAdapter,&TestQueue,ProbeNbl)==NDIS_STATUS_RESOURCES);
+        }
+        if(Hook==5)CywTxCancel(&TestQueue,CancelCompletedId);
+        if(Hook==6)Clock=0;
+        if(Hook==7)PressureBlocked=1;
+    }
+    if(Busy || (BusyAt && BusyAt==TransferCalls))return STATUS_DEVICE_BUSY;
+    if(FailTransfer || (FailAt && FailAt==TransferCalls))return STATUS_IO_DEVICE_ERROR;
+    CHECK(Credits>0);Credits--;return STATUS_SUCCESS;
+}
+#if RPI5CYW_TX_SERVICE_BURST4
+static NTSTATUS CywTxTransferBurstStart(PRPI5CYW_ADAPTER adapter,PUCHAR data,ULONG length,
     ULONG wantFrames,PULONG permitFollowing)
 {
     NTSTATUS status;ULONG grant=0;
