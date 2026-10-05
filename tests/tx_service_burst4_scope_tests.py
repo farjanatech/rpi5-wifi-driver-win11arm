@@ -115,7 +115,10 @@ static NTSTATUS CywTxTransferBurstReuse(PRPI5CYW_ADAPTER A,PUCHAR Data,ULONG Len
     assert "$script:InstallerVersion = '0.7.1.18'" in installer
     package=(ROOT/"scripts/package-tx-credit.ps1").read_text()
     assert "0.7.1.18 EXPERIMENTAL SERVICE-BURST4" in package
+    assert "Direct experiment baseline: 0.7.1.17 / c9d715760da49ef491b681a1ba5b57e6ef6ef13b" in package
+    assert "Service-Burst4 status amortization: ENABLED, hard cap = 4 ordinary F2 frames" in package
     assert "tx_service_burst4=1" in package and "tx_service_burst_max=4" in package
+    assert "performance_baseline=c9d715760da49ef491b681a1ba5b57e6ef6ef13b" in package
     assert "fixed_port_pio=v0.7.1.17-unchanged" in package
 
     print("PASS: v0.7.1.18 changes only bounded TX Service-Burst4 plus diagnostics/versioning; fixed-port F2, RX, firmware, queue sizes, Glom2, retry/pump policy and frozen utilities remain protected.")

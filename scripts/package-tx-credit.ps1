@@ -13,12 +13,12 @@ $stage=Join-Path $root 'artifacts\rpi5cyw-test-driver'
 @"
 Raspberry Pi 5 CYW43455 Windows 11 ARM64 - 0.7.1.18 EXPERIMENTAL SERVICE-BURST4
 Immediate rollback baseline: 0.7.1.11 / 6ae93623c8767eda050b8c408250d3ec3ce19bfb
-Direct experiment baseline: 0.7.1.15 / 66e0198609913fcc407c595e580e39c83777b60f
+Direct experiment baseline: 0.7.1.17 / c9d715760da49ef491b681a1ba5b57e6ef6ef13b
 Architecture rollback: 0.7.1.9 / 0bc5ed12e9438cd82555d7bc8ae77211aa6f236b
 Rejected threshold-16 experiment: 0.7.1.12 - DO NOT RESTORE
 Earlier post-RX dispatch + bounded fast credit wake mode: $TxCreditScheduling
 Two-frame host TX glom compiled candidate: $TxGlom2
-Two-frame service-status amortization: ENABLED, hard cap = 2 ordinary F2 frames
+Service-Burst4 status amortization: ENABLED, hard cap = 4 ordinary F2 frames
 F2 block PIO: v0.7.1.17 fixed-port implementation UNCHANGED
 
 v0.7.1.17 restored stable download/connection behavior on Raspberry Pi 5
@@ -48,7 +48,7 @@ $receiptPath=Join-Path $stage 'SOURCE_REVISION.txt'
 $receipt=Get-Content -LiteralPath $receiptPath -Raw
 $receipt=$receipt.Replace('driver_version=0.7.1.4',"driver_version=0.7.1.18-experimental-service-burst4`nstable_runtime_baseline=c9d715760da49ef491b681a1ba5b57e6ef6ef13b`ndirect_experiment_baseline=c9d715760da49ef491b681a1ba5b57e6ef6ef13b`ntx_credit_scheduling=$TxCreditScheduling`ntx_glom2=$TxGlom2`ntx_service_burst4=1`ntx_service_burst_max=4`ntx_glom_pressure_threshold=32`nfifo_buffer_pio=0`nfifo_fixed_port_pio=1`nfixed_port_pio=v0.7.1.17-unchanged`nv0_7_1_16_buffer_pio=rejected-hardware`nqualification=fast.com-plus-diagnostics`nall_in_one_utility=0.7.1.14-fix2-unchanged")
 $receipt=$receipt.Replace('performance_branch=better-improvement',"performance_branch=$env:GITHUB_REF_NAME")
-$receipt=$receipt.Replace('performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90','performance_baseline=66e0198609913fcc407c595e580e39c83777b60f')
+$receipt=$receipt.Replace('performance_baseline=16533ac0e7e477f5c604882d8cc82081119e3f90','performance_baseline=c9d715760da49ef491b681a1ba5b57e6ef6ef13b')
 $receipt=$receipt.Replace('measurement_utility_version=0.6.27.1','measurement_utility_version=0.7.1.14-fix2-unchanged')
 $receipt=$receipt.Replace('startup_receipt_compatibility=0.6.27','startup_receipt_compatibility=not-packaged')
 $receipt | Set-Content -LiteralPath $receiptPath -Encoding UTF8
