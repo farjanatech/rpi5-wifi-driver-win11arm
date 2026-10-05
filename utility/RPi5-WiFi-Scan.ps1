@@ -119,4 +119,4 @@ function Invoke-Rpi5ScanControl {
     return ,([Rpi5WifiScanControl]::Call($Code,$InputData))
 }
 if($ScanLibraryOnly){return}
-Write-Output 'This file provides the app scan helpers. Open RPi5-WiFi-App.cmd; no scan was started.'
+Write-Output 'This file provides scan helper functions for diagnostics/compatibility. Use RPi5-WiFi.exe for the current GUI; no scan was started.'
