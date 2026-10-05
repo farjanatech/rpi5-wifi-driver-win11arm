@@ -224,7 +224,7 @@ static BOOLEAN CywTxPairCandidate(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
     now=KeQueryInterruptTime();
     KeAcquireSpinLock(&Q->Lock,&irql);
     if(Q->Gate==NDIS_STATUS_SUCCESS && Q->Count>=2 &&
-       (Q->BacklogCount!=0 || Q->Frames>=32) &&
+       (Q->BacklogCount!=0 || Q->Frames>=RPI5CYW_TX_GLOM_PRESSURE_THRESHOLD) &&
        Q->Entries[0].Frames==1 && Q->Entries[0].HeldFrames==1 &&
        Q->Entries[1].Frames==1 && Q->Entries[1].HeldFrames==1 &&
        Q->Entries[0].Next && Q->Entries[1].Next &&
