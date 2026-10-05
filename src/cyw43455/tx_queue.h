@@ -196,6 +196,22 @@ static NDIS_STATUS CywTxAbortStatus(CYW_TX_STATE *Q,CYW_PENDING_SEND *Item,ULONG
     if(Now-Item->Submitted>=CYW_TX_MAX_AGE)return NDIS_STATUS_FAILURE;
     return NDIS_STATUS_SUCCESS;
 }
+#if RPI5CYW_TX_SERVICE_BURST2
+/* Ask for a two-credit service grant only when this same pump has room to
+ * consume a second frame. Remaining frame counts, unlike retained admission
+ * counts, reflect partially transmitted multi-NB NBLs. */
+static BOOLEAN CywTxSecondFramePending(CYW_TX_STATE *Q,ULONG Remaining)
+{
+    KIRQL irql;BOOLEAN eligible=FALSE;
+    if(Remaining<2)return FALSE;
+    KeAcquireSpinLock(&Q->Lock,&irql);
+    if(Q->Gate==NDIS_STATUS_SUCCESS && Q->Count &&
+       (Q->Entries[0].Frames>=2 || Q->Count>=2))eligible=TRUE;
+    KeReleaseSpinLock(&Q->Lock,irql);
+    return eligible;
+}
+#endif
+
 #if RPI5CYW_TX_GLOM2
 /* Glom only under real queue pressure, only for two independent one-frame
  * NBLs, and only while the cached state already shows two usable credits.
@@ -241,6 +257,9 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
     ULONG i,len;ULONG64 now;KIRQL irql;PUCHAR data;PNET_BUFFER nb;
     PNET_BUFFER_LIST nbl;NDIS_STATUS completion=NDIS_STATUS_SUCCESS;NTSTATUS status;
     BOOLEAN active;
+#if RPI5CYW_TX_SERVICE_BURST2
+    BOOLEAN serviceSecond=FALSE,wantSecond,useServiceSecond;
+#endif
 #if RPI5CYW_TX_GLOM2
     ULONG len2;PUCHAR data2;PNET_BUFFER nb2;PNET_BUFFER_LIST nbl2;
     NDIS_STATUS completion2;
@@ -288,7 +307,11 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
         KeReleaseSpinLock(&Q->Lock,irql);
 #if RPI5CYW_TX_GLOM2
         nb2=NULL;
-        if(CywTxPairCandidate(A,Q,Budget-*Sent,&nb,&nb2)) {
+        if(
+#if RPI5CYW_TX_SERVICE_BURST2
+           !serviceSecond &&
+#endif
+           CywTxPairCandidate(A,Q,Budget-*Sent,&nb,&nb2)) {
             len=NET_BUFFER_DATA_LENGTH(nb);len2=NET_BUFFER_DATA_LENGTH(nb2);
             RtlZeroMemory(Q->Frame,4);Q->Frame[0]=0x20;
             RtlZeroMemory(Q->Frame2,4);Q->Frame2[0]=0x20;
@@ -302,6 +325,9 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
                  * No F2 occurred, so safely fall through to the proven
                  * one-frame sender rather than wasting an available credit. */
                 if(status!=STATUS_DEVICE_BUSY) {
+#if RPI5CYW_TX_SERVICE_BURST2
+                    serviceSecond=FALSE;
+#endif
                     KeAcquireSpinLock(&Q->Lock,&irql);nbl=nbl2=NULL;
                     completion=CywTxAbortStatus(Q,&Q->Entries[0],KeQueryInterruptTime());
                     completion2=CywTxAbortStatus(Q,&Q->Entries[1],KeQueryInterruptTime());
@@ -325,13 +351,36 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
             }
         }
 #endif
-        if(!CywTxCanTransfer(A)) {A->TxCreditWaits++;break;}
+        if(!CywTxCanTransfer(A)) {
+#if RPI5CYW_TX_SERVICE_BURST2
+            serviceSecond=FALSE;
+#endif
+            A->TxCreditWaits++;break;
+        }
         len=NET_BUFFER_DATA_LENGTH(nb);
         RtlZeroMemory(Q->Frame,4);Q->Frame[0]=0x20;
+#if RPI5CYW_TX_SERVICE_BURST2
+        useServiceSecond=serviceSecond;serviceSecond=FALSE;
+#endif
         data=NdisGetDataBuffer(nb,len,Q->Frame+4,1,0);
         if(data && data!=Q->Frame+4)RtlCopyMemory(Q->Frame+4,data,len);
+#if RPI5CYW_TX_SERVICE_BURST2
+        if(data) {
+            if(useServiceSecond)status=CywTxTransferBurstSecond(A,Q->Frame,len+4);
+            else {
+                wantSecond=CywTxSecondFramePending(Q,Budget-*Sent);
+                status=CywTxTransferBurstStart(A,Q->Frame,len+4,wantSecond,&serviceSecond);
+            }
+        } else status=STATUS_INSUFFICIENT_RESOURCES;
+#else
         status=data?CywTxTransfer(A,Q->Frame,len+4):STATUS_INSUFFICIENT_RESOURCES;
-        if(status==STATUS_DEVICE_BUSY) {A->TxCreditWaits++;break;}
+#endif
+        if(status==STATUS_DEVICE_BUSY) {
+#if RPI5CYW_TX_SERVICE_BURST2
+            serviceSecond=FALSE;
+#endif
+            A->TxCreditWaits++;break;
+        }
         /* Head cannot be removed by submission/cancellation while the worker
          * is in SDIO. Observe cancellation/pause again before completing. */
         KeAcquireSpinLock(&Q->Lock,&irql);nbl=NULL;
@@ -347,8 +396,18 @@ static NTSTATUS CywTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,ULONG Budget,PULONG
         if(completion!=NDIS_STATUS_SUCCESS || !Q->Entries[0].Frames)nbl=CywTxRemove(A,Q,0,completion);
         KeReleaseSpinLock(&Q->Lock,irql);
         if(nbl)CywTxComplete(A,Q,nbl,completion);
-        if(!NT_SUCCESS(status) && data)return status; /* Bus fault: fail rest in worker exit. */
-        if(!data)break; /* Mapping failure is per-NBL, not a radio failure. */
+        if(!NT_SUCCESS(status) && data) {
+#if RPI5CYW_TX_SERVICE_BURST2
+            serviceSecond=FALSE;
+#endif
+            return status; /* Bus fault: fail rest in worker exit. */
+        }
+        if(!data) {
+#if RPI5CYW_TX_SERVICE_BURST2
+            serviceSecond=FALSE;
+#endif
+            break; /* Mapping failure is per-NBL, not a radio failure. */
+        }
     }
     return STATUS_SUCCESS;
 }
