@@ -21,10 +21,25 @@ $files = @{
     'utility\Check-RPi5-WiFi-Readiness.cmd'='Check-RPi5-WiFi-Readiness.cmd'
     'diagnostics\Collect-RPi5-WiFi-Diagnostics.ps1'='Collect-RPi5-WiFi-Diagnostics.ps1'
     'diagnostics\Run-RPi5-WiFi-Diagnostics.cmd'='Run-RPi5-WiFi-Diagnostics.cmd'
-    'docs\PERFORMANCE-0.6.27.1.md'='README.md'
     'LICENSE'='LICENSE'
 }
 foreach ($file in $files.Keys) { Copy-Item -LiteralPath (Join-Path $root $file) -Destination (Join-Path $stage $files[$file]) }
+@"
+# Raspberry Pi 5 Wi-Fi performance utility
+
+This package contains the standalone measurement/diagnostics utility only. It
+does not install or modify the Wi-Fi driver, UEFI, BCD, Test Signing or network
+settings.
+
+For the current driver release, use the hardware-tested v0.7.1.20 build on
+main. Run the utility on the Raspberry Pi 5 under the same AP/band/location when
+comparing performance, and collect diagnostics before rebooting if a failure
+occurs.
+
+The current release reference is approximately 80 Mbps download / 80 Mbps
+upload on the validated setup. Internet endpoints can return HTTP errors that
+are external to the driver; interpret them together with driver diagnostics.
+"@ | Set-Content -LiteralPath (Join-Path $stage 'README.md') -Encoding UTF8
 @"
 utility_version=0.6.27.1
 recommended_installed_driver=exp0.6.27
