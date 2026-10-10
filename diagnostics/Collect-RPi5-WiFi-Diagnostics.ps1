@@ -154,8 +154,8 @@ function Get-Rpi5SetupApiExcerpt {
     param([Parameter(Mandatory=$true)][string]$Path)
     if (-not (Test-Path -LiteralPath $Path)) { return 'SetupAPI device log was not found.' }
 
-    $setupMatches = Select-String -LiteralPath $Path -Pattern 'RPI0011|rpi5cyw|CYW43455|Direct SDIO' -Context 10,18 -ErrorAction SilentlyContinue
-    if (-not $setupMatches) { return 'No RPI0011/rpi5cyw entries were found in SetupAPI device log.' }
+    $setupMatches = Select-String -LiteralPath $Path -Pattern 'RPI1060|rpi5cyw|CYW43455|Direct SDIO' -Context 10,18 -ErrorAction SilentlyContinue
+    if (-not $setupMatches) { return 'No RPI1060/rpi5cyw entries were found in SetupAPI device log.' }
     return (($setupMatches | Select-Object -Last 40 | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine)
 }
 
@@ -214,9 +214,9 @@ function Invoke-Rpi5WiFiDiagnostic {
         $testSigning = if ($bootText -match '(?im)^\s*testsigning\s+Yes\s*$') { 'Enabled' } else { 'Disabled or not reported' }
         $secureBoot = Get-Rpi5SecureBootState
         $architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
-        $targetDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI0011'
-        $fanDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI000F'
-        $temperatureDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI0010'
+        $targetDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI1060'
+        $irqDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI0011'
+        $boardDevice = Get-Rpi5DeviceByAcpiId -AcpiId 'RPI1025'
         $diagKey = 'HKLM:\SOFTWARE\Rpi5CywDirectDiag'
         $diag = if (Test-Path -LiteralPath $diagKey) { Get-ItemProperty -LiteralPath $diagKey -ErrorAction SilentlyContinue } else { $null }
         $stage = Get-Rpi5PropertyValue -Object $diag -Name 'Stage'
@@ -237,10 +237,10 @@ function Invoke-Rpi5WiFiDiagnostic {
             "OSArchitecture=$architecture"
             "SecureBoot=$secureBoot"
             "TestSigning=$testSigning"
-            "ACPI_RPI0011=$([bool]$targetDevice)"
-            "RPI0011_Status=$(Get-Rpi5PropertyValue -Object $targetDevice -Name 'Status' -Default '<not found>')"
-            "Fan_ACPI_RPI000F=$([bool]$fanDevice)"
-            "Temperature_ACPI_RPI0010=$([bool]$temperatureDevice)"
+            "ACPI_RPI1060=$([bool]$targetDevice)"
+            "RPI1060_Status=$(Get-Rpi5PropertyValue -Object $targetDevice -Name 'Status' -Default '<not found>')"
+            "RP1_IRQ_ACPI_RPI0011=$([bool]$irqDevice)"
+            "Board_ACPI_RPI1025=$([bool]$boardDevice)"
             "DriverDiagnosticsPresent=$([bool]$diag)"
             "Stage=$stage"
             "DriverService=$serviceStatus"
@@ -284,7 +284,7 @@ function Invoke-Rpi5WiFiDiagnostic {
             $bootText
         }
         Write-Capture '03-rpi-acpi-devices.txt' {
-            @($fanDevice, $temperatureDevice, $targetDevice) |
+            @($irqDevice, $boardDevice, $targetDevice) |
                 Where-Object { $null -ne $_ } |
                 Format-List Status,Class,FriendlyName,InstanceId,Problem,ConfigManagerErrorCode,DiscoverySource
         }
@@ -294,7 +294,7 @@ function Invoke-Rpi5WiFiDiagnostic {
                 Get-PnpDeviceProperty -InstanceId $targetDevice.InstanceId -ErrorAction SilentlyContinue |
                     Sort-Object KeyName | Format-Table KeyName,Type,Data -AutoSize
             } else {
-                'ACPI\RPI0011 was not found. The matching experimental UEFI may not be active.'
+                'ACPI\RPI1060 was not found. The matching experimental UEFI may not be active.'
             }
         }
         Write-Capture '05-driver-registry.txt' {
@@ -434,13 +434,13 @@ function Invoke-Rpi5WiFiDiagnostic {
         }
         Write-Capture '08-installed-driver.txt' {
             Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
-                Where-Object { $_.DeviceID -match 'RPI0011' -or $_.DriverName -match 'rpi5cyw' -or $_.DeviceName -match 'CYW43455|Direct SDIO' } |
+                Where-Object { $_.DeviceID -match 'RPI1060' -or $_.DriverName -match 'rpi5cyw' -or $_.DeviceName -match 'CYW43455|Direct SDIO' } |
                 Format-List DeviceName,DeviceID,DriverName,DriverVersion,DriverProviderName,InfName,IsSigned,Signer
             pnputil.exe /enum-drivers /class Net
         }
         Write-Capture '09-network-adapter.txt' {
             Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue |
-                Where-Object { $_.PnPDeviceID -match 'RPI0011' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' } |
+                Where-Object { $_.PnPDeviceID -match 'RPI1060' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' } |
                 Format-List Name,InterfaceDescription,Status,LinkSpeed,MediaConnectionState,DriverInformation,DriverFileName,PnPDeviceID
         }
         Write-Capture '16-ip-routing-dns.txt' {
@@ -450,7 +450,7 @@ function Invoke-Rpi5WiFiDiagnostic {
                 Sort-Object InterfaceIndex,DestinationPrefix |
                 Format-Table InterfaceIndex,DestinationPrefix,NextHop,RouteMetric,State -AutoSize
             $wifiAdapters = @(Get-NetAdapter -IncludeHidden -ErrorAction Stop |
-                Where-Object { $_.PnPDeviceID -match 'RPI0011' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' })
+                Where-Object { $_.PnPDeviceID -match 'RPI1060' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' })
             foreach ($wifiAdapter in $wifiAdapters) {
                 $index = $wifiAdapter.ifIndex
                 Get-NetIPInterface -InterfaceIndex $index -ErrorAction Stop |
@@ -468,7 +468,7 @@ function Invoke-Rpi5WiFiDiagnostic {
             # configuration/route evidence when this optional query fails.
             try {
                 Get-NetAdapter -IncludeHidden -ErrorAction Stop |
-                    Where-Object { $_.PnPDeviceID -match 'RPI0011' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' } |
+                    Where-Object { $_.PnPDeviceID -match 'RPI1060' -or $_.InterfaceDescription -match 'CYW43455|Direct SDIO' } |
                     ForEach-Object { Get-NetAdapterStatistics -Name $_.Name -ErrorAction Stop } |
                     Format-List *
             } catch {
@@ -498,7 +498,7 @@ function Invoke-Rpi5WiFiDiagnostic {
             $start = (Get-Date).AddHours(-24)
             Get-WinEvent -FilterHashtable @{ LogName='System'; StartTime=$start } -ErrorAction SilentlyContinue |
                 Where-Object {
-                    $_.Message -match 'RPI0011|rpi5cyw|CYW43455|Direct SDIO' -or
+                    $_.Message -match 'RPI1060|rpi5cyw|CYW43455|Direct SDIO' -or
                     ($_.ProviderName -match 'Kernel-PnP|NDIS|Service Control Manager|ACPI' -and $_.Level -le 3)
                 } |
                 Select-Object -First 300 TimeCreated,Id,LevelDisplayName,ProviderName,Message |
@@ -507,7 +507,7 @@ function Invoke-Rpi5WiFiDiagnostic {
         Write-Capture '13-problem-devices.txt' {
             Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
                 Where-Object {
-                    ($_.InstanceId -match '^ACPI\\RPI0011(?:\\|$)' -or $_.FriendlyName -match 'CYW43455|Direct SDIO') -and
+                    ($_.InstanceId -match '^ACPI\\RPI1060(?:\\|$)' -or $_.FriendlyName -match 'CYW43455|Direct SDIO') -and
                     ($_.Status -ne 'OK' -or $_.Problem -ne 0)
                 } | Format-List *
         }
@@ -542,7 +542,7 @@ Utility=RPi5 Wi-Fi One-Click Diagnostics
 Version=$script:UtilityVersion
 Mode=Read-only system inspection
 Source=https://github.com/farjanatech/rpi5-wifi-driver-win11arm
-ExpectedACPI=ACPI\RPI0011
+ExpectedACPI=ACPI\RPI1060
 "@ | Set-Content -LiteralPath (Join-Path $work 'UTILITY-INFO.txt') -Encoding UTF8
 
         Get-ChildItem -LiteralPath $work -File | Sort-Object Name | ForEach-Object {

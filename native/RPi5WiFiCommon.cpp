@@ -1,4 +1,5 @@
 #include "RPi5WiFiCommon.h"
+#include "RPi5WiFiPlatform.h"
 
 #include <bcrypt.h>
 #include <cryptuiapi.h>
@@ -290,6 +291,8 @@ std::vector<uint8_t> BuildScanRequest(const std::wstring& country) {
 }
 
 Driver::Driver() {
+    auto reason=DriverBlockReason(QueryPlatform());
+    if(!reason.empty())throw std::runtime_error(WideToUtf8(reason));
     handle_=CreateFileW(kDevicePath,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,
         nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(handle_==INVALID_HANDLE_VALUE) ThrowWin32("Open RPi5 Wi-Fi driver");

@@ -16,7 +16,7 @@ It only creates temporary text reports and the final ZIP.
 
 It can be run before or after installing the experimental driver. It collects:
 - Windows, firmware, ARM64 and boot-security state;
-- ACPI RPI0011 Wi-Fi, RPI000F fan and RPI0010 temperature device state;
+- ACPI RPI1060 Wi-Fi, RPI0011 RP1 IRQ and RPI1025 board device state;
 - direct-SDIO probe stages, commands, responses and controller diagnostics;
 - fresh CMD53 chip-read results, bounded core inventory and restoration status;
 - each bounded CMD5 query and voltage-request attempt at 400, 200 and 100 kHz,

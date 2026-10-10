@@ -51,7 +51,7 @@ if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrat
 $lease=$null; $readiness=$null; $directory=$null
 try {
     if([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.InteropServices.Architecture]::Arm64 -or
-        -not @(Get-CimInstance Win32_PnPEntity | Where-Object PNPDeviceID -like 'ACPI\RPI0011\*').Count) {
+        -not @(Get-CimInstance Win32_PnPEntity | Where-Object PNPDeviceID -like 'ACPI\RPI1060\*').Count) {
         throw 'Run this readiness check on the Raspberry Pi 5, not the development PC.'
     }
     $lease=Enter-Rpi5Operation

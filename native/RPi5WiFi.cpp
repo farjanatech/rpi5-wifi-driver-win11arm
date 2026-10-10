@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "RPi5WiFiCommon.h"
+#include "RPi5WiFiPlatform.h"
 #include "resource.h"
 
 #pragma comment(lib, "comctl32.lib")
@@ -333,7 +334,7 @@ int APIENTRY wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR cmd,int show) {
     wc.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(IDI_APP));wc.hIconSm=wc.hIcon;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
     if(!RegisterClassExW(&wc))return 1;
-    HWND hwnd=CreateWindowExW(0,wc.lpszClassName,L"RPi5 Wi-Fi",WS_OVERLAPPEDWINDOW&~WS_MAXIMIZEBOX,
+    HWND hwnd=CreateWindowExW(0,wc.lpszClassName,kWindowTitle,WS_OVERLAPPEDWINDOW&~WS_MAXIMIZEBOX,
         CW_USEDEFAULT,CW_USEDEFAULT,940,790,nullptr,nullptr,instance,nullptr);
     if(!hwnd)return 2;ShowWindow(hwnd,show);UpdateWindow(hwnd);
     MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);

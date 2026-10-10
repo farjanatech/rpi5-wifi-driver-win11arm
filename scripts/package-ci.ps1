@@ -82,7 +82,7 @@ Workflow run:  $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:G
 
 Source branch: better-improvement
 Protected hardware baseline: 16533ac0e7e477f5c604882d8cc82081119e3f90
-Architecture: ACPI\\RPI0011 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
+Architecture: ACPI\\RPI1060 -> NDIS Ethernet miniport -> direct SDHCI -> CYW43455
 
 New: persistent disconnect/power/lifecycle diagnostics only. Firmware DEAUTH,
 DISASSOC and LINK-down events, NDIS D0-D3, Pause/Restart, explicit disconnect,
@@ -111,7 +111,7 @@ timing_default=worker-only; detailed command and receive-indication clocks disab
 driver_commit=$env:GITHUB_SHA
 workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 reactos_reference=9130f67a8e8c759da5acbbfe613f776b07b21698
-matching_acpi_id=ACPI\\RPI0011
+matching_acpi_id=ACPI\\RPI1060
 uefi_policy=capability-based; no fixed firmware revision
 "@ | Set-Content (Join-Path $stage 'SOURCE_REVISION.txt') -Encoding UTF8
 
@@ -130,10 +130,10 @@ $sys = Join-Path $dir 'rpi5cyw.sys'
 $cat = Join-Path $dir 'rpi5cyw.cat'
 
 $device = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
-    Where-Object { $_.InstanceId -match '^ACPI\\RPI0011(?:\\|$)' } |
+    Where-Object { $_.InstanceId -match '^ACPI\\RPI1060(?:\\|$)' } |
     Select-Object -First 1
 if (-not $device) {
-    throw 'ACPI\\RPI0011 was not found. This firmware does not expose the direct-SDIO target required by the driver.'
+    throw 'ACPI\\RPI1060 was not found. This firmware does not expose the direct-SDIO target required by the driver.'
 }
 
 try {
@@ -216,15 +216,15 @@ Capture 'windows.txt' { Get-ComputerInfo | Format-List WindowsProductName,Window
 Capture 'bcdedit.txt' { bcdedit /enum '{current}' }
 Capture 'pnp-rpi5wifi.txt' {
     Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
-      Where-Object { $_.InstanceId -match 'RPI0011' -or $_.FriendlyName -match 'CYW43455|Direct SDIO' } |
+      Where-Object { $_.InstanceId -match 'RPI1060' -or $_.FriendlyName -match 'CYW43455|Direct SDIO' } |
       Format-List *
 }
 Capture 'pnp-properties.txt' {
-    $dev = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'RPI0011' } | Select-Object -First 1
+    $dev = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'RPI1060' } | Select-Object -First 1
     if ($dev) {
         $dev | Format-List *
         Get-PnpDeviceProperty -InstanceId $dev.InstanceId -ErrorAction SilentlyContinue | Format-Table KeyName,Type,Data -AutoSize
-    } else { 'ACPI RPI0011 device not found' }
+    } else { 'ACPI RPI1060 device not found' }
 }
 Capture 'service.txt' { sc.exe query rpi5cyw; sc.exe qc rpi5cyw; reg.exe query 'HKLM\SYSTEM\CurrentControlSet\Services\rpi5cyw' /s }
 Capture 'pnputil.txt' { pnputil /enum-devices /connected; pnputil /enum-devices /problem; pnputil /enum-drivers }
@@ -232,7 +232,7 @@ Capture 'netadapters.txt' { Get-NetAdapter -IncludeHidden | Format-List Name,Int
 Capture 'system-events.txt' {
     $start=(Get-Date).AddHours(-6)
     Get-WinEvent -FilterHashtable @{LogName='System';StartTime=$start} -ErrorAction SilentlyContinue |
-      Where-Object { $_.ProviderName -match 'Kernel-PnP|NDIS|Service Control Manager' -or $_.Message -match 'RPI0011|rpi5cyw|CYW43455' } |
+      Where-Object { $_.ProviderName -match 'Kernel-PnP|NDIS|Service Control Manager' -or $_.Message -match 'RPI1060|rpi5cyw|CYW43455' } |
       Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message | Format-List
 }
 $setup = Join-Path $env:windir 'INF\setupapi.dev.log'

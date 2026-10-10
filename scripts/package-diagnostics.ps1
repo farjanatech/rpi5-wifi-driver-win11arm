@@ -22,7 +22,7 @@ repository=$env:GITHUB_REPOSITORY
 commit=$env:GITHUB_SHA
 workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 utility_version=0.6.27
-matching_acpi_id=ACPI\RPI0011
+matching_acpi_id=ACPI\RPI1060
 "@ | Set-Content -LiteralPath (Join-Path $stage 'SOURCE_REVISION.txt') -Encoding UTF8
 
 Get-ChildItem -LiteralPath $stage -File | Sort-Object Name | ForEach-Object {

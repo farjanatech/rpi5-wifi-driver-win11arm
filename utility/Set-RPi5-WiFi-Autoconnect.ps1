@@ -33,7 +33,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 # Never install this SYSTEM task on the development PC.
 if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne [Runtime.InteropServices.Architecture]::Arm64 -or
-    -not @(Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -match '^ACPI\\RPI0011(?:\\|$)' }).Count) {
+    -not @(Get-CimInstance Win32_PnPEntity | Where-Object { $_.PNPDeviceID -match '^ACPI\\RPI1060(?:\\|$)' }).Count) {
     throw 'Run only on the Raspberry Pi 5 with the direct-SDIO device.'
 }
 $taskName = 'RPi5WiFi-AutoConnect'

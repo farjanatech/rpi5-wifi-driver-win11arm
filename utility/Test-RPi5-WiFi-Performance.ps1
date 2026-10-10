@@ -148,7 +148,7 @@ $performanceResult=[pscustomobject]@{Kind='RPi5PerformanceResult';SchemaVersion=
     LoadProbeStatusCounts=@(); DownloadTiming=$null; DiagnosticsCollected=$false; OutputDirectory=$null; ZipPath=$null}
 try {
     if ($env:PROCESSOR_ARCHITECTURE -ne 'ARM64' -or
-        -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI0011\*')) {
+        -not (Get-CimInstance Win32_PnPEntity | Where-Object DeviceID -like 'ACPI\RPI1060\*')) {
         throw 'Run this utility on the Raspberry Pi 5 with the CYW43455 driver, not the development PC.'
     }
     $performanceLease=Enter-Rpi5Operation

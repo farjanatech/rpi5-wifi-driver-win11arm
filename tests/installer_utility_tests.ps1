@@ -26,7 +26,7 @@ foreach ($pattern in $forbidden) {
 }
 
 foreach ($required in @(
-    'ACPI\\RPI0011','Win32_PnPSignedDriver','Test-Rpi5PackageManifest','Get-AuthenticodeSignature',
+    'ACPI\\RPI1060','Win32_PnPEntity','Test-Rpi5PackageManifest','Get-AuthenticodeSignature',
     'certutil.exe -addstore','pnputil.exe /add-driver','RPi5-WiFi-AllInOne.ps1'
 )) {
     if ($source -notmatch [regex]::Escape($required)) { throw "Required safety/install behavior is missing: $required" }
@@ -55,8 +55,8 @@ foreach ($forbiddenFirmwarePin in @('SupportedUefiRevisions','Get-Rpi5Compatible
         throw "Installer still pins a UEFI revision: $forbiddenFirmwarePin"
     }
 }
-if ($source -notmatch [regex]::Escape("Method='Win32_PnPSignedDriver'")) {
-    throw 'Exact ACPI fallback through Win32_PnPSignedDriver is missing.'
+if ($source -match 'Win32_PnPSignedDriver|PresentOnly:\$false') {
+    throw 'Installer must not accept a stale driver-store or non-present ACPI node.'
 }
 foreach ($unknownOrError in @($null, '', 'unknown', 22, 10, 28, 50, 56)) {
     if (Test-Rpi5DeviceEnabled $unknownOrError) { throw 'Unknown/problem device classified as enabled.' }

@@ -57,11 +57,13 @@ def main():
    before=before.replace(
     "Write-Output 'This file provides the app scan helpers. Open RPi5-WiFi-App.cmd; no scan was started.'",
     "Write-Output 'This file provides scan helper functions for diagnostics/compatibility. Use RPi5-WiFi.exe for the current GUI; no scan was started.'")
-  assert actual==before,"Frozen utility changed: "+name
+  if name in {"utility/Check-RPi5-WiFi-Readiness.ps1", "utility/Set-RPi5-WiFi-Autoconnect.ps1", "utility/Test-RPi5-WiFi-Performance.ps1"}:
+   before=before.replace("RPI0011","RPI1060")
+  assert actual==before,"Frozen utility changed beyond Damian hardware ID: "+name
  inf=(ROOT/"package/rpi5cyw.inf").read_text()
- assert re.search(r"(?m)^DriverVer\s*=\s*10/05/2026,0\.7\.1\.20\s*$",inf)
+ assert re.search(r"(?m)^DriverVer\s*=\s*10/10/2026,0\.7\.1\.21\s*$",inf)
  installer=(ROOT/"installer/Install-RPi5-WiFi-Driver.ps1").read_text()
- assert "$script:InstallerVersion = '0.7.1.20'" in installer
+ assert "$script:InstallerVersion = '0.7.1.21-damian.1'" in installer
  package=(ROOT/"scripts/package-tx-credit.ps1").read_text()
  assert "0.7.1.20 STABILITY RECOVERY" in package
  assert "adaptive_tx_hybrid=1" in package

@@ -28,7 +28,7 @@ foreach ($pattern in $forbidden) {
     if ($source -match $pattern) { throw "Forbidden state-changing operation found: $pattern" }
 }
 
-if ($source -notmatch "ACPI\\\\RPI0011") { throw 'Expected RPI0011 collection is missing.' }
+if ($source -notmatch "ACPI\\\\RPI1060") { throw 'Expected RPI1060 collection is missing.' }
 if ($source -notmatch 'Compress-Archive') { throw 'ZIP creation is missing.' }
 foreach ($requiredDiagnostic in @(
     'Cmd5AttemptCount','Cmd5ValidAttempt','Cmd5SuccessAttempt','ResponseValid',

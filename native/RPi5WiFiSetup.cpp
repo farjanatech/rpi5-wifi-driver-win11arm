@@ -12,6 +12,7 @@
 
 #include "resource.h"
 #include "SetupPayloadIds.h"
+#include "RPi5WiFiPlatform.h"
 
 #pragma comment(lib, "newdev.lib")
 #pragma comment(lib, "setupapi.lib")
@@ -57,7 +58,7 @@ std::wstring Wide(const std::string& value) {
     return out;
 }
 [[noreturn]] void Fail(const std::wstring& m){throw std::runtime_error(Utf8(m));}
-[[noreturn]] void FailWin(const std::wstring& where,DWORD e=GetLastError()){MessageBoxW(nullptr,(where+L": "+WinError(e)).c_str(),L"RPi5 Wi-Fi Setup",MB_ICONERROR);ExitProcess(2);}
+[[noreturn]] void FailWin(const std::wstring& where,DWORD e=GetLastError()){MessageBoxW(nullptr,(where+L": "+WinError(e)).c_str(),rpiwifi::kSetupTitle,MB_ICONERROR);ExitProcess(2);}
 std::wstring Known(REFKNOWNFOLDERID id) {
     PWSTR p=nullptr;if(FAILED(SHGetKnownFolderPath(id,KF_FLAG_DEFAULT,nullptr,&p)))Fail(L"Unable to locate Windows folder.");
     std::wstring s(p);CoTaskMemFree(p);return s;
@@ -120,13 +121,8 @@ std::wstring MakeTempDir() {
 bool StageDriver(const std::wstring& inf,bool& reboot) {
     BOOL need=FALSE;
     if(DiInstallDriverW(nullptr,inf.c_str(),0,&need)){reboot=need!=FALSE;return true;}
-    DWORD first=GetLastError();
-    wchar_t published[MAX_PATH]{};DWORD required=0;
-    std::filesystem::path p(inf);
-    if(SetupCopyOEMInfW(inf.c_str(),p.parent_path().c_str(),SPOST_PATH,0,published,MAX_PATH,&required,nullptr)){
-        reboot=false;return true;
-    }
-    SetLastError(first);return false;
+    // Staging an INF after an install failure is not a successful installation.
+    return false;
 }
 
 struct SuccessDialogState { HWND success{}; HFONT titleFont{}; bool done{}; int result{IDNO}; };
@@ -144,7 +140,7 @@ LRESULT CALLBACK SuccessWndProc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp) {
         state->success=CreateWindowExW(0,L"STATIC",L"Installed Successfully",
             WS_CHILD|WS_VISIBLE|SS_CENTER,24,22,432,42,hwnd,reinterpret_cast<HMENU>(4101),GetModuleHandleW(nullptr),nullptr);
         HWND detail=CreateWindowExW(0,L"STATIC",
-            L"RPi5 Wi-Fi driver and Wi-Fi Manager were installed.\r\n"
+            L"Damian Edition Wi-Fi driver and Manager were installed.\r\n"
             L"A Windows restart is required before using the new installation.",
             WS_CHILD|WS_VISIBLE|SS_CENTER,28,76,424,60,hwnd,reinterpret_cast<HMENU>(4102),GetModuleHandleW(nullptr),nullptr);
         HWND now=CreateWindowExW(0,L"BUTTON",L"Restart Now",WS_CHILD|WS_VISIBLE|BS_DEFPUSHBUTTON,
@@ -185,7 +181,7 @@ int ShowSuccessRestartDialog(HINSTANCE instance) {
     wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);
     RegisterClassExW(&wc);
     SuccessDialogState state{};
-    HWND hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME|WS_EX_TOPMOST,wc.lpszClassName,L"RPi5 Wi-Fi Setup",
+    HWND hwnd=CreateWindowExW(WS_EX_DLGMODALFRAME|WS_EX_TOPMOST,wc.lpszClassName,rpiwifi::kSetupTitle,
         WS_CAPTION|WS_SYSMENU,CW_USEDEFAULT,CW_USEDEFAULT,500,235,nullptr,nullptr,instance,&state);
     if(!hwnd)return IDNO;
     ShowWindow(hwnd,SW_SHOW);UpdateWindow(hwnd);
@@ -212,7 +208,11 @@ bool SelfTest() {
         IDR_PAYLOAD_FW,IDR_PAYLOAD_CLM,IDR_PAYLOAD_NVRAM,IDR_PAYLOAD_LICENSE,IDR_PAYLOAD_NOTICES}) {
         auto b=ResourceBytes(id);if(b.empty())return false;
     }
-    return true;
+    auto inf=ResourceBytes(IDR_PAYLOAD_INF);
+    std::string text(inf.begin(),inf.end());
+    return text.find("ACPI\\RPI1060")!=std::string::npos&&
+        text.find("RPI0011")==std::string::npos&&
+        text.find("0.7.1.21")!=std::string::npos;
 }
 
 } // namespace
@@ -221,7 +221,11 @@ int APIENTRY wWinMain(HINSTANCE,HINSTANCE,LPWSTR cmd,int) {
     std::wstring args=cmd?cmd:L"";
     try{
         if(args.find(L"--self-test")!=std::wstring::npos)return SelfTest()?0:10;
-        if(!NativeArm64()){MessageBoxW(nullptr,L"This installer is for Windows ARM64 on Raspberry Pi 5.",L"RPi5 Wi-Fi Setup",MB_ICONERROR);return 3;}
+        if(!NativeArm64()){MessageBoxW(nullptr,L"This installer is for Windows ARM64 on Raspberry Pi 5.",rpiwifi::kSetupTitle,MB_ICONERROR);return 3;}
+
+        if(!SelfTest())Fail(L"The embedded driver package is not the Damian Edition RPI1060 package.");
+        auto blocked=rpiwifi::InstallBlockReason(rpiwifi::QueryPlatform());
+        if(!blocked.empty())Fail(blocked);
 
         std::wstring temp=MakeTempDir();
         for(const auto&p:kDriverPayloads)WriteResource(p.id,temp+L"\\"+p.file);
@@ -243,6 +247,6 @@ int APIENTRY wWinMain(HINSTANCE,HINSTANCE,LPWSTR cmd,int) {
         if(restart==IDYES)RestartWindowsNow();
         return 0;
     }catch(const std::exception&e){
-        std::wstring m=Wide(e.what());MessageBoxW(nullptr,m.c_str(),L"RPi5 Wi-Fi Setup",MB_ICONERROR);return 2;
-    }catch(...){MessageBoxW(nullptr,L"Installation failed.",L"RPi5 Wi-Fi Setup",MB_ICONERROR);return 2;}
+        std::wstring m=Wide(e.what());MessageBoxW(nullptr,m.c_str(),rpiwifi::kSetupTitle,MB_ICONERROR);return 2;
+    }catch(...){MessageBoxW(nullptr,L"Installation failed.",rpiwifi::kSetupTitle,MB_ICONERROR);return 2;}
 }

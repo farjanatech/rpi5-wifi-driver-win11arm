@@ -41,7 +41,7 @@ try {
     $source = Get-Content -LiteralPath $setup -Raw
     foreach ($required in @('S-1-5-18', 'S-1-5-32-544', 'SetAccessRuleProtection',
         '-AtStartup', '-NonInteractive', '-ExecutionTimeLimit', '-MultipleInstances IgnoreNew',
-        'RPI0011', 'Architecture]::Arm64', 'ReparsePoint')) {
+        'RPI1060', 'Architecture]::Arm64', 'ReparsePoint')) {
         if (-not $source.Contains($required)) { throw 'Startup task security/bounds guard missing.' }
     }
     $packager = Get-Content -LiteralPath (Join-Path $root 'scripts\package-ci.ps1') -Raw

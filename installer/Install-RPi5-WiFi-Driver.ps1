@@ -7,7 +7,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $InformationPreference = 'Continue'
-$script:InstallerVersion = '0.7.1.20'
+$script:InstallerVersion = '0.7.1.21-damian.1'
 # Compatibility is capability/resource based, not tied to a UEFI git revision.
 # The installer requires the exact ACPI target; the kernel validates the SDHCI
 # MMIO/resource layout before touching the controller. Interrupt wakeup is
@@ -77,8 +77,8 @@ function Test-Rpi5PackageManifest {
 }
 
 function Get-Rpi5TargetDevice {
-    $hardwarePattern = '^ACPI\\RPI0011(?:\\|$)'
-    $pnp = Get-PnpDevice -PresentOnly:$false -ErrorAction SilentlyContinue |
+    $hardwarePattern = '^ACPI\\RPI1060(?:\\|$)'
+    $pnp = Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
         Where-Object { $_.InstanceId -match $hardwarePattern } |
         Select-Object -First 1
     if ($pnp) {
@@ -86,22 +86,23 @@ function Get-Rpi5TargetDevice {
     }
 
     $entity = Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue |
-        Where-Object { $_.PNPDeviceID -match $hardwarePattern } |
+        Where-Object { $_.Present -eq $true -and $_.PNPDeviceID -match $hardwarePattern } |
         Select-Object -First 1
     if ($entity) {
         return [pscustomobject]@{ Method='Win32_PnPEntity'; InstanceId=$entity.PNPDeviceID; Status=$entity.Status }
     }
 
-    # Some Pi 5 Windows builds expose an unbound ACPI node only through the
-    # signed-driver inventory. Match the exact ACPI target; do not infer
-    # compatibility from a firmware version string.
-    $signedNode = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
-        Where-Object { $_.DeviceID -match $hardwarePattern } |
-        Select-Object -First 1
-    if ($signedNode) {
-        return [pscustomobject]@{ Method='Win32_PnPSignedDriver'; InstanceId=$signedNode.DeviceID; Status='Unbound' }
-    }
+    # Driver-store inventory and non-present nodes cannot prove that the active
+    # firmware has given this driver ownership of SDIO2.
     return $null
+}
+
+function Assert-Rpi5NoLegacyCollision {
+    $conflict = Get-CimInstance Win32_PnPEntity -ErrorAction Stop |
+        Where-Object { $_.Present -eq $true -and $_.PNPDeviceID -match '^ACPI\\RPI0011(?:\\|$)' -and $_.Service -eq 'rpi5cyw' }
+    if ($conflict) {
+        throw 'The legacy Wi-Fi package is bound to Damian RPI0011 (RP1 IRQ). Remove that Wi-Fi package and restore the Damian IRQ driver before installing this edition.'
+    }
 }
 
 function Invoke-Rpi5DriverInstall {
@@ -166,9 +167,10 @@ function Invoke-Rpi5DriverInstall {
             'RPi5-WiFi-AllInOne.ps1','RPi5-WiFi-AllInOne.cmd')
         Write-InstallMessage "Verified $verifiedFiles package files against SHA256SUMS.txt."
 
+        Assert-Rpi5NoLegacyCollision
         $device = Get-Rpi5TargetDevice
         if (-not $device) {
-            throw 'ACPI\RPI0011 was not found through PnP or CIM. Refusing to force-install the driver.'
+            throw 'ACPI\RPI1060 was not found through PnP or CIM. Refusing to force-install the driver.'
         }
         Write-InstallMessage "Compatible ACPI target found: $($device.InstanceId) via $($device.Method), status=$($device.Status)."
         Write-InstallMessage 'UEFI revision is not pinned. The driver will validate the SDHCI MMIO/resource layout; interrupt wakeup may fall back to bounded polling.'

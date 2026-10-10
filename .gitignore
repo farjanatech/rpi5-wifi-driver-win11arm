@@ -19,3 +19,10 @@ obj/
 *.lastbuildstate
 WiFi.private.json
 *.private.json
+
+artifacts/
+packages/
+ci-logs/
+*.obj
+*.exe
+__pycache__/
