@@ -10,7 +10,7 @@ until the Pi owner has tested it. No UEFI update is needed.
 The October 10 capture ending `163551.zip` was collected while disconnected.
 Its SHA-256 is
 `17C98F781C51BEC6265B0F76C027583ABBC817D377C413B86097A481F824935B`.
-All 22 manifest entries verified. The terminal snapshot preceded collection
+All 23 manifest entries verified. The terminal snapshot preceded collection
 by about 22 minutes; this is expected after the packet worker has stopped.
 
 - One worker failed at 1,394.98 seconds of system uptime with
