@@ -1,7 +1,9 @@
 # Link-state correction — 0.7.1.24-damian.4
 
-This candidate fixes a reproduced firmware-event handling defect. It is built
-on a separate `damian-edition/link-stability` branch. `main` remains unchanged.
+This version fixes a reproduced firmware-event handling defect. After release,
+the owner confirmed it is stable on their Raspberry Pi 5 C1 with Windows 11 ARM64
+and requested promotion to `main`. The tested source commit `a268bdb` is now
+included in the default branch; `damian-edition/link-stability` is retained.
 The ARM64 driver, native GUI and embedded setup all identify version 0.7.1.24.
 
 ## Defect and resulting behavior
@@ -50,12 +52,10 @@ contract, and native GUI/setup self-tests. The release BUILD.txt and workflow
 results identify the exact tested commit.
 
 The owner reported immediate fluctuating 5–80 Mbps downloads on 5 GHz and
-repeated disconnects with 0.7.1.23; reconnect works. No capture establishes that
-those drops were PSK_SUP progress events. This is a demonstrated code fix, **not
-a confirmed explanation or hardware-validated cure for every reported symptom**.
-It could prevent interruptions caused by this event path. Sustained speed and
-long-duration Pi stability remain unverified; no additional logs are required
-to use the candidate.
+repeated disconnects with 0.7.1.23, then confirmed that the released .24 version
+is stable. This is user-reported hardware confirmation in addition to the
+automated tests. No capture establishes that the earlier drops were PSK_SUP
+progress events, so the precise cause of those symptoms remains unconfirmed.
 
 ## Scope and installation
 
@@ -71,7 +71,9 @@ standalone GUI does not install the driver correction. Existing saved profiles
 remain compatible. This package binds only `ACPI\RPI1060`; Damian's `RPI0011`
 interrupt provider is preserved. See [installation details](DAMIAN-EDITION.md).
 
-The .23 release remains flagged for the reported problems. Neither this
-candidate nor .23 is promoted to `main` or designated hardware-stable. Earlier
-.21/.22 GitHub release assets were removed by the owner; retained source history
-does not imply that those binaries can still be downloaded.
+The .23 release remains flagged for its reported problems. The .24 source is
+promoted to `main` at the owner's request; no additional driver changes or
+replacement release binaries are part of that promotion. The existing release
+tag and prerelease designation remain unchanged. Earlier .21/.22 GitHub release
+assets were removed by the owner; retained source history does not imply that
+those binaries can still be downloaded.

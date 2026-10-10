@@ -4,13 +4,14 @@ This edition binds the CYW43455 driver to `WFD0 / ACPI\RPI1060` in
 [Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition),
 for Raspberry Pi 5 C1 running Windows 11 ARM64.
 
-This branch contains link-state correction candidate **0.7.1.24-damian.4**.
+The default `main` branch contains **0.7.1.24-damian.4**, which the owner has
+confirmed is stable on their Raspberry Pi 5 C1 with Windows 11 ARM64.
 It fixes a reproduced bug that revoked authorization during WPA key-handshake
 progress. This does not establish the cause of the reported .23 speed
 fluctuations and repeated disconnects. See
 [LINK-STABILITY-UPDATE.md](LINK-STABILITY-UPDATE.md) for evidence and limits.
 The earlier async-diagnostics, TX-refill, warm-reset and recovery-status changes
-remain included. Sustained speed and long-duration Pi stability are unverified.
+remain included. The hardware stability result is user-reported.
 
 ## Required firmware
 
@@ -58,9 +59,11 @@ driver and diagnostic utility; use the setup EXE for the native GUI and boot tas
 
 ## Pi validation
 
-The new correction is verified in host tests. Fresh CI packages retain
-`hardware_validation=pending` because
-CI cannot validate each newly built binary on a physical Pi.
+The owner confirmed stability of the published .24 package after the host tests
+and release. The published binaries and their original build metadata remain
+unchanged. Fresh CI packages retain `hardware_validation=pending` because CI
+cannot validate each newly built binary on a physical Pi. The report does not
+qualify every item in the optional checklist below.
 
 After installation and reboot, record:
 
@@ -85,10 +88,11 @@ Rolling back to v0.7.1.20 requires the original compatible non-Damian firmware.
 
 ## Source and release isolation
 
-The tested 0.7.1.22 source is included in the default `main` branch. Its
-`damian-edition/stability-diagnostics` branch and commit `5786f6a` are retained.
+The tested .24 source, commit `a268bdb`, is included in the default `main` branch.
+Its `damian-edition/link-stability` branch and release tag are retained. The
+promotion adds documentation of the owner's confirmation without changing code.
 The owner removed the earlier .21/.22 release assets; their source history is
-retained. Candidate .24 is isolated on `damian-edition/link-stability`; `main`
-is unchanged. CI restricts the new kernel delta from .23 to link-event handling
+retained. Published .24 binaries and the existing prerelease designation are
+unchanged. CI restricts the new kernel delta from .23 to link-event handling
 and classification, checks the pinned firmware contract, runs native/installer
 and driver regressions, builds ARM64 binaries, and test-signs the new catalog.
