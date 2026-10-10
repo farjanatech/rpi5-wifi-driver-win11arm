@@ -418,7 +418,14 @@ static VOID CywRuntimeRecoveryWork(PVOID Context,NDIS_HANDLE WorkItem)
     if(NT_SUCCESS(status))status=CywNetworkPower(A,TRUE);
     A->RuntimeRecoveryLastStatus=status;
     if(NT_SUCCESS(status))A->RuntimeRecoveryRestarts++;
-    else A->RuntimeRecoveryFailures++;
+    else {
+        A->RuntimeRecoveryFailures++;
+        /* Queueing recovery publishes phase 400 with STATUS_SUCCESS. If
+         * probe/thread creation fails, no new worker exists to replace it.
+         * Surface that terminal error instead of leaving an endless startup.
+         * On success, preserve any status already set by the new worker. */
+        A->NetworkStatus=status;
+    }
     A->RuntimeRecoveryInProgress=0;
     Rpi5CywWriteDiagnostics(A,120,status);
     ExFreePoolWithTag(work,RPI5CYW_TAG);
