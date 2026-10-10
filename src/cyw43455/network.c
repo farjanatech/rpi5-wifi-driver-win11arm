@@ -13,6 +13,8 @@
 #include "rx_performance.h"
 #include "stability_diag.h"
 #include "runtime_recovery.h"
+#include "../driver/diag_snapshot.h"
+#include "diagnostics_worker.h"
 /* TIMING-BEGIN */
 #include "../driver/timing_clock.h"
 /* TIMING-END */
@@ -44,6 +46,7 @@ struct _CYW_NETWORK {
     ULONG ScanEventStatus;
     CYW_CONNECT_REQUEST Connect;
     CYW_TX_STATE Sends;
+    CYW_DIAGNOSTICS_WORKER *Diagnostics;
     UCHAR TxSeq, TxMax, TxFlow;
     USHORT RequestId;
     NDIS_HANDLE RxPool;
@@ -347,13 +350,19 @@ static BOOLEAN CywBandRequestPending(PRPI5CYW_ADAPTER A)
 /* TIMING-BEGIN */
 static VOID CywMeasuredDiagnostics(PRPI5CYW_ADAPTER A,ULONG Stage,NTSTATUS Status)
 {
+    CYW_DIAGNOSTICS_WORKER *D=A->Network->Diagnostics;
+    CYW_DIAG_BUFFER *buffer;
     CYW_TIMING_U64 Start=CywTimingBegin(&A->Timing);
-    Rpi5CywWriteDiagnostics(A,Stage,Status);
-    Rpi5CywWriteTimingDiagnostics(A);
-/* TX-CREDIT-DIAG-BEGIN */
-    CywTxDiagWrite(A);
-/* TX-CREDIT-DIAG-END */
+    /* Never fall back to synchronous registry I/O on the packet worker. */
+    if(!D || !(buffer=CywDiagBegin(&D->Mailbox))) {
+        A->DiagCaptureSkipped++;return;
+    }
+    Rpi5CywCaptureDiagnostics(A,Stage,Status,buffer);
     CywTimingEnd(&A->Timing,CywTimeDiagnostics,Start);
+    Rpi5CywCaptureTimingDiagnostics(A,buffer);
+    CywTxDiagCapture(A,buffer);
+    if(buffer->Failed)A->DiagCaptureOverflow++;
+    CywDiagPublish(&D->Mailbox);KeSetEvent(&D->Wake,0,FALSE);
 }
 static NTSTATUS CywMeasuredTxPump(PRPI5CYW_ADAPTER A,CYW_TX_STATE *S,ULONG Budget,PULONG Sent)
 {
@@ -472,6 +481,10 @@ static VOID CywWorker(PVOID Context)
     if(NT_SUCCESS(Status) && !N->Stop)Status=CywConfigure(A);
     if(!NT_SUCCESS(Status))goto Failed;
     if(N->Stop)goto Exit;
+    N->Diagnostics=CywDiagnosticsStart(A);
+    /* Startup failure is observable, but optional diagnostics cannot prevent
+     * networking or turn into synchronous I/O on the packet path. */
+    if(!N->Diagnostics)Rpi5CywWriteDiagnostics(A,120,STATUS_SUCCESS);
     N->Ready=TRUE;runtimeReady=TRUE;A->NetworkStatus=STATUS_SUCCESS;
     Rpi5CywInterruptRearm(A,FALSE,FALSE);
 /* TIMING-BEGIN */
@@ -653,7 +666,10 @@ Failed:
         (unsigned)N->Paused,A->RuntimeRecoveryAttempts,(long)Status,A->FifoTransportFailed);
     A->NetworkStatus=Status;N->Ready=FALSE;
     N->Associated=N->Authorized=FALSE;CywLink(A,FALSE);
-    CywMeasuredDiagnostics(A,120,Status);
+    /* Startup may fail before the optional exporter exists. The link is
+     * down here, so preserve failure evidence using the startup writer. */
+    if(N->Diagnostics)CywMeasuredDiagnostics(A,120,Status);
+    else Rpi5CywWriteDiagnostics(A,120,Status);
     CywFirmwareStop(A);
     if(queueRecovery)(VOID)CywQueueRuntimeRecovery(A,Status);
 Exit:
@@ -666,6 +682,7 @@ Exit:
     N->Ready=FALSE;
     CywTxFlush(A,&N->Sends,A->IoStopped?NDIS_STATUS_LOW_POWER_STATE:NDIS_STATUS_MEDIA_DISCONNECTED);
     KeSetEvent(&N->PauseAck,0,FALSE);
+    CywDiagnosticsStop(N->Diagnostics);N->Diagnostics=NULL;A->DiagAsyncEnabled=0;
     PsTerminateSystemThread(STATUS_SUCCESS);
 }
 NTSTATUS CywNetworkInitialize(PRPI5CYW_ADAPTER A)

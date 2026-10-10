@@ -136,6 +136,8 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG TxAdaptiveSmallBacklogAccepted, TxAdaptiveBulkBackpressure;
     ULONG TxAdaptiveSmallGlomChains, TxAdaptiveSmallBurstStarts;
     ULONG TxAdaptiveBulkFreshF1Attempts;
+    ULONG DiagAsyncEnabled, DiagCaptureSkipped, DiagCaptureOverflow;
+    NTSTATUS DiagAsyncStatus;
     CYW_TIMING Timing; /* Runtime worker only; no NDIS callback writes. */
     CYW_TRANSPORT_STATE Transport; /* Single bus worker; periodic diagnostics only. */
     CYW_TX_RETRY TxRetry; /* Worker-owned bounded idle-credit retry evidence. */
@@ -346,8 +348,11 @@ Rpi5CywWriteDiagnostics(
     _In_ NTSTATUS Status
     );
 
-/* Only the runtime worker calls this atomic binary snapshot writer. */
-VOID Rpi5CywWriteTimingDiagnostics(PRPI5CYW_ADAPTER Adapter);
+/* Capture copies diagnostic values; persistence consumes only that copy. */
+struct _CYW_DIAG_BUFFER;
+VOID Rpi5CywCaptureDiagnostics(PRPI5CYW_ADAPTER Adapter,ULONG Stage,NTSTATUS Status,struct _CYW_DIAG_BUFFER *Buffer);
+VOID Rpi5CywCaptureTimingDiagnostics(PRPI5CYW_ADAPTER Adapter,struct _CYW_DIAG_BUFFER *Buffer);
+VOID Rpi5CywWriteDiagnosticBuffer(const struct _CYW_DIAG_BUFFER *Buffer);
 
 #ifndef RPI5CYW_HOST_TEST
 BOOLEAN Rpi5CywInterruptConsumeWake(PRPI5CYW_ADAPTER Adapter);

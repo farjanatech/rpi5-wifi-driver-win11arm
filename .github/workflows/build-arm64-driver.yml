@@ -33,7 +33,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate v0.7.1.20 stability recovery source isolation
+      - name: Validate scoped stability changes
         shell: pwsh
         run: |
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/performance_scope_tests.ps1
@@ -48,6 +48,18 @@ jobs:
       - name: Create log directory
         shell: pwsh
         run: New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+
+      - name: Test diagnostic snapshots, concurrency, lifecycle and FIFO refill with ASAN
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          foreach ($name in @('diag_snapshot_tests','diag_mailbox_tests','diag_worker_tests','tx_backlog_refill_tests')) {
+            $command = 'call "{0}" && cl /nologo /O1 /Zi /fsanitize=address /W4 /WX /TC /std:c17 tests\{1}.c /Fe:ci-logs\{1}.exe && ci-logs\{1}.exe' -f $vcvars,$name
+            cmd.exe /d /s /c $command
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Test TX credit observations and both scheduling modes with ASAN
         shell: pwsh
@@ -414,7 +426,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.21-damian.1-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.22-damian.2-tx${{ matrix.tx_mode }}
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
@@ -432,7 +444,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.21-damian.1-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.22-damian.2-tx${{ matrix.tx_mode }}
           path: ci-logs/
           if-no-files-found: warn
           retention-days: 30

@@ -1,17 +1,15 @@
-# Damian Edition Wi-Fi 0.7.1.21-damian.1
+# Damian Edition Wi-Fi 0.7.1.22-damian.2
 
-This edition connects the existing CYW43455 driver to the `WFD0 / ACPI\RPI1060`
-device in [Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition).
-It targets Raspberry Pi 5 C1 running Windows 11 ARM64. The repository owner
-reported that the package works on their Pi on 2026-10-10 and requested promotion
-to `main`. The published package retains its prerelease designation; the detailed
-checklist below records the remaining qualification steps.
+This edition binds the CYW43455 driver to `WFD0 / ACPI\RPI1060` in
+[Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition),
+for Raspberry Pi 5 C1 running Windows 11 ARM64.
 
-The v0.7.1.20 kernel source, SDIO/FIFO transfers, radio firmware, clock policy,
-WPA2, TX scheduling, scanning and bounded recovery are unchanged. DriverVer
-0.7.1.21 identifies the new package; existing kernel diagnostic counters/version
-remain those of v0.7.1.20. Previous performance measurements do not establish
-performance of this firmware/driver combination.
+The earlier 0.7.1.21-damian.1 package was confirmed working by the owner. This
+0.7.1.22-damian.2 candidate changes runtime diagnostics and FIFO queue refill;
+its Pi hardware validation is pending. It does not claim to resolve the
+reported intermittent slowdown. SDIO/FIFO transfers, firmware, clock policy,
+WPA2, scanning, queue capacities and bounded transport recovery are preserved.
+See [STABILITY-UPDATE.md](STABILITY-UPDATE.md) for the changes and rollback.
 
 ## Required firmware
 
@@ -45,7 +43,7 @@ including display, fan, GPIO, board power, Bluetooth, mailbox and NVRAM.
 3. Run `RPi5-WiFi-Setup.exe` as administrator on the Pi. It checks for a present
    RPI1060 device before trusting the bundled test certificate or installing.
 4. Restart Windows. Open the Desktop Wi-Fi shortcut. The title should say
-   **Damian Edition 0.7.1.21**. Set the two-letter country for your physical
+   **Damian Edition 0.7.1.22**. Set the two-letter country for your physical
    location, scan, select a WPA2-Personal/AES network and connect.
 5. Save a profile and select auto-connect if wanted. Existing native profiles
    remain compatible and protected with DPAPI. This is an upgrade of the same
@@ -87,12 +85,9 @@ Rolling back to v0.7.1.20 requires the original compatible non-Damian firmware.
 
 ## Source and release isolation
 
-Damian Edition has been promoted to the default `main` branch. The original
-`damian-edition/rpi1060-integration` branch, its `v0.7.1.21-damian.1` prerelease,
-previous Git history remain available. The previous main implementation is
-preserved at commit `1e5b666`. This source
-promotion does not change release assets or GitHub Latest.
-CI verifies the kernel source against
-`c16aa318da490350126739add45223a186ab0a47`, checks the pinned firmware contract,
-runs native/installer and existing driver regressions, builds ARM64 binaries,
-and regenerates/test-signs the catalog for the new INF.
+The working 0.7.1.21 Damian package remains on `main`, with its
+`v0.7.1.21-damian.1` prerelease and integration commit `d19ecb1` retained.
+The 0.7.1.22 candidate is isolated on `damian-edition/stability-diagnostics`.
+CI restricts kernel changes to diagnostic capture/persistence and FIFO refill,
+checks the pinned firmware contract, runs native/installer and driver
+regressions, builds ARM64 binaries, and test-signs the catalog for the new INF.

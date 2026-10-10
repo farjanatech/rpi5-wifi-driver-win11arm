@@ -17,9 +17,11 @@ $stage=Join-Path $root 'artifacts/rpi5cyw-test-driver'
 Copy-Item (Join-Path $root 'docs/DAMIAN-EDITION.md') (Join-Path $stage 'README-TESTING.txt')
 @"
 edition=damian
-package_version=0.7.1.21-damian.1
+package_version=0.7.1.22-damian.2
 kernel_source_baseline=c16aa318da490350126739add45223a186ab0a47
-kernel_source_changed=false
+kernel_source_changed=true
+runtime_diagnostics=bounded-async-snapshots
+tx_refill=fifo-all-available-capacity
 driver_commit=$env:GITHUB_SHA
 workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 matching_acpi_id=ACPI\RPI1060

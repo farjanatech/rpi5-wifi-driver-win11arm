@@ -159,7 +159,7 @@ static PNET_BUFFER_LIST CywTxBacklogRemove(
      * Completing before dropping Lock so Pause/D3 cannot observe a false zero
      * between metadata removal and the NDIS completion callback. */
     Q->Completing++;
-    (VOID)CywTxPromoteOneLocked(A,Q);
+    while(CywTxPromoteOneLocked(A,Q)) { /* Refill all newly available room. */ }
     return nbl;
 }
 static BOOLEAN CywTxPromoteOneLocked(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q)
@@ -190,7 +190,11 @@ static VOID CywTxComplete(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q,
     /* Active Outstanding remains charged after removal until this same lock
      * transfer, so callback lifetime is never invisible to Pause/D3. */
     KeAcquireSpinLock(&Q->Lock,&irql);Q->Outstanding--;
-    (VOID)CywTxPromoteOneLocked(A,Q);Q->Completing++;
+    /* A multi-NB completion can release many slots. Refill them in FIFO
+     * order before a reentrant send observes a nonempty backlog and rejects
+     * bulk traffic despite unused active capacity. Still at most 64 frames. */
+    while(CywTxPromoteOneLocked(A,Q)) { }
+    Q->Completing++;
     KeReleaseSpinLock(&Q->Lock,irql);
     NdisMSendNetBufferListsComplete(A->MiniportHandle,Nbl,0);
     KeAcquireSpinLock(&Q->Lock,&irql);Q->Completing--;A->TxNblCompleted++;

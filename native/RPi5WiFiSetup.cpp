@@ -212,7 +212,7 @@ bool SelfTest() {
     std::string text(inf.begin(),inf.end());
     return text.find("ACPI\\RPI1060")!=std::string::npos&&
         text.find("RPI0011")==std::string::npos&&
-        text.find("0.7.1.21")!=std::string::npos;
+        text.find("0.7.1.22")!=std::string::npos;
 }
 
 } // namespace

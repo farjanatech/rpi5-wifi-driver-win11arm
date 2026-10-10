@@ -11,20 +11,16 @@ static VOID CywTxDiagStart(PRPI5CYW_ADAPTER A)
     D->WorkerStart=A->WorkerStartCount;D->SchedulingEnabled=RPI5CYW_TX_CREDIT_SCHEDULING;
     D->DetailedTimingEnabled=RPI5CYW_DETAILED_TIMING && A->Timing.Enabled;
 }
-static VOID CywTxDiagWrite(PRPI5CYW_ADAPTER A)
+static VOID CywTxDiagCapture(PRPI5CYW_ADAPTER A,CYW_DIAG_BUFFER *Buffer)
 {
-    OBJECT_ATTRIBUTES attributes;UNICODE_STRING keyName,valueName;HANDLE key;
+    UNICODE_STRING valueName;
     CYW_TX_CREDIT_DIAG snapshot;
     C_ASSERT(sizeof(CYW_TX_CREDIT_DIAG)==8*CYW_TX_DIAG_WORDS);
     if(!A->Timing.Enabled || KeGetCurrentIrql()!=PASSIVE_LEVEL)return;
     snapshot=A->TxCreditDiag;
     snapshot.SnapshotQpc=(CYW_TXD_U64)KeQueryPerformanceCounter(NULL).QuadPart;
-    RtlInitUnicodeString(&keyName,L"\\Registry\\Machine\\SOFTWARE\\Rpi5CywDirectDiag");
-    InitializeObjectAttributes(&attributes,&keyName,OBJ_CASE_INSENSITIVE|OBJ_KERNEL_HANDLE,NULL,NULL);
-    if(!NT_SUCCESS(ZwOpenKey(&key,KEY_SET_VALUE,&attributes)))return;
     RtlInitUnicodeString(&valueName,L"TxCreditV1");
-    (VOID)ZwSetValueKey(key,&valueName,0,REG_BINARY,&snapshot,sizeof(snapshot));
-    ZwClose(key);
+    CywDiagAppend(Buffer,&valueName,REG_BINARY,&snapshot,sizeof(snapshot));
 }
 static ULONG CywTxDiagQueue(PRPI5CYW_ADAPTER A,CYW_TX_STATE *Q)
 {

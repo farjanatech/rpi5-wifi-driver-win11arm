@@ -1,4 +1,5 @@
-"""Check the edition boundary and unchanged, hardware-tested kernel source."""
+"""Check the edition boundary and tightly scoped stability changes."""
+from stability_update_scope_tests import verify_kernel_scope
 from pathlib import Path
 import argparse
 import re
@@ -18,17 +19,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--uefi-root", type=Path)
     args = parser.parse_args()
-    # Include untracked files and working-tree changes: a new kernel file must
-    # not bypass the source-freeze check merely because it is not staged yet.
-    files = subprocess.check_output(["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", BASELINE, "src"], text=True).splitlines()
-    check(set(files) == {p.relative_to(ROOT).as_posix() for p in (ROOT / "src").rglob("*") if p.is_file()}, "Kernel file set changed")
-    for name in files + ["rpi5-cyw43455.vcxproj", "rpi5-cyw43455.sln", "packages.config", "scripts/fetch-firmware.ps1"]:
-        expected = subprocess.check_output(["git", "-C", str(ROOT), "show", f"{BASELINE}:{name}"], text=True)
-        check(read(name) == expected, f"Protected kernel/build/firmware source changed: {name}")
+    verify_kernel_scope()
     inf = read("package/rpi5cyw.inf")
     ids = re.findall(r"ACPI\\(RPI[0-9A-F]{4})", inf)
     check(ids == ["RPI1060"], f"Unsafe INF bindings: {ids}")
-    check("10/10/2026,0.7.1.21" in inf, "Wrong package version")
+    check("10/10/2026,0.7.1.22" in inf, "Wrong package version")
     # All historical Wi-Fi consumers must follow the new node. RPI0011 is
     # permitted only in explicit IRQ coexistence/collision checks.
     for name in ["utility/Check-RPi5-WiFi-Readiness.ps1", "utility/Set-RPi5-WiFi-Autoconnect.ps1", "utility/Test-RPi5-WiFi-Performance.ps1"]:
@@ -47,7 +42,7 @@ def main():
         bcm = (platform / "Silicon/Broadcom/Bcm27xx/Include/IndustryStandard/Bcm2712.h").read_text()
         check(re.search(r"BCM2712_BRCMSTB_SDIO2_HOST_BASE\s+0x1001100000\b", bcm), "SDIO base mismatch")
         check(re.search(r"BCM2712_BRCMSTB_SDIO_HOST_LENGTH\s+0x260\b", bcm), "SDIO length mismatch")
-    print("PASS: RPI1060-only package; v0.7.1.20 kernel, build settings and radio firmware preserved")
+    print("PASS: RPI1060-only package; scoped stability changes; build settings and radio firmware preserved")
 
 if __name__ == "__main__":
     main()
