@@ -29,7 +29,7 @@ WiFiCx.
 Development packages are test-signed and require Windows Test Signing on the
 test Raspberry Pi. The installer does not enable Test Signing or modify BCD/UEFI.
 
-The current hardware-tested source is frozen on `release-v0.7.1.20` at
+The hardware-tested kernel source is frozen at
 `c16aa318da490350126739add45223a186ab0a47`. New driver changes should be made
 on an experimental branch and promoted to `main` only after full CI and
 Raspberry Pi hardware validation.
@@ -37,7 +37,7 @@ Raspberry Pi hardware validation.
 ## Damian Edition
 
 Use the **Build Damian Edition Wi-Fi GUI and installer** workflow on
-`damian-edition/rpi1060-integration`. It checks the pinned firmware contract,
+`main` (also enabled for `damian-edition/**` branches). It checks the pinned firmware contract,
 runs C++ hardware-policy and native GUI/setup self-tests, builds the unchanged
 kernel with TX scheduling and glom enabled, test-signs the RPI1060 package, and
 produces ARM64 setup/GUI binaries, a driver ZIP, provenance and checksums.

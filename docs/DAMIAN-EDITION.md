@@ -2,8 +2,10 @@
 
 This edition connects the existing CYW43455 driver to the `WFD0 / ACPI\RPI1060`
 device in [Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition).
-It targets Raspberry Pi 5 C1 running Windows 11 ARM64. The package is a prerelease
-until tested on the Pi with the complete Damian driver set.
+It targets Raspberry Pi 5 C1 running Windows 11 ARM64. The repository owner
+reported that the package works on their Pi on 2026-10-10 and requested promotion
+to `main`. The published package retains its prerelease designation; the detailed
+checklist below records the remaining qualification steps.
 
 The v0.7.1.20 kernel source, SDIO/FIFO transfers, radio firmware, clock policy,
 WPA2, TX scheduling, scanning and bounded recovery are unchanged. DriverVer
@@ -57,6 +59,10 @@ driver and diagnostic utility; use the setup EXE for the native GUI and boot tas
 
 ## Pi validation
 
+The working result above is user-reported, not a claim that every item below has
+been completed. Fresh CI packages retain `hardware_validation=pending` because
+CI cannot validate each newly built binary on a physical Pi.
+
 After installation and reboot, record:
 
 - Device Manager: RPI1060 has the CYW43455 network driver and no problem code;
@@ -81,9 +87,10 @@ Rolling back to v0.7.1.20 requires the original compatible non-Damian firmware.
 
 ## Source and release isolation
 
-Work lives on `damian-edition/rpi1060-integration`; `main`, the frozen
-`release-v0.7.1.20` branch, and the existing release remain unchanged.
-The separate prerelease is `v0.7.1.21-damian.1` and must not become GitHub Latest.
+Damian Edition has been promoted to the default `main` branch. The original
+`damian-edition/rpi1060-integration` branch, its `v0.7.1.21-damian.1` prerelease,
+previous Git history and the v0.7.1.20 release remain available. This source
+promotion does not change release assets or GitHub Latest.
 CI verifies the kernel source against
 `c16aa318da490350126739add45223a186ab0a47`, checks the pinned firmware contract,
 runs native/installer and existing driver regressions, builds ARM64 binaries,

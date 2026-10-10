@@ -2,7 +2,7 @@ name: Build Damian Edition Wi-Fi GUI and installer
 
 on:
   push:
-    branches: ["damian-edition/**"]
+    branches: [main, "damian-edition/**"]
   workflow_dispatch:
 
 permissions:
