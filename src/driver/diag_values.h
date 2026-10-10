@@ -21,7 +21,7 @@ static VOID CywCaptureDiagnosticValues(PRPI5CYW_ADAPTER Adapter,ULONG Stage,
                             &_v, sizeof(_v));                             \
     } while (0)
 
-    SET_DWORD(L"DiagVersion", 46);
+    SET_DWORD(L"DiagVersion", 47);
     SET_DWORD(L"DiagnosticsAsyncEnabled", Adapter->DiagAsyncEnabled);
     SET_DWORD(L"DiagnosticsAsyncStatus", Adapter->DiagAsyncStatus);
     SET_DWORD(L"DiagnosticsCaptureSkipped", Adapter->DiagCaptureSkipped);
@@ -123,6 +123,8 @@ static VOID CywCaptureDiagnosticValues(PRPI5CYW_ADAPTER Adapter,ULONG Stage,
     SET_DWORD(L"RuntimeRecoveryInProgress", Adapter->RuntimeRecoveryInProgress);
     SET_DWORD(L"RuntimeRecoveryTriggerStatus", Adapter->RuntimeRecoveryTriggerStatus);
     SET_DWORD(L"RuntimeRecoveryLastStatus", Adapter->RuntimeRecoveryLastStatus);
+    SET_DWORD(L"WarmCardResetAttempts", Adapter->WarmCardResetAttempts);
+    SET_DWORD(L"WarmCardResetStatus", Adapter->WarmCardResetStatus);
     SET_DWORD(L"PowerTransitionCount", Adapter->PowerTransitionCount);
     SET_DWORD(L"PowerD0Count", Adapter->PowerD0Count);
     SET_DWORD(L"PowerD1Count", Adapter->PowerD1Count);

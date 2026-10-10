@@ -1,5 +1,18 @@
 # Third-party notices
 
+## Warm SDIO reinitialization (0.7.1.23)
+
+The bounded CMD52 CCCR reset sequence in `src/sdio/sdio.c` references Linux
+v6.12 `drivers/mmc/core/sdio_ops.c` (`sdio_reset`) and `sdio.c`
+(`mmc_sdio_reinit_card`), Copyright 2006-2007 Pierre Ossman,
+SPDX-License-Identifier: GPL-2.0-or-later. The local implementation uses this
+driver's command helpers and diagnostics and is licensed GPL-3.0-or-later with
+the repository. No Linux MMC host infrastructure is copied or installed.
+
+https://github.com/torvalds/linux/blob/v6.12/drivers/mmc/core/sdio_ops.c
+
+https://github.com/torvalds/linux/blob/v6.12/drivers/mmc/core/sdio.c
+
 ## v0.7.1.10 two-frame host TX glom reference
 
 `src/cyw43455/transport_send.h` and the bounded pair-selection integration

@@ -1,15 +1,17 @@
 # Raspberry Pi 5 Wi-Fi - Damian Edition
 
-**Prerelease: v0.7.1.22-damian.2** for Windows 11 ARM64 and the onboard CYW43455.
+**Recovery candidate: v0.7.1.23-damian.3** for Windows 11 ARM64 and the onboard CYW43455.
 
-The default `main` branch includes the tested 0.7.1.22 stability update for
-[Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition).
+This recovery branch addresses failed warm restarts and misleading phase-400
+status with [Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition).
+Pi testing is pending; the original runtime timeout is not established as fixed.
+See [the evidence, changes and test procedure](docs/RECOVERY-UPDATE.md).
 The target is **ACPI\RPI1060**, the firmware's exclusive direct-SDIO Wi-Fi node.
 **RPI0011 remains Damian's RP1 interrupt provider and is never matched by this INF.**
 
-[Download Damian Edition setup](https://github.com/farjanatech/rpi5-wifi-driver-win11arm/releases/download/v0.7.1.22-damian.2/RPi5-WiFi-Setup.exe)
+[Download Damian Edition setup](https://github.com/farjanatech/rpi5-wifi-driver-win11arm/releases/download/v0.7.1.23-damian.3/RPi5-WiFi-Setup.exe)
 | [Installation and Pi test guide](docs/DAMIAN-EDITION.md)
-| [Release assets](https://github.com/farjanatech/rpi5-wifi-driver-win11arm/releases/tag/v0.7.1.22-damian.2)
+| [Release assets](https://github.com/farjanatech/rpi5-wifi-driver-win11arm/releases/tag/v0.7.1.23-damian.3)
 
 ## What changes
 
@@ -20,8 +22,8 @@ The target is **ACPI\RPI1060**, the firmware's exclusive direct-SDIO Wi-Fi node.
   and Windows PnP startup errors.
 - Installer, readiness, auto-connect and diagnostics follow RPI1060; diagnostics
   record Damian IRQ and board devices separately.
-- CI restricts kernel changes to diagnostics and FIFO refill, preserves radio
-  firmware and transport policy, and verifies the existing Damian ACPI contract.
+- CI checks scoped diagnostics, FIFO refill and warm recovery changes, preserves
+  radio firmware and verifies the existing Damian ACPI contract.
 
 ## What is carried forward
 
@@ -35,7 +37,8 @@ their Raspberry Pi 5 C1 with Windows 11 ARM64 on 2026-10-10 and requested its
 promotion to `main`. Both ARM64 configurations, driver regressions,
 AddressSanitizer checks, and GUI/setup self-tests passed before release.
 This is a user-reported hardware result; the original slowdown's root cause
-and long-duration stability have not been independently established.
+and long-duration stability have not been independently established. A later
+disconnect and failed recovery motivated this separate candidate.
 The previous **0.7.1.21-damian.1** release remains available for rollback.
 
 ## Firmware and coexistence

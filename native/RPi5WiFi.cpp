@@ -204,10 +204,7 @@ void PollStatus() {
     if(g.busy)return;
     try{
         Driver d;LiveState s=d.Status();
-        if(s.status!=0){wchar_t b[96]{};swprintf_s(b,L"Driver error 0x%08X (phase %u).",s.status,s.phase);SetText(g.status,b);}
-        else if(s.authenticated)SetText(g.status,L"Authenticated. Windows is using the CYW43455 Ethernet-style adapter.");
-        else if(s.phase==500)SetText(g.status,L"Disconnected and ready.");
-        else SetText(g.status,L"Driver starting - phase "+std::to_wstring(s.phase)+L".");
+        SetText(g.status,DescribeDriverState(s));
     }catch(const std::exception&e){SetText(g.status,L"Driver unavailable: "+WidenError(e));}
 }
 void Layout(HWND hwnd) {

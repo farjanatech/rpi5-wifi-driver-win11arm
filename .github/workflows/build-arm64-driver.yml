@@ -61,6 +61,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      - name: Fault-test the actual recovery callback and live failure status
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $command = 'call "{0}" && python tests\runtime_recovery_status_tests.py' -f $vcvars
+          cmd.exe /d /s /c $command
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Test TX credit observations and both scheduling modes with ASAN
         shell: pwsh
         run: |

@@ -15,13 +15,16 @@ if ($inf -notmatch 'ACPI\\RPI1060' -or $inf -match 'RPI0011') {
 & (Join-Path $PSScriptRoot 'package-ci.ps1') -Configuration $Configuration -Platform $Platform
 $stage=Join-Path $root 'artifacts/rpi5cyw-test-driver'
 Copy-Item (Join-Path $root 'docs/DAMIAN-EDITION.md') (Join-Path $stage 'README-TESTING.txt')
+Copy-Item (Join-Path $root 'docs/RECOVERY-UPDATE.md') (Join-Path $stage 'RECOVERY-UPDATE.md')
 @"
 edition=damian
-package_version=0.7.1.22-damian.2
+package_version=0.7.1.23-damian.3
 kernel_source_baseline=c16aa318da490350126739add45223a186ab0a47
 kernel_source_changed=true
 runtime_diagnostics=bounded-async-snapshots
 tx_refill=fifo-all-available-capacity
+warm_recovery=cccr-card-reset-before-cmd5
+recovery_status=terminal-errors-published
 driver_commit=$env:GITHUB_SHA
 workflow_run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 matching_acpi_id=ACPI\RPI1060

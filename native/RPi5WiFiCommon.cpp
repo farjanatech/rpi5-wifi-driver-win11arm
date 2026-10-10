@@ -132,11 +132,15 @@ void WriteAllPrivate(const std::wstring& path, const std::vector<uint8_t>& data)
 }
 std::wstring ProgressText(const LiveState& s) {
     if (s.status != 0) {
-        wchar_t b[96]{}; swprintf_s(b, L"Driver error 0x%08X at phase %u.", s.status, s.phase); return b;
+        wchar_t b[160]{};
+        swprintf_s(b, s.phase == 400
+            ? L"Driver startup/recovery failed: 0x%08X (phase %u). Collect diagnostics, then restart Windows."
+            : L"Driver error 0x%08X at phase %u. Collect diagnostics.", s.status, s.phase);
+        return b;
     }
     if (s.authenticated) return L"Wi-Fi authenticated.";
     switch (s.phase) {
-    case 400: return L"Preparing firmware...";
+    case 400: return L"Driver starting or recovering (phase 400). Connection is unavailable until ready.";
     case 410: return L"Preparing Wi-Fi chip...";
     case 420: return L"Loading firmware...";
     case 421: return L"Verifying firmware...";
@@ -152,6 +156,8 @@ bool SameAsciiNoCase(const std::string& a, const std::string& b) {
 }
 
 } // namespace
+
+std::wstring DescribeDriverState(const LiveState& state) { return ProgressText(state); }
 
 std::string WideToUtf8(const std::wstring& value) {
     if (value.empty()) return {};
@@ -398,7 +404,9 @@ LiveState WaitForIdleOrConnected(Driver& driver,DWORD timeoutMs,const std::funct
 }
 ScanReport ScanNetworks(Driver& driver,const std::wstring& country,const std::function<void(const std::wstring&)>& progress){
     OperationMutex lease;LiveState live=driver.Status();
-    if(!live.Idle())throw std::runtime_error("Scanning is available only when disconnected and ready.");
+    if(!live.Idle())throw std::runtime_error(WideToUtf8(
+        live.authenticated && live.status==0 ? L"Disconnect Wi-Fi before scanning."
+        : L"Scan unavailable. "+DescribeDriverState(live)));
     ScanReport previous=ParseScanReport(driver.Call(IOCTL_SCAN_STATUS));
     if(previous.state==1||previous.state==2)throw std::runtime_error("A scan is already running.");
     driver.Call(IOCTL_SCAN_START,BuildScanRequest(country));
@@ -429,7 +437,7 @@ void ConnectNetwork(Driver& driver,const std::wstring& country,const std::string
     const std::array<uint8_t,32>& pmk,const std::function<void(const std::wstring&)>& progress){
     OperationMutex lease;LiveState live=driver.Status();
     if(live.authenticated&&live.status==0){if(progress)progress(L"Already connected.");return;}
-    if(!live.Idle())throw std::runtime_error("Driver must be disconnected and ready before connecting.");
+    if(!live.Idle())throw std::runtime_error(WideToUtf8(L"Connection unavailable. "+DescribeDriverState(live)));
     auto req=BuildConnectRequest(country,ssidUtf8,pmk);
     try{driver.Call(IOCTL_CONNECT,req);}catch(...){SecureZeroMemory(req.data(),req.size());throw;}
     SecureZeroMemory(req.data(),req.size());
@@ -493,6 +501,14 @@ int RunCommonSelfTests(){
         Put32(scan,32+44,static_cast<uint32_t>(-42));Put32(scan,32+48,2);Put32(scan,32+52,36);
         auto r=ParseScanReport(scan);
         if(r.networks.size()!=1||r.networks[0].ssidUtf8!="TestNet"||r.networks[0].band!=L"5 GHz"||!r.networks[0].supported)return 12;
+        LiveState live{};live.phase=400;
+        if(live.Idle() || DescribeDriverState(live).find(L"recovering")==std::wstring::npos)return 13;
+        live.status=0xC00000B5;
+        if(live.Idle() || DescribeDriverState(live).find(L"failed")==std::wstring::npos ||
+            DescribeDriverState(live).find(L"C00000B5")==std::wstring::npos)return 14;
+        live.phase=500;live.status=0;
+        if(!live.Idle())return 15;
+        live.authenticated=true;if(live.Idle())return 16;
         return 0;
     }catch(...){return 99;}
 }

@@ -8,6 +8,7 @@ BASELINE = "c8dee764d3f530cb58e1c359914a8910893761d3"
 CHANGED = {
     "src/driver/driver.c", "src/driver/driver.h", "src/cyw43455/network.c",
     "src/cyw43455/tx_queue.h", "src/cyw43455/tx_credit_runtime.h",
+    "src/sdio/sdio.c", "src/sdio/sdio.h",
 }
 ADDED = {
     "src/driver/diag_snapshot.h", "src/driver/diag_mailbox.h",
@@ -28,22 +29,23 @@ def verify_kernel_scope():
         if name not in CHANGED:
             assert read(name) == git("show", BASELINE + ":" + name), "Protected source changed: " + name
     # Protect all old exported values while moving their serialization. The
-    # only schema changes are a version bump and explicit exporter health.
+    # schema adds exporter health and warm-card-reset outcomes.
     old = git("show", BASELINE + ":src/driver/driver.c")
     body = old[old.index("#define SET_DWORD"):old.index("    ZwClose(KeyHandle);", old.index("#define SET_DWORD"))]
     body = re.sub(r"ZwSetValueKey\(KeyHandle,\s*&ValueName,\s*0,\s*", "CywDiagAppend(Buffer, &ValueName, ", body)
-    body = body.replace('SET_DWORD(L"DiagVersion", 45);', 'SET_DWORD(L"DiagVersion", 46);')
+    body = body.replace('SET_DWORD(L"DiagVersion", 45);', 'SET_DWORD(L"DiagVersion", 47);')
     actual = read("src/driver/diag_values.h")
     actual = actual[actual.index("#define SET_DWORD"):actual.rindex("}")]
     actual = re.sub(r'    SET_DWORD\(L"Diagnostics(?:AsyncEnabled|AsyncStatus|CaptureSkipped|CaptureOverflow)"[^\n]*\n', '', actual)
+    actual = re.sub(r'    SET_DWORD\(L"WarmCardReset(?:Attempts|Status)"[^\n]*\n', "", actual)
     assert actual == body, "Existing diagnostics schema changed"
     network = read("src/cyw43455/network.c")
     capture = network.split("static VOID CywMeasuredDiagnostics", 1)[1].split("static NTSTATUS CywMeasuredTxPump", 1)[0]
     for forbidden in ("Zw", "KeWait", "ExAllocate", "Rpi5CywWriteDiagnostics("):
         assert forbidden not in capture, "Blocking runtime diagnostics: " + forbidden
     assert "CywDiagnosticsStop(N->Diagnostics)" in network
-    assert 'DriverVer=10/10/2026,0.7.1.22' in read("package/rpi5cyw.inf").replace(" ", "")
-    print("PASS: only async diagnostics and FIFO refill change kernel behavior; transport, radio, queue limits and build policy preserved.")
+    assert 'DriverVer=10/10/2026,0.7.1.23' in read("package/rpi5cyw.inf").replace(" ", "")
+    print("PASS: scoped diagnostics, FIFO refill and warm recovery changes; FIFO no-replay, radio, queue limits and build policy preserved.")
 
 if __name__ == "__main__":
     verify_kernel_scope()

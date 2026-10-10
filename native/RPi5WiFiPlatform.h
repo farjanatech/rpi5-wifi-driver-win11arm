@@ -5,8 +5,8 @@
 namespace rpiwifi {
 
 inline constexpr wchar_t kHardwareId[] = L"ACPI\\RPI1060";
-inline constexpr wchar_t kWindowTitle[] = L"RPi5 Wi-Fi - Damian Edition 0.7.1.22";
-inline constexpr wchar_t kSetupTitle[] = L"RPi5 Wi-Fi Setup - Damian Edition 0.7.1.22";
+inline constexpr wchar_t kWindowTitle[] = L"RPi5 Wi-Fi - Damian Edition 0.7.1.23";
+inline constexpr wchar_t kSetupTitle[] = L"RPi5 Wi-Fi Setup - Damian Edition 0.7.1.23";
 
 // Keep policy independent of SetupAPI so negative hardware cases can be tested
 // without installing a driver or requiring a Raspberry Pi.

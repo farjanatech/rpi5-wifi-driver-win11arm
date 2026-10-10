@@ -11,6 +11,7 @@ static ULONG FifoWrites, WriteWords[16384], DiscoveryMode, Fail53At;
 static ULONG BlockModel,BlockRemaining,BlockWords,BlockOrdinal;
 static ULONG BlockFailAt,BlockShortAt,BlockHoldAt,BlockStopWord,BlockTotalWords;
 static ULONG BlockCoalesced,BlockStaleReady;
+static ULONG EnumerationModel,CardSelected,CardResetWrites,ResetWriteArgument;
 static ULONG64 SimTime, ReadyAt;
 static ULONG QpcReads;
 LARGE_INTEGER KeQueryPerformanceCounter(LARGE_INTEGER *Frequency)
@@ -144,7 +145,14 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
     Fn = (Argument >> 28) & 7;
     Reg = (Argument >> 9) & 0x1FFFF;
     Registers[SDHCI_INT_STATUS / 4] = SDHCI_INT_CMD_COMPLETE;
-    if (Command == 53)
+    if (EnumerationModel && Command == 5) {
+        /* CMD0 and a host reset do not reset a selected SDIO I/O card. */
+        if(CardSelected)Registers[SDHCI_INT_STATUS/4]=SDHCI_INT_ERROR|SDHCI_INT_CMD_TIMEOUT;
+        else Response=0xA0FF8000;
+    }
+    else if(EnumerationModel && Command == 3)Response=0x12340000;
+    else if(EnumerationModel && Command == 7)CardSelected=1;
+    else if (Command == 53)
     {
         if (DiscoveryMode)
         {
@@ -152,6 +160,7 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
                 (Card[1][CYW_F1_WINDOW_LOW + 1] << 16) |
                 (Card[1][CYW_F1_WINDOW_LOW + 2] << 24) | (Reg & 0x7FFF);
             Fifo = 0xFFFFFFFFUL;
+            if (Backplane == 0x18000000) Fifo = 0x15264345;
             if (Backplane == 0x180000FC) Fifo = Fault == 12 ? 0 : 0x180FF000;
             if (Backplane >= 0x180FF000 && Backplane < 0x180FF000 + sizeof(Erom))
                 Fifo = Erom[(Backplane - 0x180FF000) / 4];
@@ -209,6 +218,13 @@ void WRITE_REGISTER_USHORT(PUSHORT Address, USHORT Value)
         if ((Argument & 0x80000000UL) != 0)
         {
             Card[Fn][Reg] = Argument & 0xFF;
+            if(EnumerationModel && Fn==0 && Reg==CYW_SDIO_CCCR_ABORT &&
+               (Argument&CYW_SDIO_CCCR_RESET)) {
+                CardSelected=0;CardResetWrites++;ResetWriteArgument=Argument;
+                Card[0][Reg]=0; /* Reset bit self-clears; do not verify it. */
+                Card[0][CYW_SDIO_CCCR_BUS_INTERFACE]=0;
+                Card[0][CYW_SDIO_CCCR_SPEED]=0;
+            }
             if(HighSpeedCardFault && Fn==0 && Reg==CYW_SDIO_CCCR_SPEED &&
                 (Card[0][Reg]&CYW_SDIO_SPEED_BSS_MASK)==CYW_SDIO_SPEED_ENABLE_HS)
                 Card[0][Reg]&=~CYW_SDIO_SPEED_ENABLE_HS;
@@ -261,6 +277,7 @@ static void Init(PRPI5CYW_ADAPTER Adapter)
     BlockModel=BlockRemaining=BlockWords=BlockOrdinal=0;
     BlockFailAt=BlockShortAt=BlockHoldAt=BlockStopWord=BlockTotalWords=0;
     BlockCoalesced=BlockStaleReady=0;
+    EnumerationModel=CardSelected=CardResetWrites=ResetWriteArgument=0;
     memset(PhaseUs,0,sizeof(PhaseUs));
     Card[1][CYW_F1_WINDOW_LOW] = 0x80;
     Card[1][CYW_F1_WINDOW_LOW + 1] = 0x12;
@@ -424,6 +441,40 @@ static void RunPhasePollingTests(void)
     Init(&a);PhaseMode=1;PhaseUs[0]=20;a.BusModeStage=90;a.BusWidth=1;a.BusActualKhz=400;
     CHECK(SdioCmd53Read(&a,1,0x8000,b,4)==0);
     CHECK(StallUs==0 && SleepCount==1 && a.RuntimeF1WaitSleeps==0);
+}
+
+static void InitEnumeration(PRPI5CYW_ADAPTER A,ULONG warm)
+{
+    Init(A);EnumerationModel=1;CardSelected=warm;
+    A->RelativeAddress=warm?0x1234:0;
+    Registers[SDHCI_CAPABILITIES/4]=SDHCI_CAP_VOLTAGE_330|(200UL<<SDHCI_CAP_BASE_CLK_SHIFT);
+}
+static void TestWarmCardReset(void)
+{
+    RPI5CYW_ADAPTER a;
+    InitEnumeration(&a,0);
+    CHECK(NT_SUCCESS(Rpi5CywDirectSdioProbe(&a)));
+    CHECK(a.WarmCardResetAttempts==0 && CardResetWrites==0);
+    /* Repeat the actual probe while the card remains selected, as it does
+     * after an SDHCI reset without a Wi-Fi power-rail cycle. */
+    CHECK(NT_SUCCESS(Rpi5CywDirectSdioProbe(&a)));
+    CHECK(a.WarmCardResetAttempts==1 && CardResetWrites==1);
+    CHECK(a.WarmCardResetStatus==STATUS_SUCCESS && a.Cmd5SuccessAttempt!=0);
+    CHECK((ResetWriteArgument&0x08000000UL)==0); /* no read-after-write flag */
+    InitEnumeration(&a,1);Fail52At=1; /* failed abort read still permits reset */
+    CHECK(NT_SUCCESS(Rpi5CywDirectSdioProbe(&a)));
+    CHECK(CardResetWrites==1 && a.WarmCardResetStatus==STATUS_SUCCESS);
+    InitEnumeration(&a,1);Fail52At=2; /* failed reset must not fake readiness */
+    CHECK(!NT_SUCCESS(Rpi5CywDirectSdioProbe(&a)));
+    CHECK(a.WarmCardResetAttempts==1 && CardResetWrites==0);
+    CHECK(a.WarmCardResetStatus==STATUS_IO_DEVICE_ERROR && a.Cmd5SuccessAttempt==0);
+    InitEnumeration(&a,1);CardSelected=0;Fail52At=2;
+    /* Already-reset card (e.g. actual power loss): CMD5 can still validate it. */
+    CHECK(NT_SUCCESS(Rpi5CywDirectSdioProbe(&a)));
+    CHECK(a.WarmCardResetStatus==STATUS_IO_DEVICE_ERROR && a.Cmd5SuccessAttempt!=0);
+    InitEnumeration(&a,1);a.IoStopped=1;
+    CHECK(!NT_SUCCESS(Rpi5CywDirectSdioProbe(&a)));
+    CHECK(CommandCount==0 && CardResetWrites==0);
 }
 
 int main(void)
@@ -666,6 +717,7 @@ int main(void)
     CHECK(QpcReads==0 && Adapter.Timing.Snapshot.Bucket[CywTimeCmd53F1].Count==0);
     CHECK(SdioCmd53Transfer(NULL,1,0x8000,Buffer,64,FALSE,TRUE)==STATUS_INVALID_PARAMETER);
     TestFifoBlocks();
+    TestWarmCardReset();
     if (Failures) { printf("%d failures\n", Failures); return 1; }
     puts("PASS: actual CMD52/CMD53 read/write + core probe, 512 lengths each, bounds, errors, timeouts, cleanup.");
     return 0;

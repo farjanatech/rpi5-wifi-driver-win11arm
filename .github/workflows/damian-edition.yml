@@ -118,15 +118,18 @@ jobs:
           Copy-Item artifacts\native-arm64\RPi5-WiFi.exe artifacts\native-release\RPi5-WiFi.exe
           Copy-Item docs\DAMIAN-EDITION.md artifacts\native-release\INSTALL-DAMIAN.md
           Copy-Item docs\STABILITY-UPDATE.md artifacts\native-release\STABILITY-UPDATE.md
+          Copy-Item docs\RECOVERY-UPDATE.md artifacts\native-release\RECOVERY-UPDATE.md
           Compress-Archive -Path artifacts\rpi5cyw-test-driver\* -DestinationPath artifacts\native-release\RPi5-WiFi-Damian-Driver.zip
           @(
-            'package=0.7.1.22-damian.2'
+            'package=0.7.1.23-damian.3'
             "commit=$env:GITHUB_SHA"
             "run=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
             'kernel_source_baseline=c16aa318da490350126739add45223a186ab0a47'
             'kernel_source_changed=true'
             'runtime_diagnostics=bounded-async-snapshots'
             'tx_refill=fifo-all-available-capacity'
+            'warm_recovery=cccr-card-reset-before-cmd5'
+            'recovery_status=terminal-errors-published'
             'gui=native-win32-cpp-damian'
             'compatible_acpi=ACPI\RPI1060'
             'firmware_contract=b3f1dc6a6cd3e3c355e7fe512e4dca80cd04e51a'
@@ -139,6 +142,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rpi5-wifi-native-v0.7.1.22-damian.2
+          name: rpi5-wifi-native-v0.7.1.23-damian.3
           path: artifacts/native-release/
           if-no-files-found: error

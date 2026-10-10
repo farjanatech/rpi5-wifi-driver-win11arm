@@ -320,6 +320,8 @@ typedef struct _RPI5CYW_ADAPTER
     ULONG RuntimeRecoveryAttempts, RuntimeRecoveryRestarts, RuntimeRecoveryFailures;
     ULONG RuntimeRecoveryInProgress;
     NTSTATUS RuntimeRecoveryTriggerStatus, RuntimeRecoveryLastStatus;
+    ULONG WarmCardResetAttempts;
+    NTSTATUS WarmCardResetStatus;
     ULONG PowerTransitionCount;
     ULONG PowerD0Count, PowerD1Count, PowerD2Count, PowerD3Count;
     ULONG LastPowerState;

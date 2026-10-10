@@ -76,6 +76,7 @@ std::array<uint8_t,32> UnprotectPmk(const std::vector<uint8_t>& blob);
 uint64_t NowFileTime();
 
 LiveState ParseLiveState(const std::vector<uint8_t>& data);
+std::wstring DescribeDriverState(const LiveState& state);
 ScanReport ParseScanReport(const std::vector<uint8_t>& data);
 std::vector<uint8_t> BuildConnectRequest(const std::wstring& country,
     const std::string& ssidUtf8, const std::array<uint8_t,32>& pmk);

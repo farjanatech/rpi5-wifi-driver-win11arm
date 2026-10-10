@@ -829,6 +829,27 @@ Rpi5CywDirectSdioProbe(
         return Status;
     }
 
+    if (Adapter->RelativeAddress != 0)
+    {
+        /* SDHCI reset and CMD0 do not reset the I/O portion of a selected
+         * SDIO card. A warm restart has no guaranteed WL_REG_ON power cycle.
+         * Reset through CCCR before CMD5, while the old packet worker is
+         * stopped. Protocol reference: Linux v6.12 mmc/core sdio_reset and
+         * mmc_sdio_reinit_card (see THIRD_PARTY_NOTICES.md).
+         * CMD52 uses the CMD line, independent of the old DAT bus width.
+         * Do not read back a self-clearing reset bit or replay the failed FIFO.
+         */
+        UCHAR Abort = 0;
+        Adapter->WarmCardResetAttempts++;
+        (VOID)SdioCmd52Read(Adapter, 0, CYW_SDIO_CCCR_ABORT, &Abort);
+        Adapter->WarmCardResetStatus = SdioCmd52Write(Adapter, 0,
+            CYW_SDIO_CCCR_ABORT, (UCHAR)(Abort | CYW_SDIO_CCCR_RESET), 0);
+        Rpi5CywWriteDiagnostics(Adapter, 30, Adapter->WarmCardResetStatus);
+        SdioDelayMilliseconds(2);
+        /* An actually power-cycled card may already be idle. Keep the reset
+         * result in diagnostics, but let validated CMD5 decide readiness. */
+    }
+
     Response = 0;
     Status = SdioNegotiateOperatingConditionWithRetries(Adapter, &Response);
     Rpi5CywWriteDiagnostics(Adapter, 40, Status);
