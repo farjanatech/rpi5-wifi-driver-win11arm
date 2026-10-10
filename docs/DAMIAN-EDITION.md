@@ -4,10 +4,10 @@ This edition binds the CYW43455 driver to `WFD0 / ACPI\RPI1060` in
 [Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition),
 for Raspberry Pi 5 C1 running Windows 11 ARM64.
 
-The earlier 0.7.1.21-damian.1 package was confirmed working by the owner. This
-0.7.1.22-damian.2 candidate changes runtime diagnostics and FIFO queue refill;
-its Pi hardware validation is pending. It does not claim to resolve the
-reported intermittent slowdown. SDIO/FIFO transfers, firmware, clock policy,
+The owner reported that 0.7.1.22-damian.2 works perfectly on their Pi 5 C1 on
+2026-10-10 and requested promotion to `main`. This update changes runtime
+diagnostics and FIFO queue refill. The user-reported result does not establish
+the original slowdown's root cause. SDIO/FIFO transfers, firmware, clock policy,
 WPA2, scanning, queue capacities and bounded transport recovery are preserved.
 See [STABILITY-UPDATE.md](STABILITY-UPDATE.md) for the changes and rollback.
 
@@ -85,9 +85,10 @@ Rolling back to v0.7.1.20 requires the original compatible non-Damian firmware.
 
 ## Source and release isolation
 
-The working 0.7.1.21 Damian package remains on `main`, with its
-`v0.7.1.21-damian.1` prerelease and integration commit `d19ecb1` retained.
-The 0.7.1.22 candidate is isolated on `damian-edition/stability-diagnostics`.
+The tested 0.7.1.22 source is included in the default `main` branch. Its
+`damian-edition/stability-diagnostics` branch and commit `5786f6a` are retained.
+The `v0.7.1.21-damian.1` release remains available for rollback. Source promotion
+does not replace the published binaries or change their prerelease designation.
 CI restricts kernel changes to diagnostic capture/persistence and FIFO refill,
 checks the pinned firmware contract, runs native/installer and driver
 regressions, builds ARM64 binaries, and test-signs the catalog for the new INF.

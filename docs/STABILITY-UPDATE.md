@@ -1,8 +1,11 @@
-# Damian stability candidate 0.7.1.22-damian.2
+# Damian stability update 0.7.1.22-damian.2
 
-This update addresses two code-level performance problems. It is a candidate
-for Pi testing, not a confirmed cure for the intermittent slowdown. The earlier
-0.7.1.21 package remains available for rollback. No UEFI update is needed.
+This update addresses two code-level performance problems. On 2026-10-10 the
+repository owner reported that the released package works perfectly on their
+Pi 5 C1 and requested promotion to `main`. The tested source commit `5786f6a`
+is now included in `main`. This report does not establish the original
+slowdown's root cause or independently qualify long-duration stability.
+The earlier 0.7.1.21 package remains available for rollback. No UEFI update is needed.
 
 ## Changes
 
@@ -18,7 +21,7 @@ for Pi testing, not a confirmed cure for the intermittent slowdown. The earlier
   before reentrant admission. Limits remain 64 active and 128 pending frames;
   bulk traffic still uses active-only admission and fresh F1 pacing.
 - The native GUI/setup and INF identify driver version 0.7.1.22. The installer
-  embeds this candidate and continues to require the RPI1060 device.
+  embeds this update and continues to require the RPI1060 device.
 
 The diagnostic thread cannot access SDIO, live adapter state, credentials or
 packets. It drains queued copies and is joined before network-worker exit and
@@ -50,7 +53,7 @@ mechanical purpose but do not establish the original slowdown's root cause.
 
 ## Installation and rollback
 
-Install the candidate with its bundled `RPi5-WiFi-Setup.exe`, then reboot Windows
+Install the update with its bundled `RPi5-WiFi-Setup.exe`, then reboot Windows
 so the new kernel driver is loaded. The GUI title identifies the package;
 Device Manager should show driver version 0.7.1.22. Use Wi-Fi normally. There
 is no need to force the old slowdown to recur while the connection stays fast.
