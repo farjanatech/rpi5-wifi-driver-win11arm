@@ -23,7 +23,7 @@ def main():
     inf = read("package/rpi5cyw.inf")
     ids = re.findall(r"ACPI\\(RPI[0-9A-F]{4})", inf)
     check(ids == ["RPI1060"], f"Unsafe INF bindings: {ids}")
-    check("10/10/2026,0.7.1.23" in inf, "Wrong package version")
+    check("10/10/2026,0.7.1.24" in inf, "Wrong package version")
     # All historical Wi-Fi consumers must follow the new node. RPI0011 is
     # permitted only in explicit IRQ coexistence/collision checks.
     for name in ["utility/Check-RPi5-WiFi-Readiness.ps1", "utility/Set-RPi5-WiFi-Autoconnect.ps1", "utility/Test-RPi5-WiFi-Performance.ps1"]:

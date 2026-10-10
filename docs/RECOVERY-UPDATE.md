@@ -1,5 +1,9 @@
 # Damian recovery candidate 0.7.1.23-damian.3
 
+Historical .23 notes: the owner subsequently reported fluctuating speed and
+repeated disconnects. The current .24 candidate and its limits are described in
+[LINK-STABILITY-UPDATE.md](LINK-STABILITY-UPDATE.md).
+
 This candidate addresses a failed warm restart and misleading phase-400 status.
 It is not yet hardware validated, and does not establish or eliminate the cause
 of the initial runtime SDIO timeout. Keep it on `damian-edition/recovery-status`

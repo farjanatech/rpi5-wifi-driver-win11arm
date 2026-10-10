@@ -146,13 +146,18 @@ static VOID CywEvent(PRPI5CYW_ADAPTER A, PUCHAR p, ULONG n)
     if(type==69) {CywScanEvent(A,status,eth+72,CywBe32(msg+20));return;}
     if(N->ScanBusy)return;
     wasConnected=CywConnectionWasUp(A,N);
-    disconnectClass=CywFirmwareDisconnectClass(type,status,msg[3]);
+    disconnectClass=CywFirmwareDisconnectClass(type,status,msg[3],reason);
     A->LinkEvent=type;A->LinkReason=reason;
     if(type==16) {
         N->Associated=(msg[3]&1)!=0 && status==0;
         if(!N->Associated)N->Authorized=FALSE;
-    } else if(type==46) {
-        N->Authorized=status==6;
+    } else if(type==CYW_FW_EVENT_PSK_SUP) {
+        /* Key renewal does not revoke an established controlled port. Keep
+         * the current authorization through documented progress states;
+         * only COMPLETED can grant it. Timeout, failure reason and unknown
+         * states still fail closed, and LINK/deauth events remain decisive. */
+        if(status==CYW_FW_SUP_COMPLETED && reason==0)N->Authorized=TRUE;
+        else if(!CywFirmwarePskProgress(status,reason))N->Authorized=FALSE;
     } else if(type==5 || type==6 || type==11 || type==12 || (type==0 && status!=0)) {
         N->Associated=N->Authorized=FALSE;
     }

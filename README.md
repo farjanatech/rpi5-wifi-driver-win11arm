@@ -1,17 +1,18 @@
 # Raspberry Pi 5 Wi-Fi - Damian Edition
 
-**Recovery candidate: v0.7.1.23-damian.3** for Windows 11 ARM64 and the onboard CYW43455.
+**Link-state correction candidate: v0.7.1.24-damian.4** for Windows 11 ARM64 and the onboard CYW43455.
 
-This recovery branch addresses failed warm restarts and misleading phase-400
-status with [Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition).
-Pi testing is pending; the original runtime timeout is not established as fixed.
-See [the evidence, changes and test procedure](docs/RECOVERY-UPDATE.md).
+This branch corrects false disconnections caused by WPA key-handshake progress
+events with [Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition).
+The defect is reproduced in host tests. The reported .23 disconnects and
+fluctuating speeds are not established as fixed on hardware.
+See [the correction, evidence and limits](docs/LINK-STABILITY-UPDATE.md).
 The target is **ACPI\RPI1060**, the firmware's exclusive direct-SDIO Wi-Fi node.
 **RPI0011 remains Damian's RP1 interrupt provider and is never matched by this INF.**
 
-[Download Damian Edition setup](https://github.com/farjanatech/rpi5-wifi-driver-win11arm/releases/download/v0.7.1.23-damian.3/RPi5-WiFi-Setup.exe)
+[Download Damian Edition setup](https://github.com/farjanatech/rpi5-wifi-driver-win11arm/releases/download/v0.7.1.24-damian.4/RPi5-WiFi-Setup.exe)
 | [Installation and Pi test guide](docs/DAMIAN-EDITION.md)
-| [Release assets](https://github.com/farjanatech/rpi5-wifi-driver-win11arm/releases/tag/v0.7.1.23-damian.3)
+| [Release assets](https://github.com/farjanatech/rpi5-wifi-driver-win11arm/releases/tag/v0.7.1.24-damian.4)
 
 ## What changes
 
@@ -22,8 +23,10 @@ The target is **ACPI\RPI1060**, the firmware's exclusive direct-SDIO Wi-Fi node.
   and Windows PnP startup errors.
 - Installer, readiness, auto-connect and diagnostics follow RPI1060; diagnostics
   record Damian IRQ and board devices separately.
-- CI checks scoped diagnostics, FIFO refill and warm recovery changes, preserves
-  radio firmware and verifies the existing Damian ACPI contract.
+- Existing authorization survives normal key-handshake progress; real failure
+  and link-down events still disconnect. Initial handshakes remain gated.
+- CI executes the real event handler under fault injection and ASAN, checks the
+  change boundary, and verifies the existing Damian ACPI contract.
 
 ## What is carried forward
 
@@ -39,7 +42,9 @@ AddressSanitizer checks, and GUI/setup self-tests passed before release.
 This is a user-reported hardware result; the original slowdown's root cause
 and long-duration stability have not been independently established. A later
 disconnect and failed recovery motivated this separate candidate.
-The previous **0.7.1.21-damian.1** release remains available for rollback.
+The later .23 candidate has user-reported speed fluctuations and recurring
+disconnects. This .24 correction is kept separate from `main` pending hardware
+experience. Earlier .21/.22 GitHub release assets were removed by the owner.
 
 ## Firmware and coexistence
 
@@ -56,8 +61,8 @@ Damian RP1B.IRQ0 / ACPI\RPI0011 -> Damian IRQ driver (retained)
 ```
 
 The stability branch `damian-edition/stability-diagnostics`, its tested commit
-`5786f6a`, and previous Git history remain available. This promotion preserves
-the published release binaries and prerelease designation.
+`5786f6a`, and previous Git history remain available. The new candidate is on
+`damian-edition/link-stability`; it does not move the default branch.
 The previous main implementation is preserved at commit `1e5b666`.
 Install one Wi-Fi edition per Windows installation; read
 the [migration notes](docs/DAMIAN-EDITION.md) before switching from the old package.

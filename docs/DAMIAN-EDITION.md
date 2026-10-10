@@ -1,15 +1,16 @@
-# Damian Edition Wi-Fi 0.7.1.23-damian.3
+# Damian Edition Wi-Fi 0.7.1.24-damian.4
 
 This edition binds the CYW43455 driver to `WFD0 / ACPI\RPI1060` in
 [Farjanatech Damian Edition UEFI](https://github.com/farjanatech/rpi5-uefi/tree/damian-edition),
 for Raspberry Pi 5 C1 running Windows 11 ARM64.
 
-This branch contains recovery candidate **0.7.1.23-damian.3**, pending Pi testing.
-After the initial positive report for 0.7.1.22, a later capture confirmed an SDIO
-timeout followed by failed warm enumeration and misleading phase-400 status.
-This update adds a warm card reset and truthful recovery/GUI status. It does not
-prove that the initial timeout is fixed. See [RECOVERY-UPDATE.md](RECOVERY-UPDATE.md).
-The earlier async-diagnostics and TX-refill changes remain included.
+This branch contains link-state correction candidate **0.7.1.24-damian.4**.
+It fixes a reproduced bug that revoked authorization during WPA key-handshake
+progress. This does not establish the cause of the reported .23 speed
+fluctuations and repeated disconnects. See
+[LINK-STABILITY-UPDATE.md](LINK-STABILITY-UPDATE.md) for evidence and limits.
+The earlier async-diagnostics, TX-refill, warm-reset and recovery-status changes
+remain included. Sustained speed and long-duration Pi stability are unverified.
 
 ## Required firmware
 
@@ -43,7 +44,7 @@ including display, fan, GPIO, board power, Bluetooth, mailbox and NVRAM.
 3. Run `RPi5-WiFi-Setup.exe` as administrator on the Pi. It checks for a present
    RPI1060 device before trusting the bundled test certificate or installing.
 4. Restart Windows. Open the Desktop Wi-Fi shortcut. The title should say
-   **Damian Edition 0.7.1.23**. Set the two-letter country for your physical
+   **Damian Edition 0.7.1.24**. Set the two-letter country for your physical
    location, scan, select a WPA2-Personal/AES network and connect.
 5. Save a profile and select auto-connect if wanted. Existing native profiles
    remain compatible and protected with DPAPI. This is an upgrade of the same
@@ -57,8 +58,8 @@ driver and diagnostic utility; use the setup EXE for the native GUI and boot tas
 
 ## Pi validation
 
-The working result above is user-reported, not a claim that every item below has
-been completed. Fresh CI packages retain `hardware_validation=pending` because
+The new correction is verified in host tests. Fresh CI packages retain
+`hardware_validation=pending` because
 CI cannot validate each newly built binary on a physical Pi.
 
 After installation and reboot, record:
@@ -72,9 +73,8 @@ After installation and reboot, record:
 - Sustained download/upload and an idle interval produce no new disconnects.
   Suspend/resume and D0 silicon are not qualified by this release.
 
-If startup or connection fails, extract the driver ZIP and run
-`RPi5-WiFi-AllInOne.cmd`, choosing diagnostics collection. Share the resulting
-diagnostic ZIP. It records RPI1060 separately from the Damian RPI0011 IRQ and
+Optional diagnostics remain available in the driver ZIP through
+`RPi5-WiFi-AllInOne.cmd`. They record RPI1060 separately from the Damian RPI0011 IRQ and
 RPI1025 board devices. The older measurement options retain their existing
 behavior; use normal traffic for qualification.
 
@@ -87,8 +87,8 @@ Rolling back to v0.7.1.20 requires the original compatible non-Damian firmware.
 
 The tested 0.7.1.22 source is included in the default `main` branch. Its
 `damian-edition/stability-diagnostics` branch and commit `5786f6a` are retained.
-The `v0.7.1.21-damian.1` release remains available for rollback. Source promotion
-does not replace the published binaries or change their prerelease designation.
-CI restricts kernel changes to diagnostic capture/persistence and FIFO refill,
-checks the pinned firmware contract, runs native/installer and driver
-regressions, builds ARM64 binaries, and test-signs the catalog for the new INF.
+The owner removed the earlier .21/.22 release assets; their source history is
+retained. Candidate .24 is isolated on `damian-edition/link-stability`; `main`
+is unchanged. CI restricts the new kernel delta from .23 to link-event handling
+and classification, checks the pinned firmware contract, runs native/installer
+and driver regressions, builds ARM64 binaries, and test-signs the new catalog.

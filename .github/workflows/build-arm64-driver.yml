@@ -61,6 +61,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      - name: Test actual firmware link events and key renewal with ASAN
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $vcvars = Join-Path $install 'VC\Auxiliary\Build\vcvars64.bat'
+          $command = 'call "{0}" && python tests\link_event_tests.py --asan' -f $vcvars
+          cmd.exe /d /s /c $command
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Fault-test the actual recovery callback and live failure status
         shell: pwsh
         run: |
@@ -436,7 +446,7 @@ jobs:
         if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.23-damian.3-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ndis-arm64-v0.7.1.24-damian.4-tx${{ matrix.tx_mode }}
           path: artifacts/rpi5cyw-test-driver/
           if-no-files-found: error
           retention-days: 30
@@ -454,7 +464,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.23-damian.3-tx${{ matrix.tx_mode }}
+          name: rpi5-cyw43455-direct-sdio-ci-logs-v0.7.1.24-damian.4-tx${{ matrix.tx_mode }}
           path: ci-logs/
           if-no-files-found: warn
           retention-days: 30
