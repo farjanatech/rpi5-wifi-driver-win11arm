@@ -53,6 +53,7 @@ Damian RP1B.IRQ0 / ACPI\RPI0011 -> Damian IRQ driver (retained)
 ```
 
 Damian Edition is now the default on `main`. The original integration branch
-`damian-edition/rpi1060-integration`, previous Git history, and v0.7.1.20 release
-remain available. Install one Wi-Fi edition per Windows installation; read
+`damian-edition/rpi1060-integration` and previous Git history remain available.
+The previous main implementation is preserved at commit `1e5b666`.
+Install one Wi-Fi edition per Windows installation; read
 the [migration notes](docs/DAMIAN-EDITION.md) before switching from the old package.

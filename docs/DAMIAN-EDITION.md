@@ -89,7 +89,8 @@ Rolling back to v0.7.1.20 requires the original compatible non-Damian firmware.
 
 Damian Edition has been promoted to the default `main` branch. The original
 `damian-edition/rpi1060-integration` branch, its `v0.7.1.21-damian.1` prerelease,
-previous Git history and the v0.7.1.20 release remain available. This source
+previous Git history remain available. The previous main implementation is
+preserved at commit `1e5b666`. This source
 promotion does not change release assets or GitHub Latest.
 CI verifies the kernel source against
 `c16aa318da490350126739add45223a186ab0a47`, checks the pinned firmware contract,
