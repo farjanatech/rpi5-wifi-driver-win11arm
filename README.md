@@ -1,4 +1,7 @@
-# Raspberry Pi 5 Wi-Fi - Damian Edition
+# Raspberry Pi 5 Wi-Fi Driver
+
+Special Thanks to Ahmed ARIF because this driver project is Adapted from Ahmed ARIF's https://github.com/ahmedarif193 ReactOS/LiberNT repository.
+
 
 **Current version: v0.7.1.24-damian.4** for Windows 11 ARM64 and the onboard CYW43455.
 
