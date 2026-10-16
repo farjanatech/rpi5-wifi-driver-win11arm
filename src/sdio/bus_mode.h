@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Included by sdio.c after SdioSetClock. Actual code is host-tested.
  * CCCR definitions follow Linux include/linux/mmc/sdio.h / SDIO spec.
  * Inspired by the user-supplied operating-speed patch; rewritten for bounded

@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Production timing helpers, no hardware or driver installation. */
 #include <stdio.h>
 #include <stddef.h>

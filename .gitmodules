@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [submodule "third_party/reactos-ahmed"]
 	path = third_party/reactos-ahmed
 	url = https://github.com/ahmedarif193/reactos.git

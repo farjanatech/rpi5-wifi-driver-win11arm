@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $path = Join-Path (Split-Path -Parent $PSScriptRoot) 'utility\RPi5-WiFi-DownloadTiming.ps1'

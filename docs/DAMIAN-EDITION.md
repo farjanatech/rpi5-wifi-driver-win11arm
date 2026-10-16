@@ -1,3 +1,5 @@
+<!-- Project documentation: Farjana Akter. Existing third-party notices retain their authorship. -->
+
 # Damian Edition Wi-Fi 0.7.1.24-damian.4
 
 This edition binds the CYW43455 driver to `WFD0 / ACPI\RPI1060` in

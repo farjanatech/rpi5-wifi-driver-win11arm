@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param([switch]$LibraryOnly,[switch]$NoPause,[switch]$VerifyReconnect,[string]$ConfigPath)
 Set-StrictMode -Version Latest

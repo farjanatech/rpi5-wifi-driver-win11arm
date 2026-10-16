@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 #pragma once
 /* Two-slot single-producer/single-consumer FIFO. State transitions use full
  * interlocked barriers. A slow writer can skip diagnostics, never stall SDIO

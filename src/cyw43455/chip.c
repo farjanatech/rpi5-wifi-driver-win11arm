@@ -1,3 +1,10 @@
+/*
+ * Project author: Farjana Akter.
+ * Design/protocol reference: Ahmed ARIF's ReactOS/LiberNT project.
+ * Upstream: https://github.com/ahmedarif193/LiberNT
+ * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for reference details.
+ */
+
 /* CYW43455 register definitions / clock sequence reference:
  * Linux v6.12 brcmfmac/sdio.{c,h} (ISC) and Ahmed ARIF's ReactOS chip.c
  * at 9130f67a (GPL-2.0-or-later). See THIRD_PARTY_NOTICES.md.

@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Included after join_preference.h by connection.h. Only the existing
  * PASSIVE worker calls this while holding connected publication. It keeps

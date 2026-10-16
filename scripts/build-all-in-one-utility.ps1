@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory
 )

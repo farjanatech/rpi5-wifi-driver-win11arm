@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$Destination)
 Set-StrictMode -Version Latest

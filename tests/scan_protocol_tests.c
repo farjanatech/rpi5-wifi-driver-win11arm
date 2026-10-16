@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Byte-level tests of the production parser. No device or firmware access. */
 #include <stdio.h>
 #include "../src/cyw43455/scan_protocol.h"

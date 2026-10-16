@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* 0.7.1.6: dispatch-order experiment ONLY. Invoke the exact stable pump once.
  * Both modes have the same four-frame base budget, original high-pressure

@@ -1,3 +1,5 @@
+@rem Project author: Farjana Akter.
+
 @echo off
 setlocal
 title Raspberry Pi 5 Wi-Fi Diagnostics

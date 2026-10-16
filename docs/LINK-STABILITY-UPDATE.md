@@ -1,3 +1,5 @@
+<!-- Project documentation: Farjana Akter. Existing third-party notices retain their authorship. -->
+
 # Link-state correction — 0.7.1.24-damian.4
 
 This version fixes a reproduced firmware-event handling defect. After release,

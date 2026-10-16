@@ -1,3 +1,5 @@
+<!-- Project documentation: Farjana Akter. Existing third-party notices retain their authorship. -->
+
 # Damian recovery candidate 0.7.1.23-damian.3
 
 Historical .23 notes: the owner subsequently reported fluctuating speed and

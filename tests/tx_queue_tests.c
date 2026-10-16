@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Actual pending queue + send-chain dispatch, simulated NDIS/transport only. */
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Production transport service/poll/send helpers with scripted SDIO only.
  * Runs on GitHub CI; no real adapter, registry, or driver installation. */
 #include <stdio.h>

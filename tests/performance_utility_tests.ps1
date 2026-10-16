@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $path = Join-Path (Split-Path -Parent $PSScriptRoot) 'utility\Test-RPi5-WiFi-Performance.ps1'

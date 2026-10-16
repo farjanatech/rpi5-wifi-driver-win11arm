@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Real control.h + connection.h with simulated transport only. No driver load. */
 #include <stdio.h>
 #include <stdlib.h>

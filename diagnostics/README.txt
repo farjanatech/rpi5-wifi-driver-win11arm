@@ -1,3 +1,5 @@
+Project author: Farjana Akter.
+
 Raspberry Pi 5 Wi-Fi One-Click Diagnostics v0.5.0
 =================================================
 

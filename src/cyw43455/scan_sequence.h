@@ -1,3 +1,10 @@
+/*
+ * Project author: Farjana Akter.
+ * Design/protocol reference: Ahmed ARIF's ReactOS/LiberNT project.
+ * Upstream: https://github.com/ahmedarif193/LiberNT
+ * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for reference details.
+ */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Explicit, disconnected-only scan on the existing PASSIVE worker.
  * Protocol reference: Linux v6.12 brcmfmac cfg80211.c (ISC, Broadcom):

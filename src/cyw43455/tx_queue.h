@@ -1,3 +1,10 @@
+/*
+ * Project author: Farjana Akter.
+ * Design/protocol reference: Ahmed ARIF's ReactOS/LiberNT project.
+ * Upstream: https://github.com/ahmedarif193/LiberNT
+ * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for reference details.
+ */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Pending completion / busy retry design references Ahmed ARIF's GPL-2.0-or-
  * later cyw43455.c at 929bdd689d1e18d0ef71214741d4e16eec74409c.

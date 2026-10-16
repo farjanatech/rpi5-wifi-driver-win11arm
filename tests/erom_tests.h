@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Included by the actual-code host harness after CHECK/Erom are defined. */
 typedef struct _EROM_TEST_STREAM {
     ULONG Words[520], Count, Index, FailAt;

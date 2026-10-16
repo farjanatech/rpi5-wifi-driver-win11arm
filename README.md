@@ -1,6 +1,13 @@
+<!-- Project documentation: Farjana Akter. Existing third-party notices retain their authorship. -->
+
 # Raspberry Pi 5 Wi-Fi Driver
 
-Special Thanks to Ahmed ARIF because this driver project is Adapted from Ahmed ARIF's https://github.com/ahmedarif193 ReactOS/LiberNT repository.
+Project author and Windows adaptation/maintenance: **Farjana Akter**.
+Special thanks to **Ahmed ARIF**, whose
+[ReactOS/LiberNT project](https://github.com/ahmedarif193/LiberNT) provided adapted
+driver code and reference implementations. See the
+[file attribution map](docs/ATTRIBUTION.md) and
+[third-party notices](THIRD_PARTY_NOTICES.md) for upstream credits and licenses.
 
 
 **Current version: v0.7.1.24-damian.4** for Windows 11 ARM64 and the onboard CYW43455.

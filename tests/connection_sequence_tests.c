@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Compile the actual connection sequence with deterministic firmware replies.
  * No Windows driver is loaded; all commands terminate in these stubs. */
 #include <stdio.h>

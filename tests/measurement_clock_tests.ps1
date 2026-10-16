@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 param([switch]$NativeSmoke)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'

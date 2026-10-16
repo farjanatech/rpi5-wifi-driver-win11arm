@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Actual counter and NDIS mapping helpers against host-only lock/type stubs.
  * WDK compilation separately checks real NDIS types/flags and the OID switch. */
 #include <stdio.h>

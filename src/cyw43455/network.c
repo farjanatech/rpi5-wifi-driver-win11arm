@@ -1,3 +1,11 @@
+/*
+ * Portions adapted from Ahmed ARIF's ReactOS/LiberNT project.
+ * Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>.
+ * Upstream: https://github.com/ahmedarif193/LiberNT
+ * Windows adaptation and maintenance: Farjana Akter.
+ * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for sources and licenses.
+ */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * SDPCM/BCDC and WPA2 sequences adapted from Ahmed ARIF, GPL-2.0-or-later,
  * ReactOS cyw43455/fwil.c at 9bb45e56 (Copyright 2026 Ahmed ARIF), and

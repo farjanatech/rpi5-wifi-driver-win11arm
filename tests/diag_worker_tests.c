@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Execute production diagnostic-thread lifetime with host event/thread shims. */
 #include <windows.h>
 #include <winternl.h>

@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 #pragma once
 /* Bounded AI EROM decoder. Descriptor definitions follow Linux v6.12
  * brcmfmac/chip.c (ISC, Broadcom 2014); see THIRD_PARTY_NOTICES.md.
