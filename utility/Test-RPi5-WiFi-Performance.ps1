@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param([switch]$LibraryOnly, [switch]$NoPause, [switch]$SkipConnect,
       [switch]$SkipDiagnostics, [switch]$PassThru, [string]$ConfigPath, [string]$OutputRoot)

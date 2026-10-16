@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 & python (Join-Path $PSScriptRoot 'stability_recovery_scope_tests.py')

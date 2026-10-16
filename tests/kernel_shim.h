@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 #pragma once
 /* Host-only simulation. No real registers, kernel APIs, or driver installation. */
 #include <stdint.h>

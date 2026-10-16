@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Only network.c's PASSIVE bus worker calls these helpers. No per-frame
  * allocations, registry writes, firmware commands, or credential/packet data.

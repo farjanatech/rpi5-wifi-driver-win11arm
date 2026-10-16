@@ -1,3 +1,5 @@
+@rem Project author: Farjana Akter.
+
 @echo off
 setlocal
 title RPi5 Wi-Fi - Readiness and performance report

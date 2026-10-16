@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param([switch]$Disable, [switch]$LibraryOnly, [switch]$RefreshExisting)
 Set-StrictMode -Version Latest

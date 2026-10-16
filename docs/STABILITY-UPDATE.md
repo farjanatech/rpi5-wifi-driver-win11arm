@@ -1,3 +1,5 @@
+<!-- Project documentation: Farjana Akter. Existing third-party notices retain their authorship. -->
+
 # Damian stability update 0.7.1.22-damian.2
 
 This update addresses two code-level performance problems. On 2026-10-10 the

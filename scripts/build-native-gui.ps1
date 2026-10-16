@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param(
     [ValidateSet('x64','arm64')][string]$Architecture='arm64',

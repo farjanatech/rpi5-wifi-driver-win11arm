@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 #pragma once
 #define IDR_PAYLOAD_GUI       2001
 #define IDR_PAYLOAD_INF       2002

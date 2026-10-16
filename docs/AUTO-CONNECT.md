@@ -1,3 +1,5 @@
+<!-- Project documentation: Farjana Akter. Existing third-party notices retain their authorship. -->
+
 # Native Wi-Fi profiles and auto-connect
 
 The current user-facing Wi-Fi application is the native C++ `RPi5-WiFi.exe`

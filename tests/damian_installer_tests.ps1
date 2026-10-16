@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '../installer/Install-RPi5-WiFi-Driver.ps1') -LibraryOnly

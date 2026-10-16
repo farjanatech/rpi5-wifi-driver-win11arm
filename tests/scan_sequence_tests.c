@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Execute the actual production scan sequence against bounded firmware mocks.
  * All device operations end here. This binary is run on GitHub CI only. */
 #include <stdio.h>

@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 """Compile and exercise the actual network.c post-RX source slice in both modes.
 
 Only the external calls are mocked. The production order and failure branches

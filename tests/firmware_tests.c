@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Actual firmware.c against a simulated chip. Never loads a Windows driver. */
 #include <stdio.h>
 #include <stdlib.h>

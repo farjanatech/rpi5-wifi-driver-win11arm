@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 """Protect the working Damian baseline outside the reviewed stability changes."""
 from pathlib import Path
 import re
@@ -15,8 +17,47 @@ ADDED = {
     "src/driver/diag_values.h", "src/cyw43455/diagnostics_worker.h",
 }
 
+# Accept only these exact attribution additions. Do not strip arbitrary comments
+# or whitespace: the historical source boundaries must still detect code edits.
+ATTRIBUTION_HEADERS = (
+    "/* Project author: Farjana Akter. */\n\n",
+    """/*
+ * Portions adapted from Ahmed ARIF's ReactOS/LiberNT project.
+ * Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>.
+ * Upstream: https://github.com/ahmedarif193/LiberNT
+ * Windows adaptation and maintenance: Farjana Akter.
+ * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for sources and licenses.
+ */
+
+""",
+    """/*
+ * Project author: Farjana Akter.
+ * Design/protocol reference: Ahmed ARIF's ReactOS/LiberNT project.
+ * Upstream: https://github.com/ahmedarif193/LiberNT
+ * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for reference details.
+ */
+
+""",
+    "# Project author: Farjana Akter.\n\n",
+    "<!-- Project author: Farjana Akter. -->\n\n",
+)
+
+
+def without_attribution(text):
+    for header in ATTRIBUTION_HEADERS:
+        if text.startswith(header):
+            return text[len(header):]
+    # XML declarations and the Visual Studio solution signature stay first.
+    first, separator, body = text.partition("\n")
+    if first.startswith("<?xml ") or first == "Microsoft Visual Studio Solution File, Format Version 12.00":
+        header = ATTRIBUTION_HEADERS[-1] if first.startswith("<?xml ") else ATTRIBUTION_HEADERS[-2]
+        if body.startswith(header):
+            return first + separator + body[len(header):]
+    return text
+
+
 def read(name):
-    return (ROOT / name).read_text(encoding="utf-8-sig")
+    return without_attribution((ROOT / name).read_text(encoding="utf-8-sig"))
 
 def git(*args):
     return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True)

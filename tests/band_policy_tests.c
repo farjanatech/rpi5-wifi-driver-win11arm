@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Pure startup policy and exact firmware wire validation. No hardware access. */
 #include <stdio.h>
 #include <stdint.h>

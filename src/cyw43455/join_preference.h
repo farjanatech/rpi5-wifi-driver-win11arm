@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * join_pref wire format/policy: Linux v6.12 brcmfmac cfg80211.c,
  * brcmf_set_join_pref (ISC Broadcom); see THIRD_PARTY_NOTICES.md.

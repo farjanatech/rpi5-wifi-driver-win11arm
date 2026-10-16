@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 # Shared functions only. Loading this file does not read profiles or change state.
 function Enter-Rpi5Operation {
     param([ValidateRange(0,10)][int]$WaitSeconds=10,

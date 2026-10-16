@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param([switch]$TimingLibraryOnly)
 Set-StrictMode -Version Latest

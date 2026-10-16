@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 # Functions only: importing this file does not query a clock, device or network.
 function Get-Rpi5DownloadOptionalProperty {
     param($Value, [string]$Name)

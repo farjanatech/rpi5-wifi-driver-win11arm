@@ -1,0 +1,5 @@
+Project author: Farjana Akter.
+File: RPi5-WiFi.ico
+Description: Project icon asset.
+Attribution is stored separately to preserve the original file format and bytes.
+See docs/ATTRIBUTION.md for project and third-party attribution.

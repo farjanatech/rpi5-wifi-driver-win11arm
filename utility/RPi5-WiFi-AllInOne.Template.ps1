@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param(
     [ValidateSet('Menu','Connect','Status','FullTest','Diagnostics')][string]$Mode='Menu',

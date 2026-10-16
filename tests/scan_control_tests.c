@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Actual production memory-only IOCTL gate; deliberately no firmware/SDIO
  * implementations, so accidental hardware work cannot link in this test. */
 #include <stdio.h>

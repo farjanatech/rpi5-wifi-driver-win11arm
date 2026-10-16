@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* v0.7.1.19 adaptive TX hybrid: small ACK/control traffic keeps backlog,
  * Glom2 and Burst4; bulk traffic gets main-style active-only/fresh-F1 pacing.

@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * Firmware-start-only acceleration. Never called by the connected worker.
  * Reuses the tested default 4-bit/25MHz bus setup and existing CMD53 engine.

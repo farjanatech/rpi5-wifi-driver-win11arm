@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'utility\Get-RPi5-WiFi-Timing.ps1') -TimingLibraryOnly

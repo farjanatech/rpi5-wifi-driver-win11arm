@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Packaging must run on GitHub, not the development PC.' }

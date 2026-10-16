@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot

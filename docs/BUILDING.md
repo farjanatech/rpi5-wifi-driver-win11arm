@@ -1,3 +1,5 @@
+<!-- Project documentation: Farjana Akter. Existing third-party notices retain their authorship. -->
+
 # Building
 
 ## Toolchain

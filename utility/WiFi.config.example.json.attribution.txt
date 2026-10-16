@@ -1,0 +1,5 @@
+Project author: Farjana Akter.
+File: WiFi.config.example.json
+Description: Project example configuration.
+Attribution is stored separately to preserve the original file format and bytes.
+See docs/ATTRIBUTION.md for project and third-party attribution.

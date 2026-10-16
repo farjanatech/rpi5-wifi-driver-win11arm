@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 """Fault-inject wire events into the actual network.c event handler."""
 from pathlib import Path
 import argparse

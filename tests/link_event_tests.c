@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Exercise production event parsing/state transitions, with only OS-facing
  * notification and diagnostic sinks replaced by observations. */
 #include <stdio.h>

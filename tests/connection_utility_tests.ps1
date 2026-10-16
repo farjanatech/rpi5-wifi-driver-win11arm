@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $sourcePath = Join-Path (Split-Path -Parent $PSScriptRoot) 'utility\Connect-RPi5-WiFi.ps1'

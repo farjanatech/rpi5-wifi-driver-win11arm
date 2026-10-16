@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* Actual production retry gate; no driver, scheduler, or device execution.
  * Real transport-priority policy and queue types, with a mocked queue lock.
  * Deliberately supplies no SDIO or firmware-operation implementation. */

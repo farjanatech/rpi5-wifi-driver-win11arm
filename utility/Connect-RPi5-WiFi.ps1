@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param([switch]$StatusOnly, [switch]$Disconnect, [switch]$LibraryOnly,
       [string]$ConfigPath, [switch]$Startup, [switch]$IfNeeded, [switch]$PassThru)

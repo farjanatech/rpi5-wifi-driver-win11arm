@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot '..\utility\Test-RPi5-WiFi-Lan.ps1') -LibraryOnly

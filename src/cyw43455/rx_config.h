@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Production setup, shared with fault-injection tests. Device TX = host RX;
  * device RX/host TX aggregation remains disabled. */

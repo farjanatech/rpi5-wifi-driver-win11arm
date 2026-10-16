@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Shared by the actual driver and host snapshot tests. Captures only the
  * existing diagnostic schema; no registry I/O or retained adapter pointers. */

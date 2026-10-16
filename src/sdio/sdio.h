@@ -1,3 +1,10 @@
+/*
+ * Project author: Farjana Akter.
+ * Design/protocol reference: Ahmed ARIF's ReactOS/LiberNT project.
+ * Upstream: https://github.com/ahmedarif193/LiberNT
+ * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for reference details.
+ */
+
 #pragma once
 
 #include "../driver/driver.h"

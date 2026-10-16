@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 # Functions only: importing this file does not compile a type or query a clock.
 # Call Initialize-Rpi5MeasurementClock once, outside the measured workload.
 # ClockKind: QueryInterruptTime100nsSinceBoot (biased interrupt time).

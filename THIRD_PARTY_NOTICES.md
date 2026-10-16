@@ -1,4 +1,23 @@
+<!-- Project documentation: Farjana Akter. Existing third-party notices retain their authorship. -->
+
 # Third-party notices
+
+## File-level author attribution
+
+Project author and Windows adaptation/maintenance: **Farjana Akter**.
+Adapted source portions credit **Ahmed ARIF** and his
+[ReactOS/LiberNT repository](https://github.com/ahmedarif193/LiberNT), formerly
+`ahmedarif193/reactos`. See [the file attribution map](docs/ATTRIBUTION.md) for
+individual files, pinned revisions and the distinction between adaptation and
+design/protocol references. All existing upstream copyright and license notices
+below are retained.
+
+The NDIS miniport/OID handling in `src/driver/driver.c` and corresponding
+declarations in `src/driver/driver.h` also retain attribution to Ahmed ARIF's
+`drivers/network/dd/rp1gem/rp1gem.c` and `rp1gem.h` at revision
+`9130f67a8e8c759da5acbbfe613f776b07b21698`, Copyright 2026 Ahmed ARIF
+<arif.ing@outlook.com>, GPL-2.0-or-later. The Windows direct-SDIO adaptation and
+subsequent project additions are maintained by Farjana Akter.
 
 ## Warm SDIO reinitialization (0.7.1.23)
 

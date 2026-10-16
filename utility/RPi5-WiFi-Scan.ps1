@@ -1,3 +1,5 @@
+# Project author: Farjana Akter.
+
 [CmdletBinding()]
 param([switch]$ScanLibraryOnly)
 Set-StrictMode -Version Latest

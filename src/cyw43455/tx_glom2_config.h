@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Host TX glom negotiation. Firmware names bus directions from the device
  * perspective: bus:rxglom enables host-to-device aggregated SDPCM chains.

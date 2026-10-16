@@ -1,3 +1,5 @@
+/* Project author: Farjana Akter. */
+
 #include <stdio.h>
 
 typedef unsigned char UCHAR;
