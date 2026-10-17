@@ -2,10 +2,13 @@
 
 # Raspberry Pi 5 Wi-Fi Driver
 
-Project author and Windows adaptation/maintenance: **Farjana Akter**.
-Special thanks to **Ahmed ARIF**, whose
-[ReactOS/LiberNT project](https://github.com/ahmedarif193/LiberNT) provided adapted
-driver code and reference implementations. See the
+This driver is a rework of **Ahmed ARIF**'s Raspberry Pi drivers from his
+[LiberNT repository](https://github.com/ahmedarif193/LiberNT) (formerly
+`ahmedarif193/reactos`): the RP1 GEM NDIS miniport (`rp1gem`), the SD/SDIO bus
+driver (`drivers/bus/sd`) and the CYW43455 Wi-Fi driver (`cyw43455`).
+Original driver code: Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>.
+Windows direct-SDIO rework and maintenance: **Farjana Akter**.
+See the
 [file attribution map](docs/ATTRIBUTION.md) and
 [third-party notices](THIRD_PARTY_NOTICES.md) for upstream credits and licenses.
 

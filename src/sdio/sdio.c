@@ -1,8 +1,8 @@
 /*
- * Project author: Farjana Akter.
- * Design/protocol reference: Ahmed ARIF's ReactOS/LiberNT project.
- * Upstream: https://github.com/ahmedarif193/LiberNT
- * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for reference details.
+ * PROJECT:     LiberNT SD/SDIO/eMMC Bus Driver
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * PURPOSE:     SDIO CMD52/CMD53 wrappers, CCCR/CIS parsing, and function enumeration
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
  */
 
 #include "sdio.h"

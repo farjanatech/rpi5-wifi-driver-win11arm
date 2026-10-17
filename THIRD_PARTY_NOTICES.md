@@ -4,12 +4,14 @@
 
 ## File-level author attribution
 
-Project author and Windows adaptation/maintenance: **Farjana Akter**.
-Adapted source portions credit **Ahmed ARIF** and his
-[ReactOS/LiberNT repository](https://github.com/ahmedarif193/LiberNT), formerly
-`ahmedarif193/reactos`. See [the file attribution map](docs/ATTRIBUTION.md) for
-individual files, pinned revisions and the distinction between adaptation and
-design/protocol references. All existing upstream copyright and license notices
+This driver is a rework of **Ahmed ARIF**'s Raspberry Pi drivers from his
+[LiberNT repository](https://github.com/ahmedarif193/LiberNT) (formerly
+`ahmedarif193/reactos`): the RP1 GEM NDIS miniport (`rp1gem`), the SD/SDIO bus
+driver (`drivers/bus/sd`) and the CYW43455 Wi-Fi driver (`cyw43455`).
+Original driver code: Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>.
+Windows direct-SDIO rework and maintenance: **Farjana Akter**.
+See [the file attribution map](docs/ATTRIBUTION.md) for individual files and
+pinned revisions. All existing upstream copyright and license notices
 below are retained.
 
 The NDIS miniport/OID handling in `src/driver/driver.c` and corresponding
@@ -18,6 +20,17 @@ declarations in `src/driver/driver.h` also retain attribution to Ahmed ARIF's
 `9130f67a8e8c759da5acbbfe613f776b07b21698`, Copyright 2026 Ahmed ARIF
 <arif.ing@outlook.com>, GPL-2.0-or-later. The Windows direct-SDIO adaptation and
 subsequent project additions are maintained by Farjana Akter.
+
+The SDHCI host layer in `src/sdio/sdio.c`, `src/sdio/sdio.h` and
+`src/sdio/sdio_protocol.h` adapts host reset, clock divider and clock setup,
+power and interrupt initialization, command issue, CMD52 and the SDHCI/SDIO
+register definitions from Ahmed ARIF's `drivers/bus/sd/fdo.c`, `enum.c`,
+`sdio.c` and `sdk/include/reactos/drivers/sd/sdhci.h`. The NDIS install
+sections of `package/rpi5cyw.inf` adapt `drivers/network/dd/rp1gem/netrp1gem.inf`,
+and the link-state indication in `src/cyw43455/network.c` adapts
+`Rp1GemIndicateLinkState` in `rp1gem.c`. All at revision
+`9130f67a8e8c759da5acbbfe613f776b07b21698`, Copyright 2026 Ahmed ARIF
+<arif.ing@outlook.com>, GPL-2.0-or-later.
 
 ## Warm SDIO reinitialization (0.7.1.23)
 
@@ -155,8 +168,8 @@ validation claim for the integrated candidate.
 
 ## ReactOS / Ahmed Arif driver sources
 
-This project uses the following source tree as a technical and architectural
-reference:
+This project adapts code from, and uses as a technical and architectural
+reference, the following source tree:
 
 - <https://github.com/ahmedarif193/reactos>
 - pinned submodule revision: `9130f67a8e8c759da5acbbfe613f776b07b21698`

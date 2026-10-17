@@ -2,23 +2,22 @@
 
 # File attribution
 
-**Project author and Windows 11 ARM64 adaptation/maintenance: Farjana Akter.**
+This driver is a rework of **Ahmed ARIF**'s Raspberry Pi drivers from his
+[LiberNT repository](https://github.com/ahmedarif193/LiberNT) (formerly
+`ahmedarif193/reactos`): the RP1 GEM NDIS miniport (`rp1gem`), the SD/SDIO bus
+driver (`drivers/bus/sd`) and the CYW43455 Wi-Fi driver (`cyw43455`).
+Original driver code: Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>.
+Windows direct-SDIO rework and maintenance: **Farjana Akter**.
 
-**Upstream author: Ahmed ARIF**, whose [ReactOS/LiberNT repository](https://github.com/ahmedarif193/LiberNT)
-provided the driver code and references identified below. That repository was
-previously published as `ahmedarif193/reactos`; historical URLs and pinned
-revisions in this project are retained for reproducibility.
-
-Attribution is recorded in each project-owned text file. A header identifying
-adapted portions credits Ahmed's contribution without assigning the entire
-Windows file to him. A design/protocol-reference header credits his reference
-work while identifying Farjana Akter as the author of the local implementation.
+Historical `ahmedarif193/reactos` URLs and pinned revisions in this project are
+retained for reproducibility. Each file reworked from Ahmed ARIF's driver says
+so in its header, with his copyright first.
 Existing Linux, Broadcom, ReactOS and other third-party notices still apply to
 their respective material. These headers do not change any existing license.
 
-## Adapted source and declarations
+## Files reworked from Ahmed ARIF's driver
 
-These files carry Ahmed ARIF's upstream attribution and his existing notice,
+These files are Ahmed ARIF's driver code reworked for Windows and carry his notice,
 `Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>`.
 
 | Project file | Upstream contribution and provenance |
@@ -26,11 +25,15 @@ These files carry Ahmed ARIF's upstream attribution and his existing notice,
 | `src/driver/driver.c` | NDIS miniport/OID handling adapted from `drivers/network/dd/rp1gem/rp1gem.c` at A; introduced in local commit `aa1cfa47523403ca064efd54a151914bd4bd81e1`. Shared portions include OID tables, query-data and link-state handling. |
 | `src/driver/driver.h` | NDIS adapter declarations and definitions corresponding to `drivers/network/dd/rp1gem/rp1gem.h` at A. Direct-SDIO context and later diagnostics are local extensions. |
 | `src/cyw43455/firmware.c` | Chip reset, firmware/NVRAM/CLM loading and bring-up sequences from `drivers/network/dd/cyw43455/chip.c` at B; introduced in local commit `63f2152b58437469a082f1a8f6660a1e0125154c`. |
-| `src/cyw43455/network.c` | SDPCM/BCDC transport, firmware-event and WPA2 integration from `cyw43455/fwil.c` and `cyw43455.h` at B. Windows Ethernet lifecycle and later bounded-worker integration are local work. |
+| `src/cyw43455/network.c` | SDPCM/BCDC transport, firmware-event and WPA2 integration from `cyw43455/fwil.c` and `cyw43455.h` at B. `CywLink` link-state indication from `Rp1GemIndicateLinkState` in `drivers/network/dd/rp1gem/rp1gem.c` at A. Windows Ethernet lifecycle and later bounded-worker integration are local work. |
 | `src/cyw43455/network_protocol.h` | SDPCM/BCDC wire-format adaptations introduced with the network integration, using `cyw43455.h`/`fwil.c` at B and the documented Broadcom/Linux sources. Local validators and control ABI remain project work. |
 | `src/cyw43455/control.h` | BCDC command/IOVAR transport extracted from attributed `network.c` in local commit `cea93c0b725b8d5f21f3667a9272dae04b3cd15f`; upstream lineage is `cyw43455/fwil.c` at B. |
 | `src/cyw43455/connection.h` | WPA2 sequencing extracted from attributed `network.c` in local commit `54920b3`; upstream `cyw43455/fwil.c` at B, plus the later `CywSetCountry` reference in `chip.c` at C. |
 | `src/cyw43455/transport_poll.h` | Receive polling extracted from attributed `network.c` in local commit `6e7f31363b22c2d9c9f67dda0da1f8cf225f71f6`; lineage includes `cyw43455/fwil.c` at B and receive read-ahead reference to `CywBusThread` at C. Later Linux glom/recovery references retain separate notices. |
+| `src/sdio/sdio.c` | SDHCI host reset, clock setup, power/interrupt initialization, command issue and CMD52 from `drivers/bus/sd/fdo.c` (`SdBusResetHost`, `SdBusInitializeController`), `enum.c` (`SdBusSendCommand`) and `sdio.c` (`SdBusSdioCmd52`) at A; introduced in local commit `b194210`. The CMD5 retry loop, CMD53 PIO/FIFO engine, bus-speed negotiation and recovery are local work. |
+| `src/sdio/sdio.h` | SDHCI register, command and SDIO OCR definitions from `sdk/include/reactos/drivers/sd/sdhci.h` and `drivers/bus/sd/enum.c` at A; introduced in local commit `b44b60e`. Local adapter interfaces remain project work. |
+| `src/sdio/sdio_protocol.h` | `SdioCalculateClockDivider` from `SDHCI_CALC_CLK_DIVIDER` in `sdk/include/reactos/drivers/sd/sdhci.h` at A; introduced in local commit `b194210`. Argument builders and validators are local work. |
+| `package/rpi5cyw.inf` | NDIS install sections from `drivers/network/dd/rp1gem/netrp1gem.inf` at A; introduced in local commit `7701560`. Device ID, strings, firmware copy and packaging are local work. |
 | `src/cyw43455/transport_send.h` | SDPCM sending extracted from attributed `network.c` in local commit `6e7f313`; upstream lineage is `cyw43455/fwil.c` at B. Later Linux host-TX-glom work is separately credited in `THIRD_PARTY_NOTICES.md`. |
 
 The source headers at these historical revisions specify GPL-2.0-or-later.
@@ -53,8 +56,6 @@ ARIF as a design/protocol reference. This does not label them verbatim copies.
 | `src/cyw43455/tx_types.h` | Local bounded pending-NBL types introduced with the queue design in local commit `b94ec1c`, whose reference is the same upstream queue work at C. |
 | `src/cyw43455/scan_protocol.h` | Escan formats cross-checked against `cyw43455/cyw43455.h`; primary wire-format and parser references remain the documented Linux sources. |
 | `src/cyw43455/scan_sequence.h` | Escan use cross-checked against `cyw43455/fwil.c`; the bounded Windows sequence uses the documented Linux protocol reference. |
-| `src/sdio/sdio.c` | SDIO command/enumeration reference from `drivers/bus/sd` and `cyw43455/sdio.c` at A. The Windows direct-host transport and recovery are maintained locally; the upstream SD-bus companion is not copied wholesale or installed. |
-| `src/sdio/sdio.h` | SDHCI/SDIO interface and register-reference context from `drivers/bus/sd` at A. Local adapter interfaces remain project work. |
 
 ## Other project files
 
