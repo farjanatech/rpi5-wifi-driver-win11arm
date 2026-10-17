@@ -1,9 +1,8 @@
 /*
- * Portions adapted from Ahmed ARIF's ReactOS/LiberNT project.
- * Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>.
- * Upstream: https://github.com/ahmedarif193/LiberNT
- * Windows adaptation and maintenance: Farjana Akter.
- * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for sources and licenses.
+ * PROJECT:     LiberNT Broadcom/Cypress CYW43xx Native 802.11 Miniport
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * PURPOSE:     FullMAC SDIO WiFi driver for Raspberry Pi CYW43xx radios
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
  */
 
 #pragma once

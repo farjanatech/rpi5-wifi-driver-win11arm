@@ -1,9 +1,9 @@
 /*
- * Portions adapted from Ahmed ARIF's ReactOS/LiberNT project.
- * Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>.
- * Upstream: https://github.com/ahmedarif193/LiberNT
- * Windows adaptation and maintenance: Farjana Akter.
- * See docs/ATTRIBUTION.md and THIRD_PARTY_NOTICES.md for sources and licenses.
+ * PROJECT:     LiberNT RP1 Ethernet Driver
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * FILE:        drivers/network/dd/rp1gem/rp1gem.h
+ * PURPOSE:     Raspberry Pi 5 RP1 Cadence GEM NDIS 6.30 miniport header
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
  */
 
 #pragma once

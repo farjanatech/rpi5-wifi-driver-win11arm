@@ -38,6 +38,66 @@ ATTRIBUTION_HEADERS = (
  */
 
 """,
+    """/*
+ * PROJECT:     LiberNT Broadcom/Cypress CYW43455 Native 802.11 Miniport
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * PURPOSE:     BCDC/SDPCM control transport, fil commands, escan and events
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
+ */
+
+""",
+    """/*
+ * PROJECT:     LiberNT Broadcom/Cypress CYW43xx Native 802.11 Miniport
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * PURPOSE:     Chip recognition, firmware download and bring-up
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
+ */
+
+""",
+    """/*
+ * PROJECT:     LiberNT Broadcom/Cypress CYW43xx Native 802.11 Miniport
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * PURPOSE:     FullMAC SDIO WiFi driver for Raspberry Pi CYW43xx radios
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
+ */
+
+""",
+    """/*
+ * PROJECT:     ReactOS RP1 Ethernet Driver
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * FILE:        drivers/network/dd/rp1gem/rp1gem.c
+ * PURPOSE:     Raspberry Pi 5 RP1 Cadence GEM NDIS 6.30 miniport
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
+ */
+
+""",
+    """/*
+ * PROJECT:     LiberNT RP1 Ethernet Driver
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * FILE:        drivers/network/dd/rp1gem/rp1gem.h
+ * PURPOSE:     Raspberry Pi 5 RP1 Cadence GEM NDIS 6.30 miniport header
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
+ */
+
+""",
+    """/*
+ * PROJECT:     LiberNT SD/SDIO/eMMC Bus Driver
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * PURPOSE:     SDIO CMD52/CMD53 wrappers, CCCR/CIS parsing, and function enumeration
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
+ */
+
+""",
+    """/*
+ * PROJECT:     LiberNT SD/SDIO/eMMC Driver Stack
+ * LICENSE:     GPL-3.0-or-later (https://spdx.org/licenses/GPL-3.0-or-later)
+ * PURPOSE:     SD Host Controller Interface (SDHCI) register definitions
+ * COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
+ *
+ * Based on the SD Host Controller Simplified Specification v3.00
+ */
+
+""",
     "# Project author: Farjana Akter.\n\n",
     "<!-- Project author: Farjana Akter. -->\n\n",
 )

@@ -1,4 +1,8 @@
-; Project author: Farjana Akter.
+; PROJECT:     LiberNT Project - RP1 (Cadence GEM) Ethernet Driver
+; LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
+; FILE:        drivers/network/dd/rp1gem/netrp1gem.inf
+; PURPOSE:     RP1 (Cadence GEM) Ethernet miniport installation file
+; COPYRIGHT:   Copyright 2026 Ahmed ARIF <arif.ing@outlook.com>
 
 ; Raspberry Pi 5 CYW43455 direct-SDIO fake-Ethernet driver
 ; Windows 11 ARM64 - NDIS 6.30
@@ -18,7 +22,7 @@ Driver_CopyFiles = 12
 Firmware_CopyFiles = 12,rpi5cyw
 
 [Manufacturer]
-%ProviderName% = Models,NTARM64
+%ManufacturerName% = Models,NTARM64
 
 [Models.NTARM64]
 %DeviceDesc% = Device_Install.ndi, ACPI\RPI1060
@@ -66,7 +70,8 @@ cyfmac43455-sdio.clm_blob = 1
 brcmfmac43455-sdio.txt = 1
 
 [Strings]
-ProviderName = "farjanatech"
+ProviderName = "Ahmed ARIF"
+ManufacturerName = "Broadcom"
 ServiceDesc  = "Raspberry Pi 5 CYW43455 Direct SDIO Ethernet Driver (Damian Edition)"
-DeviceDesc   = "Raspberry Pi 5 CYW43455 Direct SDIO Network Adapter (Damian Edition)"
+DeviceDesc   = "Broadcom CYW43455 802.11ac SDIO WiFi Adapter"
 DiskName     = "Raspberry Pi 5 CYW43455 Direct SDIO Driver"
